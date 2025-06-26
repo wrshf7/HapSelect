@@ -13,6 +13,8 @@ load(file = "../../Trainings/Hapotype_Stacking_Example/output/map.R")
 ld[,1:3] = lapply(ld[,1:3], as.numeric)
 ld[,4:5] = lapply(ld[,4:5], as.character)
 
+# Hello Will
+
 
 #####function to find a SNP pair#####
 
