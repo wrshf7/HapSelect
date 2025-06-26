@@ -6,6 +6,10 @@ library(future)
 library(dplyr)
 library(parallel)
 
+load(file = "Example_Files/geno.R")
+
+
+
 #####ld_func() - function to calculate LD within a chromosome utilizing the subsetted marker genotype file####
 #file str is row names are marker names, first column is the marker name, second column is the chromosome, and the rest are genotyped individuals
 ld_func = function(genotypes){

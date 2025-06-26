@@ -2,6 +2,8 @@
 library(purrr)
 library(progressr)
 
+load(file = "Example_Files/map.R")
+
 
 ####order_chromo() - function to order the map file for an individual chromosome (called inside of overall map order function)####
 #Given the map of a chromosome (take whole map file and split by chromo), order it based on marker position
