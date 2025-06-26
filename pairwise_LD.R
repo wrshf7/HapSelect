@@ -91,7 +91,7 @@ pairwise_ld = function(genotype_matrix){
   })
   
   #release all of the cores and undo parallelization
-  plan(sequential)
+  futures::plan(sequential)
   
   #bind all of the chromosomes tog
   #all_ld = bind_rows(all_ld)
