@@ -97,7 +97,7 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     block = c(block, right.mkr)
     
     #update the last marker
-    last.mkr.blk <- right.mkr
+    last.mkr.blk = right.mkr
   }
   return(block)
 }
@@ -157,7 +157,7 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
     
     
   }
-  
+  chromo_blocks = list(chromo_blocks, assigned)
   return(chromo_blocks)
 }
 
@@ -188,9 +188,13 @@ chromo_blocking = function(chr, ld, map, method, tolerance, threshold = threshol
   assigned = rep(FALSE, length(snps.chr))
   names(assigned) = snps.chr
   
+  #return multiple objects - destructure after
   chromo_blocks = make_blocks(ld.chr = ld.chr, ld.adj.chr = ld.adj.chr, snps.chr = snps.chr, snps.pos.chr = snps.pos.chr,
              first.mkr.chr = first.mkr.chr, last.mkr.chr = last.mkr.chr, assigned = assigned, method = method, threshold = threshold, tolerance = tolerance)
 
+  assigned = chromo_blocks[[2]]
+  chromo_blocks = chromo_blocks[[1]]
+  
   unassigned = names(assigned)[!assigned]
   
   #add these as blocks
@@ -248,10 +252,4 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0
   
   return(blocks_list)
 }
-
-
-start = Sys.time()
-test = def_blocks(ld = ld, map = map, threshold = 0.5)
-end = Sys.time()
-end - start
 
