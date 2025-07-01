@@ -10,28 +10,39 @@ library(dplyr)
 library(progressr)
 
 load(file = "Example_Files/ld.R")
-load(file = "Example_Files/map.R")
 
-ld[,1:3] = lapply(ld[,1:3], as.numeric)
 ld[,4:5] = lapply(ld[,4:5], as.character)
 
+load(file = "Example_Files/map.R")
+load(file = "Example_Files/map2.R")
+load(file = "Example_Files/ld2.R")
+load(file = "Example_Files/tolerance_test_ld.R")
+load(file = "Example_Files/tolerance_test_map.R")
 
 
 #####function to extend the block left####
 
 extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance){
   
+  #start counting LD pairs that didn't meet the threshold and track the marker for the next iteration to see if it should be included
+  tolerance_counter = 0
+  failed_markers = c()
+  
   #repeat left extension until break point is reached (tolerance and threshold)
   repeat {
     
     #extract index of the first marker in the block from the SNP pair
-    first.idx <- match(first.mkr.blk, snps.chr)
+    first.idx = match(first.mkr.blk, snps.chr)
     
     #don't extend left if it was the first marker
     if (first.idx == 1) break
     
-    #get index of marker to the left of the first SNP in the block
-    left.mkr = snps.chr[first.idx - 1]
+    #get index of marker to the left of the first SNP in the block - modify for skipped markers from tolerance fail
+    left.mkr = snps.chr[first.idx - (length(failed_markers) + 1) ]
+    
+    #added check if tolerance checks for failed_markers was out of bounds
+    if(length(left.mkr) == 0) break
+    if(is.na(left.mkr)) break
     
     #if marker to the left is already in a block, break
     if (assigned[left.mkr]) break
@@ -49,13 +60,32 @@ extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     }
     
     #check that the LD value (flanking) or average LD value (average) meets the threshold - mean of a single marker is itself, so it works for both
-    if (mean(ld.vals) <= threshold) break
+    if (mean(ld.vals) <= threshold){
+      
+      #check to see if the tolerance threshold has been met, if not add one to the counter
+      if(tolerance_counter >= tolerance){
+        break
+      }
+      else{
+        tolerance_counter = tolerance_counter + 1
+        failed_markers = c(left.mkr, failed_markers)
+        next
+      }
+    } 
     
-    #if the threshold is met, add it to the block
-    block <- c(left.mkr, block)
+    #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
+    if(length(failed_markers) > 0){
+      block = c(left.mkr, failed_markers, block)
+      
+      #reset to track for further extension
+      failed_markers = c()
+    } else{
+      block = c(left.mkr, block)
+    }
+    
     
     #update the first marker and repeat the loop
-    first.mkr.blk <- left.mkr
+    first.mkr.blk = left.mkr
   }
   
   
@@ -67,6 +97,9 @@ extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method,
 
 extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance){
   
+  tolerance_counter = 0
+  failed_markers = c()
+  
   #keep extending until the break signal is initiated
   repeat{
     #starting from the second marker of the original pair (last marker)
@@ -75,8 +108,12 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     #if it's the last marker in the chromo, don't extend
     if (last.idx == length(snps.chr)) break
     
-    #if not, find the next marker
-    right.mkr = snps.chr[last.idx + 1]
+    #if not, find the next marker - modify by failed markers when considering skipped markers from tolerance
+    right.mkr = snps.chr[last.idx + (length(failed_markers) + 1)]
+    print(right.mkr)
+    #added check if tolerance checks for failed_markers was out of bounds
+    if(length(right.mkr) == 0) break
+    if(is.na(right.mkr)) break
     
     #check if the next marker is already in a block
     if (assigned[right.mkr]) break
@@ -90,11 +127,30 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
       ld.vals = ld.chr[ld.chr$Name1 %in% block & ld.chr$Name2 == right.mkr, "LD"]
     }
     
-    #check to see if it meets threshold criteria
-    if (mean(ld.vals) <= threshold) break
+    #check to see if it meets threshold criteria and check tolerance counter and threshold like left block extension
+    if (mean(ld.vals) <= threshold){
+      
+      #check to see if the tolerance threshold has been met, if not add one to the counter
+      if(tolerance_counter >= tolerance){
+        break
+      }
+      else{
+        tolerance_counter = tolerance_counter + 1
+        failed_markers = c(failed_markers, right.mkr)
+        next
+      }
+    } 
     
-    #add it to the block
-    block = c(block, right.mkr)
+    #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
+    if(length(failed_markers) > 0){
+      block = c(block, failed_markers, right.mkr)
+      
+      #reset to track for further extension
+      failed_markers = c()
+      
+    } else{
+      block = c(block, right.mkr)
+    }
     
     #update the last marker
     last.mkr.blk = right.mkr
@@ -252,4 +308,7 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0
   
   return(blocks_list)
 }
+
+
+
 
