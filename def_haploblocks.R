@@ -1,7 +1,5 @@
 ####load dependencies####
 
-#notes - check returns, assign values, etc.
-
 library(purrr)
 library(furrr)
 library(future)
@@ -110,7 +108,7 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     
     #if not, find the next marker - modify by failed markers when considering skipped markers from tolerance
     right.mkr = snps.chr[last.idx + (length(failed_markers) + 1)]
-    print(right.mkr)
+
     #added check if tolerance checks for failed_markers was out of bounds
     if(length(right.mkr) == 0) break
     if(is.na(right.mkr)) break
@@ -296,19 +294,67 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0
   #plan(sequential)
   names(blocks_list) = as.character(chromosomes)
   
-  #max_len = max(lengths(blocks_list))
-  #blocks_df = as.data.frame(do.call(rbind, lapply(blocks_list, function(x) {
-  #  length(x) = max_len  # remplit avec NA
-  #  x
-  #})), stringsAsFactors = FALSE)
-  
-  #blocks_df$chr = map$chrom[match(blocks_df$V1, map$SNP)]
-  #blocks_df$pos = map$pos[match(blocks_df$V1, map$SNP)]
-  #blocks_df = blocks_df[order(blocks_df$pos),]
-  
   return(blocks_list)
 }
 
 
 
+
+
+
+#####Turn blocks into a dataframe####
+#function to pull SNP locations and chromosome of the block and then order the blocks
+
+
+#function to condense chromosome blocks into a df
+chromo_blocks_to_df = function(chromo, map){
+  
+  #extract first and last snp from a block, concatenate markers from a vector to a string
+  #and return as a df
+  chromo_df = map_dfr(chromo, function(block){
+    first_SNP = block[1]
+    last_SNP = block[length(block)]
+    block_length = length(block)
+    SNPs = paste(block, collapse = ";")
+    chromo_df = data.frame(
+      Block = SNPs, 
+      Num_SNP = block_length,
+      First_SNP = first_SNP,
+      Last_SNP = last_SNP
+    )
+    return(chromo_df)
+  })
+  
+  #use the map file to define start and end locations of the block
+  chromo_df = left_join(chromo_df, map, c("First_SNP" = "SNP"))
+  
+  map = map[,c("SNP", "pos")]
+  
+  chromo_df = left_join(chromo_df, map, c("Last_SNP" = "SNP"))
+  
+  colnames(chromo_df) = c(colnames(chromo_df)[1:4], "Chrom", "Start_Pos", "End_Pos")
+  
+  #order the blocks based on the first SNP location
+  chromo_df = chromo_df[order(chromo_df$First_SNP), ]
+  
+  return(chromo_df)
+}
+
+#overall function to return block object and apply chromosome-level condensing
+block_obj_to_df = function(block_obj, map){
+  #Extract first and last SNP and block markers
+  block_df = map_dfr(block_obj, function(chromo){
+    chromo_df = chromo_blocks_to_df(chromo, map)
+  })
+  
+  #give each block an ID
+  block_df$Block_ID = 1:nrow(block_df)
+  
+  #rearrange columns
+  block_df = block_df[,c(1,8,2:7)]
+  
+  block_df$Physical_Distance_kb = (block_df$End_Pos - block_df$Start_Pos) / 1000
+  
+  return(block_df)
+}
 
