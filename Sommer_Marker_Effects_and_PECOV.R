@@ -219,3 +219,10 @@ right_side_freq = sum(haplo_samples <= 0) / length(haplo_samples)
 
 #p-value is 2 * whichever one is smaller (that's the side it's biased towards)
 p_val_MC_method = 2 * min(left_side_freq, right_side_freq)
+
+#or - perform a frquentist test utilizing the SD and mean
+p_val_MC_freq_hybrid = 2 * (1 - pnorm(abs(mean(haplo_samples) / sd(haplo_samples))))
+
+#-log10pvals
+minuslog10pvals = c(p_val_freq_test_method,p_val_MC_method, p_val_MC_freq_hybrid)
+minuslog10pvals = -1 * log10(minuslog10pvals)
