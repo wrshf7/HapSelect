@@ -6,6 +6,10 @@ library(future)
 library(dplyr)
 library(parallel)
 
+load(file = "Example_Files/geno.R")
+
+
+
 #####ld_func() - function to calculate LD within a chromosome utilizing the subsetted marker genotype file####
 #file str is row names are marker names, first column is the marker name, second column is the chromosome, and the rest are genotyped individuals
 ld_func = function(genotypes){
@@ -66,8 +70,8 @@ pairwise_ld = function(genotype_matrix){
   #split the genotype matrix
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
   
-  #setup parallelization using futures and parallel package and utilize all but 1 core
-  futures::plan(multisession, workers = parallel::detectCores() - 1)
+  #setup parallelization using future and parallel package and utilize all but 1 core
+  future::plan(multisession, workers = parallel::detectCores() - 1)
   
   #setup progress bar
   handlers("txtprogressbar")
@@ -91,7 +95,7 @@ pairwise_ld = function(genotype_matrix){
   })
   
   #release all of the cores and undo parallelization
-  plan(sequential)
+  future::plan(sequential)
   
   #bind all of the chromosomes tog
   #all_ld = bind_rows(all_ld)
