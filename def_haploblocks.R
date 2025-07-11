@@ -337,6 +337,10 @@ chromo_blocks_to_df = function(chromo, map){
   #order the blocks based on the first SNP location
   chromo_df = chromo_df[order(chromo_df$First_SNP), ]
   
+  #Give the blocks their ID and show which chromosome they come from
+  chromo_df$Block_ID = 1:nrow(chromo_df)
+  chromo_df$Block_ID = paste(chromo_df$Chrom, chromo_df$Block_ID, sep = ":")
+  
   return(chromo_df)
 }
 
@@ -348,7 +352,7 @@ block_obj_to_df = function(block_obj, map){
   })
   
   #give each block an ID
-  block_df$Block_ID = 1:nrow(block_df)
+  #block_df$Block_ID = 1:nrow(block_df)
   
   #rearrange columns
   block_df = block_df[,c(1,8,2:7)]
