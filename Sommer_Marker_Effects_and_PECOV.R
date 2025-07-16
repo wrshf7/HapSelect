@@ -226,3 +226,9 @@ p_val_MC_freq_hybrid = 2 * (1 - pnorm(abs(mean(haplo_samples) / sd(haplo_samples
 #-log10pvals
 minuslog10pvals = c(p_val_freq_test_method,p_val_MC_method, p_val_MC_freq_hybrid)
 minuslog10pvals = -1 * log10(minuslog10pvals)
+
+
+marker_effects = data.frame(
+  SNP = markers,
+  Effect = marker_effects
+)
