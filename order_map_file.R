@@ -2,7 +2,7 @@
 library(purrr)
 library(progressr)
 
-load(file = "Example_Files/map.R")
+load(file = "Example_Files/gapit_map.R")
 
 
 ####order_chromo() - function to order the map file for an individual chromosome (called inside of overall map order function)####

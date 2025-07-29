@@ -7,16 +7,16 @@ library(parallel)
 library(dplyr)
 library(progressr)
 
-load(file = "Example_Files/ld.R")
+load(file = "Example_Files/gapit_ld.R")
+load(file = "Example_Files/gapit_map.R")
+#load(file = "Example_Files/tolerance_test_ld.R")
+#load(file = "Example_Files/tolerance_test_map.R")
 
-ld[,4:5] = lapply(ld[,4:5], as.character)
+#toy example - most markers not in LD, so the threshold is VERY low
+gapit_haploblocks = def_blocks(ld = gapit_pairwise_ld, map = map, method = "flanking", 
+                               tolerance = 2, threshold = 0.01)
 
-load(file = "Example_Files/map.R")
-load(file = "Example_Files/map2.R")
-load(file = "Example_Files/ld2.R")
-load(file = "Example_Files/tolerance_test_ld.R")
-load(file = "Example_Files/tolerance_test_map.R")
-
+gapit_haploblocks_df = block_obj_to_df(gapit_haploblocks, map)
 
 #####function to extend the block left####
 
@@ -229,7 +229,7 @@ chromo_blocking = function(chr, ld, map, method, tolerance, threshold = threshol
   snps.chr = unique(c(ld.chr$Name1, ld.chr$Name2))
   
   #match snp name to the position in the map file
-  snps.pos.chr = map$pos[match(snps.chr, map$SNP)]
+  snps.pos.chr = map$Position[match(snps.chr, map$SNP)]
   
   #order the snp based on position - should already be ordered
   snps.chr = snps.chr[order(snps.pos.chr)]
@@ -328,7 +328,7 @@ chromo_blocks_to_df = function(chromo, map){
   #use the map file to define start and end locations of the block
   chromo_df = left_join(chromo_df, map, c("First_SNP" = "SNP"))
   
-  map = map[,c("SNP", "pos")]
+  map = map[,c("SNP", "Position")]
   
   chromo_df = left_join(chromo_df, map, c("Last_SNP" = "SNP"))
   
@@ -336,6 +336,10 @@ chromo_blocks_to_df = function(chromo, map){
   
   #order the blocks based on the first SNP location
   chromo_df = chromo_df[order(chromo_df$First_SNP), ]
+  
+  #Give the blocks their ID and show which chromosome they come from
+  chromo_df$Block_ID = 1:nrow(chromo_df)
+  chromo_df$Block_ID = paste(chromo_df$Chrom, chromo_df$Block_ID, sep = ":")
   
   return(chromo_df)
 }
@@ -348,7 +352,7 @@ block_obj_to_df = function(block_obj, map){
   })
   
   #give each block an ID
-  block_df$Block_ID = 1:nrow(block_df)
+  #block_df$Block_ID = 1:nrow(block_df)
   
   #rearrange columns
   block_df = block_df[,c(1,8,2:7)]
