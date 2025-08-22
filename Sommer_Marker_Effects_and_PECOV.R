@@ -14,6 +14,8 @@ load(file = "Example_Files/individual_order.R")
 ####make genomic relationship matrix####
 #no need to filter - already filtered for maf
 
+#make sure it is in 0/1/2 format
+
 ####Gmat using package####
 G_mat = Gmatrix(SNPmatrix = geno_mat, method = "VanRaden", integer = FALSE)
 
@@ -29,6 +31,7 @@ G_mat_inv = solve(G_mat)
 
 
 ####build Z matrix from VanRaden and also make sure G matrix matches####
+#used in downstream analyses to estimate SNP effects from EBV
 
 #allele frequencies of each marker
 p = apply(geno_mat, 2, function(x){
@@ -85,8 +88,17 @@ summary(lapply((lower.tri(G_manual) - lower.tri(G_mat)), function(x) x) %>% do.c
 #                     getPEV = TRUE
 #                   )
 
-#recently deprecated sommer model, which provides the whole PECOV structure, not as efficient
+#recently deprecated sommer model for a univariate example, which provides the whole PECOV structure, not as efficient
 #but provides what I need
+
+#Sim100 is the phenotype
+#No fixed effects - only an overall intercept/mean, so ~ 1
+#only random effect is the additive genetic effect. vsr specifies(taxa, Gu - G_manual): taxa are the genotype names and Gu is the covariance structure
+#rcov = ~ units indicates that we are assuming an identity covariance structure for the residuals (I*sigma^2_e)
+#data = pheno specifies the data frame
+#nIters specifies how many maximum iterations will be run
+#It will terminate before if convergence criteria are reached
+#getPEV = TRUE is only needed if calculating SNP effect
 sommer_model = mmer(Sim100 ~ 1,
                     random = ~ vsr(taxa, Gu = G_manual),
                     rcov = ~ units, 
@@ -96,6 +108,56 @@ sommer_model = mmer(Sim100 ~ 1,
                     getPEV = TRUE,
                     method = "AI"
 )
+
+
+#multi-trait mode for two traits
+#note that cbind(Trait1, Trait2) is how I specify there are two traits.
+#In this case it will be your yield in 2 environments. You can add on a third for the third environment
+#Note I'm also saying there are no fixed effects, so I'm just fitting the overall mean for each environment 
+#that is indicated by ~ 1
+
+#my only random effect is the accession the random = ~vsr() lets me fit a random effect
+#the random effect is the Animal column, and it's covariance structure between accessions
+#is given by my kinship matrix, G_mat
+#the Gtc = unsm(2) is how I get the genetic correlation between both traits (environments)
+#The unsm(2) function tells me I have my two traits and I need to estimate the variances for both
+#and the covariance between them
+#If you have 3 traits, it will be unsm(3)
+#Because I have two traits, I have had to expand my residuals.
+#The rcov = ~ vsr() is again letting me specify that I have a random effect beyond the simple: I*sigma^2_e
+#What I now have if a residual variance for each trait, which is given by Gtc = diag(2)
+#The diag(2) tells the model to estimate a residual variance for each trait, but my residuals should be independent across traits
+#In your case I also believe there is no reason to suggest environments are related, but you can always fit Gtc = unsm(2)
+#Same thing with random, if you have 3 traits, then change diag(2) or unsm(2) to diag(3) or unsm(3)
+
+sommer_basePop = mmer(cbind(Trait1, Trait2) ~ 1,
+                      random = ~ vsr(Animal, Gu = G_mat, Gtc = unsm(2)),
+                      rcov = ~ vsr(units, Gtc=diag(2)), nIters = 3,
+                      data = phenotypes_sommer, verbose = TRUE, 
+                      method = "AI", getPEV = TRUE
+)
+
+#example where I add in a second random effect named "Block" and assume that blocks (e.g., fields, rows. columns, etc.) across traits are unrelated
+sommer_basePop = mmer(
+  cbind(Trait1, Trait2) ~ 1,
+  random = ~ vsr(Animal, Gu = G_mat, Gtc = unsm(2)) +
+    vsr(Block, Gtc = diag(2)),
+  rcov   = ~ vsr(units, Gtc = diag(2)),
+  nIters = 3,
+  data   = phenotypes_sommer,
+  verbose = TRUE, 
+  method = "AI", 
+  getPEV = TRUE
+)
+
+
+
+
+
+
+
+
+
 
 #differences between G_test and AGHMatrix Gmatrix G are very slight, slightly
 #inflated variances, but lambda remains the same pev differences are mild, slight bias

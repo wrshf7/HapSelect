@@ -14,6 +14,8 @@ load(file = "Example_Files/gapit_marker_pecov.R")
 
 geno[,4:ncol(geno)] = round(geno[,4:ncol(geno)], 0)
 
+haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = gapit_haploblocks_df, marker_pecov = marker_pecov)
+
 ####Functions to compute the haplotype effect, PEV, and P-Value####
 haplotype_effect_calc = function(block_marker_effects, haplotype){
   #haplotype estimated effect (linear contract of marker effects)
