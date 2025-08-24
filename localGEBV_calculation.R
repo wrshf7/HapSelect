@@ -42,9 +42,10 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   }) %>% do.call(c,.)
   
   unique_haplotypes = unique(haplotypes)
+  unique_haplotypes = unique_haplotypes[!grepl("NA", unique_haplotypes)]
   
   #haploblock markers
-  block_marker_effects = markers$Effect
+  block_marker_effects = as.matrix(markers$Effect)
   
   
   #vector of unique haplotype effects, haplotype variances, and p-values
@@ -95,7 +96,7 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   
 
   #haploblock effect variance (population variance)
-  var_haplo_effects = mean((haplotype_effects$Haplotype_Effect - mean(haplotype_effects$Haplotype_Effect))^2)
+  unique_var_haplo_effects = mean((haplotype_effects$Haplotype_Effect - mean(haplotype_effects$Haplotype_Effect))^2)
   
   #number of haplotypes within a block
   num_haplo = length(unique_haplotypes)
@@ -116,9 +117,11 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   #vector of all haplotype effects
   all_haplotype_effects = haplotype_df[match(haplotype_IDs, haplotype_df$Haplo_ID),"Haplotype_Effect"]
   
+  #var of all haplotyple effects for block var
+  var_haplo_effects = mean((all_haplotype_effects - mean(all_haplotype_effects, na.rm = TRUE))^2, na.rm = TRUE)
   
   #put all values in a list and return them
-  return_list = list(haplotype_df, haplotype_IDs, num_haplo, var_haplo_effects, all_haplotype_effects)
+  return_list = list(haplotype_df, haplotype_IDs, num_haplo, var_haplo_effects, unique_var_haplo_effects, all_haplotype_effects)
   
   return(return_list)
 }
@@ -187,11 +190,16 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
   
   
   #extract variance of haplotype effects within a block
-  haploblocks_df$Block_Effect_Var = purrr::map_dbl(local_GEBV, function(x){
+  haploblocks_df$Block_Var = purrr::map_dbl(local_GEBV, function(x){
     x = x[[4]]
     return(x)
   })
   
+  #extract variance of unique haplotype effects within a block
+  haploblocks_df$Unique_Haplo_Block_Var = purrr::map_dbl(local_GEBV, function(x){
+    x = x[[5]]
+    return(x)
+  })
   
   #extract haplotype IDs of all individuals for all blocks
   haploblocks_ind_haplotypes = purrr::map(local_GEBV, function(x){
@@ -210,7 +218,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
   
   #extract haplotype effect matrix
   haplotype_effect_mat = purrr::map(local_GEBV, function(x){
-    x = x[[5]]
+    x = x[[6]]
     return(x)
   }) %>% do.call(rbind, .) %>% as.data.frame(.)
   
