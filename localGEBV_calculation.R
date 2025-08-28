@@ -142,6 +142,11 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     haplo_test = FALSE
   }
   
+  #lookup index
+  snp_index = setNames(seq_len(nrow(geno)), geno[,1])
+  marker_index = setNames(seq_len(nrow(marker_effects)), marker_effects[,1])
+  
+  
   #set up progress bar
   progressr::handlers("txtprogressbar")
   progressr::with_progress({
@@ -152,8 +157,11 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     local_GEBV = purrr::map(haploblocks_df$Block_ID, function(haploblock){
       
       #extract the markers in the specific block ID
-      markers = strsplit(haploblocks_df[haploblocks_df$Block_ID == haploblock, "Block"], ";")[[1]]
-      markers = marker_effects[marker_effects[,1] %in% markers, ]
+      #markers = strsplit(haploblocks_df[haploblocks_df$Block_ID == haploblock, "Block"], ";")[[1]]
+      #markers = marker_effects[marker_effects[,1] %in% markers, ]
+      
+      marker_ids = strsplit(haploblocks_df[haploblocks_df$Block_ID == haploblock, "Block"], ";")[[1]]
+      markers = marker_effects[marker_index[marker_ids], ]
       
       #extract genotypes of the markers
       geno_markers = geno[geno[,1] %in% markers$SNP, 4:ncol(geno)]
