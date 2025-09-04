@@ -49,7 +49,12 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
       avg_scores = colMeans(matrix(block_values[combos], nrow = 2))
       
       # Take the highest-scoring pair for the block
-      total_score = total_score + max(avg_scores)
+      if (all(is.na(avg_scores))) {
+        block_score = -1e6   # large negative penalty
+      } else {
+        block_score = max(avg_scores, na.rm = TRUE)
+      }
+      total_score = total_score + block_score
     }
     
     return(total_score)

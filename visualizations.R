@@ -101,4 +101,29 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
   
 }
 
+######Funnel Plot Creation######
 
+block_var_funnel_plot = function(haplo_object, mean_line = TRUE){
+  haploblocks = haplo_object$Haploblocks
+  haplotypes = haplo_object$Haplotypes
+  
+  #scale the block variance
+  haploblocks$Scaled_Block_Var = log10(haploblocks$Block_Var)
+  haploblocks$Scaled_Block_Var = (haploblocks$Scaled_Block_Var - min(haploblocks$Scaled_Block_Var, na.rm = TRUE)) / 
+    (max(haploblocks$Scaled_Block_Var, na.rm = TRUE) - min(haploblocks$Scaled_Block_Var, na.rm = TRUE))
+  
+  
+  haplotypes = left_join(haplotypes, haploblocks, by = "Block_ID")
+  
+  funnel_plot = ggplot(haplotypes, aes(x = Haplotype_Effect, y = Scaled_Block_Var, color = Haplotype_Effect)) +
+    geom_point(alpha = 0.3, size = 2) +
+    scale_color_gradient2(low = "blue", mid = "purple", high = "red", midpoint = 0, name = "Haplotype") +
+    labs(x = "Haplotype Effect", y = "Scaled Haploblock Variance")
+  
+  if(mean_line){
+    funnel_plot = funnel_plot +
+      geom_hline(yintercept = mean(haploblocks$Scaled_Block_Var, na.rm = TRUE), linetype = "dashed", color = "black", linewidth = 1, alpha = 0.5)
+  }
+  
+  return(funnel_plot)
+}
