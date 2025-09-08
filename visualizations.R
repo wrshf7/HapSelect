@@ -7,7 +7,9 @@ load("Example_Files/gapit_haploblock_obj.R")
 load("Example_Files/gapit_marker_effects.R")
 load("Example_Files/gapit_map.R")
 
-
+marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position)
+haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
+funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj)
 
 
 ######Marker Effects#####
@@ -103,9 +105,9 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
 
 ######Funnel Plot Creation######
 
-block_var_funnel_plot = function(haplo_object, mean_line = TRUE){
-  haploblocks = haplo_object$Haploblocks
-  haplotypes = haplo_object$Haplotypes
+block_var_funnel_plot = function(haplo_obj, mean_line = TRUE){
+  haploblocks = haplo_obj$Haploblocks
+  haplotypes = haplo_obj$Haplotypes
   
   #scale the block variance
   haploblocks$Scaled_Block_Var = log10(haploblocks$Block_Var)
