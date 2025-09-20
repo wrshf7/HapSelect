@@ -1,5 +1,6 @@
 library(tidyverse)
 library(cowplot)
+library(scales)
 theme_set(theme_cowplot())
 
 
@@ -128,4 +129,112 @@ block_var_funnel_plot = function(haplo_obj, mean_line = TRUE){
   }
   
   return(funnel_plot)
+}
+
+
+######Visualize blocks on chromosomes######
+plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = "grey90",
+                            height = 0.30, 
+                            single_width_bp = NULL){
+  
+  #convert to a factor
+  haploblock_df$Chrom = as.factor(haploblock_df$Chrom)
+  haploblock_df$Start_Pos = haploblock_df$Start_Pos / 1e6
+  haploblock_df$End_Pos = haploblock_df$End_Pos / 1e6
+  
+  
+  
+  #Extract chromosome sizes
+  chrom_sizes = haploblock_df %>% group_by(Chrom) %>% summarise(Chr_len = max(End_Pos, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(y = row_number())
+
+  
+
+  # add y to df now
+  haploblock_df = haploblock_df %>% mutate(y = as.integer(as.character(
+    match(as.character(Chrom), as.character(chrom_sizes$Chrom))
+  )))
+  
+  #split into multi-region blocks vs single marker blocks
+  block_regions = haploblock_df[haploblock_df$Start_Pos != haploblock_df$End_Pos, ]
+  single_markers = haploblock_df[haploblock_df$Start_Pos == haploblock_df$End_Pos, ]
+
+  # set single marker width if not provided (small fraction of typical chromosome)
+  if (is.null(single_width_bp)) {
+    # pick small width relative to median chromosome length
+    med_len = median(chrom_sizes$Chr_len, na.rm = TRUE)
+    single_width_bp = pmin(med_len * 0.00005, 1)  # ~0.05% of median chr length by default
+  }  
+  
+  
+  # ---- compute rectangle coords for plotting ----
+  # chromosome backbone rects:
+  chrom_sizes = chrom_sizes %>%
+    mutate(ymin = y - height, ymax = y + height)
+  
+  # multi-block rect coords
+  if (nrow(block_regions) > 0) {
+    block_regions = block_regions %>%
+      mutate(xmin = Start_Pos, xmax = End_Pos, ymin = y - height, ymax = y + height)
+  } else {
+    block_regions = block_regions %>% mutate(xmin = numeric(0), xmax = numeric(0),
+                                            ymin = numeric(0), ymax = numeric(0))
+  }
+  
+  # single-block (make narrow rects so they look distinct)
+  if (nrow(single_markers) > 0) {
+    single_markers = single_markers %>%
+      mutate(
+        xmin = pmax(0, Start_Pos - single_width_bp / 2),
+        xmax = Start_Pos + single_width_bp / 2,
+        ymin = y - height, ymax = y + height
+      )
+  } else {
+    single_markers = single_markers %>% mutate(xmin = numeric(0), xmax = numeric(0),
+                                              ymin = numeric(0), ymax = numeric(0))
+  }
+  
+  
+  haploblock_plot = ggplot() +
+    #chromosome backbone
+    geom_rect(data = chrom_sizes, aes(xmin = 0, xmax = Chr_len,
+                  ymin = ymin - 0.015,
+                  ymax = ymax + 0.015),
+              fill = chrom_fill, color = "black"
+                  ) +
+  
+    
+    #multi snp blocks
+    # shaded multi-SNP blocks (no border; we will add boundary lines)
+    { if (nrow(block_regions) > 0)
+      geom_rect(data = block_regions,
+                aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                fill = block_fill, color = NA, alpha = 0.9)
+      else NULL } +
+    
+    # block boundaries (vertical lines at start/end)
+    { if (nrow(block_regions) > 0)
+      geom_segment(data = block_regions,
+                   aes(x = xmin, xend = xmin, y = ymin, yend = ymax),
+                   color = "black", linewidth = 0.1)
+      else NULL } +
+    
+    
+    # single markers as narrow filled rects + black boundaries
+    # { if (nrow(single_markers) > 0)
+    #   geom_rect(data = single_markers,
+    #             aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    #             fill = block_fill, color = NA, alpha = 0.4)
+    #   else NULL } +
+    { if (nrow(single_markers) > 0)
+      geom_segment(data = single_markers,
+                   aes(x = xmin, xend = xmin, y = ymin, yend = ymax),
+                   color = "black", linewidth = 0.1, alpha = 0.4)
+      else NULL } +
+    
+    scale_x_continuous("Position (Mb)", expand = c(0,0)) +
+    ylab("Chromosome")
+    
+  
+    
 }

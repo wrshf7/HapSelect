@@ -19,26 +19,26 @@ order_map = function(map){
   #create a progress bar - might not be needed as it's so fast
   handlers("txtprogressbar")
   
+  #split the map file up by chromosome and order within chromosome
+  map_split = split(map, map$chromo)
+  
   #call the progress bar and while it's active do the ordering
   with_progress({
     #define how many times the progress bar should update - can also use `along = list_name` which will
     #automatically define the length based on a list
     p = progressor(steps = length(map_split))
     
-    #split the map file up by chromosome and order within chromosome
-    map_split = split(map, map$chromo)
-    
     #iterate over the chromosomes sequentially and combine individual data frames into rows from the list (dfr part of map)
-    ordered_map = map_dfr(map_split, function(map){
+    ordered_map = map_dfr(map_split, function(chromo){
       
       #call the map ordering function on the map of the chromosome
-      map = order_map(map)
+      chromo = order_chromo(chromo)
       
       #iterate the progress bar to indicate a step has been completed
       p()
       
       #return the ordered chromosome map, which will be row binded
-      return(map)
+      return(chromo)
     })
   })
 }
