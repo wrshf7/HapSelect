@@ -3,12 +3,12 @@ library(GA)
 
 load("Example_Files/gapit_haploblock_obj.R")
 
-haploblock_effects = gapit_haploblock_obj$Haploblocks
-haploblock_effects = haploblock_effects[order(haploblock_effects$Block_Effect_Var, decreasing = TRUE), ]
+haploblock_effects = haploblock_obj$Haploblocks
+haploblock_effects = haploblock_effects[order(haploblock_effects$Block_Var, decreasing = TRUE), ]
 
 haploblock_top_blocks = haploblock_effects[1:15, ]
 
-localGEBV = gapit_haploblock_obj$Haplotype_Effect_Matrix
+localGEBV = haploblock_obj$Haplotype_Effect_Matrix
 localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_effects$Block_ID, ]
 
 localGEBV = as.data.frame(t(as.matrix(localGEBV)))
@@ -239,3 +239,4 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
   
   return(list(GA = ga_result, One_Solution = one_solution))  # Return GA object and best solution
 }
+
