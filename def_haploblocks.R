@@ -13,10 +13,10 @@ load(file = "Example_Files/gapit_map.R")
 #load(file = "Example_Files/tolerance_test_map.R")
 
 #toy example - most markers not in LD, so the threshold is VERY low
-gapit_haploblocks = def_blocks(ld = gapit_pairwise_ld, map = map, method = "flanking", 
-                               tolerance = 2, threshold = 0.01)
+gapit_haploblocks2 = def_blocks(ld = gapit_pairwise_ld, map = map, method = "flanking", 
+                               tolerance = 2, threshold = 0.3, start = "beginning")
 
-gapit_haploblocks_df = block_obj_to_df(gapit_haploblocks, map)
+gapit_haploblocks_df2 = block_obj_to_df(gapit_haploblocks2, map)
 
 #####function to extend the block left####
 
@@ -159,57 +159,86 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
 
 #####function to find a SNP pair to start block extension#####
 
-make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr, last.mkr.chr, assigned, method, threshold, tolerance){
+make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr, last.mkr.chr, assigned, method, threshold, tolerance, start){
   
   chromo_blocks = list()
   
-  #keep making blocks until there is no pair with high enough LD
-  repeat {
-    
-    #identify max LD pair and pull its id
-    max.ld.idx = which.max(ld.adj.chr$LD)
-    
-    #extract that LD value and check it
-    max.ld = ld.adj.chr$LD[max.ld.idx]
-    if (max.ld <= threshold) break
-    
-    #Pull the two marker names in the LD pair
-    first.mkr.blk = as.character(ld.adj.chr$Name1[max.ld.idx])
-    last.mkr.blk  = as.character(ld.adj.chr$Name2[max.ld.idx])
-    
-    #if assigned is true for either marker in the LD pair (assigned to a block already), remove it from consideration - updated at the end of the block formation
-    if (assigned[first.mkr.blk] || assigned[last.mkr.blk]) {
-      ld.adj.chr = ld.adj.chr[-max.ld.idx, ]
-      next
+  if(start == "LD"){
+    #keep making blocks until there is no pair with high enough LD
+    repeat {
+      
+      #identify max LD pair and pull its id
+      max.ld.idx = which.max(ld.adj.chr$LD)
+      
+      #extract that LD value and check it
+      max.ld = ld.adj.chr$LD[max.ld.idx]
+      if (max.ld <= threshold) break
+      
+      #Pull the two marker names in the LD pair
+      first.mkr.blk = as.character(ld.adj.chr$Name1[max.ld.idx])
+      last.mkr.blk  = as.character(ld.adj.chr$Name2[max.ld.idx])
+      
+      #if assigned is true for either marker in the LD pair (assigned to a block already), remove it from consideration - updated at the end of the block formation
+      if (assigned[first.mkr.blk] || assigned[last.mkr.blk]) {
+        ld.adj.chr = ld.adj.chr[-max.ld.idx, ]
+        next
+      }
+      
+      #extend the block
+      block = c(first.mkr.blk, last.mkr.blk)
+      
+      #extend the block
+      block = extend_left(first.mkr.blk = first.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
+                          ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
+      
+      block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
+                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
+      
+      #update the assigned variable to indicate that SNP have been assigned to a block
+      assigned[block] = TRUE
+      
+      
+      chromo_blocks[[length(chromo_blocks) + 1]] = block
+      
+      
+      #ask victor about this code - we need to figure out whether we can use this or assigned
+      #probable answer - the last snp doesn't have an "adjacent" snp to the right, so ld.adj.chr has 1 less
+      #snp than snp.chr. The used variable is therefore 1 shorter
+      used = with(ld.adj.chr, Name1 %in% block | Name2 %in% block)
+      ld.adj.chr = ld.adj.chr[!used, ]
+      
+      
+      if (nrow(ld.adj.chr) == 0) break
+      
+      
     }
+  } else if(start == "beginning"){
     
-    #extend the block
-    block = c(first.mkr.blk, last.mkr.blk)
-    
-    #extend the block
-    block = extend_left(first.mkr.blk = first.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
-    
-    block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                 ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
-    
-    #update the assigned variable to indicate that SNP have been assigned to a block
-    assigned[block] = TRUE
-    
-    
-    chromo_blocks[[length(chromo_blocks) + 1]] = block
-    
-    
-    #ask victor about this code - we need to figure out whether we can use this or assigned
-    #probable answer - the last snp doesn't have an "adjacent" snp to the right, so ld.adj.chr has 1 less
-    #snp than snp.chr. The used variable is therefore 1 shorter
-    used = with(ld.adj.chr, Name1 %in% block | Name2 %in% block)
-    ld.adj.chr = ld.adj.chr[!used, ]
-    
-    
-    if (nrow(ld.adj.chr) == 0) break
-    
-    
+    position = 1
+    total_SNP = length(snps.chr)
+
+    repeat {
+      
+      #Pull the two marker names in the LD pair
+      last.mkr.blk = as.character(snps.chr[position])
+      
+      block = last.mkr.blk
+      
+      #extend the block
+      block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
+                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
+      
+      #update the assigned variable to indicate that SNP have been assigned to a block
+      assigned[block] = TRUE
+      
+      
+      chromo_blocks[[length(chromo_blocks) + 1]] = block
+      
+      #update position
+      position = match(block[length(block)], snps.chr) + 1
+      
+      if (position > length(snps.chr)) break
+    }
   }
   chromo_blocks = list(chromo_blocks, assigned)
   return(chromo_blocks)
@@ -217,7 +246,7 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
 
 
 #####master blocking function at the chromosome level#####
-chromo_blocking = function(chr, ld, map, method, tolerance, threshold = threshold){
+chromo_blocking = function(chr, ld, map, method, tolerance, threshold, start){
   
   #pull the LD information for the chromosome
   ld.chr = ld[ld$Chrom == chr, ]
@@ -244,7 +273,8 @@ chromo_blocking = function(chr, ld, map, method, tolerance, threshold = threshol
   
   #return multiple objects - destructure after
   chromo_blocks = make_blocks(ld.chr = ld.chr, ld.adj.chr = ld.adj.chr, snps.chr = snps.chr, snps.pos.chr = snps.pos.chr,
-             first.mkr.chr = first.mkr.chr, last.mkr.chr = last.mkr.chr, assigned = assigned, method = method, threshold = threshold, tolerance = tolerance)
+             first.mkr.chr = first.mkr.chr, last.mkr.chr = last.mkr.chr, assigned = assigned, method = method, 
+             threshold = threshold, tolerance = tolerance, start = start)
 
   assigned = chromo_blocks[[2]]
   chromo_blocks = chromo_blocks[[1]]
@@ -260,12 +290,10 @@ chromo_blocking = function(chr, ld, map, method, tolerance, threshold = threshol
 }
   
 
-
-
-
-
 #####overall function to track progress, take input, and call blocking functions#####
-def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0.7){
+def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0.7, start = c("LD", "beginning")){
+  
+  start = match.arg(start)
   
   #pull the list of chromosomes to parallelize
   chromosomes = sort(unique(ld$Chrom))
@@ -284,7 +312,8 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0
     blocks_list = map(chromosomes, function(chr){
       
       #call chromosome blocking function
-      chromo_blocks = chromo_blocking(chr = chr, ld = ld, map = map, method = method, tolerance = tolerance, threshold = threshold)
+      chromo_blocks = chromo_blocking(chr = chr, ld = ld, map = map, method = method, tolerance = tolerance, threshold = threshold, start = start)
+      
       #after blocking on the chromosome is finished iterate the progress bar
       p()
       
@@ -343,6 +372,7 @@ chromo_blocks_to_df = function(chromo, map){
   
   return(chromo_df)
 }
+
 
 #overall function to return block object and apply chromosome-level condensing
 block_obj_to_df = function(block_obj, map){

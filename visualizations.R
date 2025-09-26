@@ -11,7 +11,7 @@ load("Example_Files/gapit_map.R")
 marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position)
 haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
 funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj)
-
+haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 
 ######Marker Effects#####
 marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "#A7A8AA")){
@@ -61,7 +61,7 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
 #####Haplotype effects plot######
 unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
   
-  #plotting strategy - midpoint of start of haplotype
+  #plotting strategy - midpoint or start of haplotype
   pos_type = match.arg(pos_type)
   
   haploblocks = haplo_obj$Haploblocks
