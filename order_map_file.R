@@ -2,13 +2,13 @@
 library(purrr)
 library(progressr)
 
-load(file = "Example_Files/gapit_map.R")
 
 
 ####order_chromo() - function to order the map file for an individual chromosome (called inside of overall map order function)####
 #Given the map of a chromosome (take whole map file and split by chromo), order it based on marker position
 order_chromo = function(chromo){
-  chromo = chromo[order(chromo$pos),]
+  #use the position column to order
+  chromo = chromo[order(chromo[,3]),]
   return(chromo)
 }
 
@@ -20,7 +20,7 @@ order_map = function(map){
   handlers("txtprogressbar")
   
   #split the map file up by chromosome and order within chromosome
-  map_split = split(map, map$chromo)
+  map_split = split(map, map[,2])
   
   #call the progress bar and while it's active do the ordering
   with_progress({
@@ -43,4 +43,20 @@ order_map = function(map){
   })
 }
 
-
+#####check file structure######
+check_file = function(map){
+  #make sure SNP ID are characters - if not make them characters and give a warning
+  if(is.numeric(map[,1])){
+    map[,1] = as.character(map[,1])
+    warning("SNP ID are numeric - coercing to characters. For proper function, ensure they are characters in other files and they match this output.")
+  }
+  
+  #check chromosomes are numeric
+  if(!is.numeric(map[,2])){
+    map[,2] = as.numeric(as.factor(map[,2]))
+    warning("Chromosomes were characters - coercing to numeric. For proper function, ensure they are numeric in other files and they match this output.")
+  }
+  
+  
+  
+}

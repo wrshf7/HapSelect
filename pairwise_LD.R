@@ -6,11 +6,6 @@ library(future)
 library(dplyr)
 library(parallel)
 
-#load(file = "Example_Files/geno.R")
-load(file = "Example_Files/gapit_genos.R")
-geno = geno[,-3]
-
-LD_pairs = pairwise_ld(geno)
 
 #####ld_func() - function to calculate LD within a chromosome utilizing the subsetted marker genotype file####
 #file str is row names are marker names, first column is the marker name, second column is the chromosome, and the rest are genotyped individuals

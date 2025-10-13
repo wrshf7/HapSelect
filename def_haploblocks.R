@@ -13,14 +13,14 @@ load(file = "Example_Files/gapit_map.R")
 #load(file = "Example_Files/tolerance_test_map.R")
 
 #toy example - most markers not in LD, so the threshold is VERY low
-gapit_haploblocks2 = def_blocks(ld = gapit_pairwise_ld, map = map, method = "flanking", 
-                               tolerance = 2, threshold = 0.3, start = "beginning")
+gapit_haploblocks = def_blocks(ld = gapit_pairwise_ld, map = map, method = "flanking", 
+                               tolerance = 1, threshold = 0.3, start = "beginning", tol_reset = TRUE)
 
-gapit_haploblocks_df2 = block_obj_to_df(gapit_haploblocks2, map)
+gapit_haploblocks_df = block_obj_to_df(gapit_haploblocks, map)
 
 #####function to extend the block left####
 
-extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance){
+extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance, tol_reset){
   
   #start counting LD pairs that didn't meet the threshold and track the marker for the next iteration to see if it should be included
   tolerance_counter = 0
@@ -71,6 +71,11 @@ extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method,
       }
     } 
     
+    #reset tolerance counter if option is provided
+    if(tol_reset){
+      tolerance_counter = 0
+    }
+    
     #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
     if(length(failed_markers) > 0){
       block = c(left.mkr, failed_markers, block)
@@ -93,7 +98,7 @@ extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method,
 
 #####function to extend the block right#####
 
-extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance){
+extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance, tol_reset){
   
   tolerance_counter = 0
   failed_markers = c()
@@ -139,6 +144,11 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
       }
     } 
     
+    #reset tolerance counter if option is provided
+    if(tol_reset){
+      tolerance_counter = 0
+    }
+
     #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
     if(length(failed_markers) > 0){
       block = c(block, failed_markers, right.mkr)
@@ -152,6 +162,7 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     
     #update the last marker
     last.mkr.blk = right.mkr
+    
   }
   return(block)
 }
@@ -159,7 +170,8 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
 
 #####function to find a SNP pair to start block extension#####
 
-make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr, last.mkr.chr, assigned, method, threshold, tolerance, start){
+make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr, last.mkr.chr, 
+                       assigned, method, threshold, tolerance, tol_reset, start){
   
   chromo_blocks = list()
   
@@ -189,10 +201,10 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
       
       #extend the block
       block = extend_left(first.mkr.blk = first.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                          ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
+                          ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance, tol_reset = tol_reset)
       
       block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
+                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance, tol_reset = tol_reset)
       
       #update the assigned variable to indicate that SNP have been assigned to a block
       assigned[block] = TRUE
@@ -226,7 +238,7 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
       
       #extend the block
       block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance)
+                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance, tol_reset = tol_reset)
       
       #update the assigned variable to indicate that SNP have been assigned to a block
       assigned[block] = TRUE
@@ -246,7 +258,7 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
 
 
 #####master blocking function at the chromosome level#####
-chromo_blocking = function(chr, ld, map, method, tolerance, threshold, start){
+chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset, threshold, start){
   
   #pull the LD information for the chromosome
   ld.chr = ld[ld$Chrom == chr, ]
@@ -274,7 +286,7 @@ chromo_blocking = function(chr, ld, map, method, tolerance, threshold, start){
   #return multiple objects - destructure after
   chromo_blocks = make_blocks(ld.chr = ld.chr, ld.adj.chr = ld.adj.chr, snps.chr = snps.chr, snps.pos.chr = snps.pos.chr,
              first.mkr.chr = first.mkr.chr, last.mkr.chr = last.mkr.chr, assigned = assigned, method = method, 
-             threshold = threshold, tolerance = tolerance, start = start)
+             threshold = threshold, tolerance = tolerance, tol_reset = tol_reset, start = start)
 
   assigned = chromo_blocks[[2]]
   chromo_blocks = chromo_blocks[[1]]
@@ -291,7 +303,7 @@ chromo_blocking = function(chr, ld, map, method, tolerance, threshold, start){
   
 
 #####overall function to track progress, take input, and call blocking functions#####
-def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0.7, start = c("LD", "beginning")){
+def_blocks = function(ld, map, method = "flanking", tolerance = 1, tol_reset = TRUE, threshold = 0.7, start = c("LD", "beginning")){
   
   start = match.arg(start)
   
@@ -312,7 +324,8 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, threshold = 0
     blocks_list = map(chromosomes, function(chr){
       
       #call chromosome blocking function
-      chromo_blocks = chromo_blocking(chr = chr, ld = ld, map = map, method = method, tolerance = tolerance, threshold = threshold, start = start)
+      chromo_blocks = chromo_blocking(chr = chr, ld = ld, map = map, method = method, tolerance = tolerance, 
+                                      threshold = threshold, start = start, tol_reset = tol_reset)
       
       #after blocking on the chromosome is finished iterate the progress bar
       p()
@@ -364,7 +377,7 @@ chromo_blocks_to_df = function(chromo, map){
   colnames(chromo_df) = c(colnames(chromo_df)[1:4], "Chrom", "Start_Pos", "End_Pos")
   
   #order the blocks based on the first SNP location
-  chromo_df = chromo_df[order(chromo_df$First_SNP), ]
+  chromo_df = chromo_df[order(chromo_df$Start_Pos), ]
   
   #Give the blocks their ID and show which chromosome they come from
   chromo_df$Block_ID = 1:nrow(chromo_df)
