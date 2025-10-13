@@ -37,9 +37,11 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   
   unique_haplotypes = unique(haplotypes)
   unique_haplotypes = unique_haplotypes[!grepl("NA", unique_haplotypes)]
+
+  
   
   #haploblock markers
-  block_marker_effects = as.matrix(markers$Effect)
+  block_marker_effects = as.matrix(markers[,2])
   
   
   #vector of unique haplotype effects, haplotype variances, and p-values
@@ -127,13 +129,18 @@ check_effects = function(marker_effects){
     warning("Coerced SNP names to characters.")
   }
   
-  marker_effects[,2:ncol(marker_effects)] = purrr::imap(marker_effects[,2:ncol(marker_effects)], function(trait, index){
-    if(!is.numeric(marker_effects[,index])){
-      warning(paste0("Coercing marker effects for trait ", index, " to numeric."))
+  marker_effects = purrr::imap_dfc(marker_effects, function(trait, index){
+    if(colnames(marker_effects)[1] != index){
+      if(!is.numeric(marker_effects[,index])){
+        warning(paste0("Coercing marker effects for trait ", index, " to numeric."))
+      }
+      trait = as.numeric(trait)
     }
-    trait = as.numeric(trait)
     return(trait)
-  })
+  }) %>% as.data.frame()
+  
+  
+  return(marker_effects)
 }
 
 ####Head function to split by block and compute local GEBV per individual####
@@ -177,7 +184,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
       markers = marker_effects[marker_index[marker_ids], ]
       
       #extract genotypes of the markers
-      geno_markers = geno[geno[,1] %in% markers$SNP, 4:ncol(geno)]
+      geno_markers = geno[geno[,1] %in% markers[,1], 4:ncol(geno)]
       
       #compute all of the necessary stats and values
       if(haplo_test){

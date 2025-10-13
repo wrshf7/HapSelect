@@ -1,17 +1,7 @@
 library(tidyverse)
 library(cowplot)
-library(scales)
-theme_set(theme_cowplot())
+#library(scales)
 
-
-load("Example_Files/gapit_haploblock_obj.R")
-load("Example_Files/gapit_marker_effects.R")
-load("Example_Files/gapit_map.R")
-
-marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position)
-haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
-funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj)
-haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 
 ######Marker Effects#####
 marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "#A7A8AA")){
@@ -48,10 +38,11 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
   #create ggplot
   marker_effects_plot = ggplot(effects_df, aes(x = Cum_Pos, y = Effect, color = Chr)) +
     geom_point(size = 1.5) +
+    theme_cowplot() +
     scale_color_manual(values = color_vec) +
     scale_x_continuous(breaks = chr_info$chr_center, labels = chr_info$Chr) +
     labs(x = "Chromosome", y = "Marker Effect") + 
-    theme(legend.position = "none")
+    theme(legend.position = "none") 
   
   return(marker_effects_plot)
 }
@@ -95,6 +86,7 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
   #ggplot
   haplo_effects_plot = ggplot(haplotypes, aes(x = Cum_Pos, y = Haplotype_Effect, color = Chr)) +
     geom_point(size = 2, alpha = 0.3) +
+    theme_cowplot() + 
     scale_color_manual(values = color_vec) +
     scale_x_continuous(breaks = chr_info$chr_center, labels = chr_info$Chr) +
     labs(x = "Chromosome", y = "Unique Haplotype Effects") +
@@ -120,6 +112,7 @@ block_var_funnel_plot = function(haplo_obj, mean_line = TRUE){
   
   funnel_plot = ggplot(haplotypes, aes(x = Haplotype_Effect, y = Scaled_Block_Var, color = Haplotype_Effect)) +
     geom_point(alpha = 0.3, size = 2) +
+    theme_cowplot() +
     scale_color_gradient2(low = "blue", mid = "purple", high = "red", midpoint = 0, name = "Haplotype") +
     labs(x = "Haplotype Effect", y = "Scaled Haploblock Variance")
   
@@ -197,9 +190,10 @@ plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = 
   
   haploblock_plot = ggplot() +
     #chromosome backbone
+    theme_cowplot() +
     geom_rect(data = chrom_sizes, aes(xmin = 0, xmax = Chr_len,
-                  ymin = ymin - 0.015,
-                  ymax = ymax + 0.015),
+                  ymin = ymin, #- 0.015,
+                  ymax = ymax),# + 0.015),
               fill = chrom_fill, color = "black"
                   ) +
   
@@ -233,6 +227,7 @@ plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = 
       else NULL } +
     
     scale_x_continuous("Position (Mb)", expand = c(0,0)) +
+    scale_y_continuous(breaks = chrom_sizes$y, labels = chrom_sizes$Chrom) +
     ylab("Chromosome")
     
   
