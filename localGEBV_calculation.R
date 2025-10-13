@@ -1,20 +1,14 @@
 ####load dependencies####
 
 library(purrr)
-library(furrr)
-library(future)
-library(parallel)
+#library(furrr)
+#library(future)
+#library(parallel)
 library(dplyr)
 library(progressr)
 
-load(file = "Example_Files/gapit_marker_effects.R")
-load(file = "Example_Files/gapit_haploblock_df.R")
-load(file = "Example_Files/gapit_genos.R")
-load(file = "Example_Files/gapit_marker_pecov.R")
 
-geno[,4:ncol(geno)] = round(geno[,4:ncol(geno)], 0)
 
-haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = gapit_haploblocks_df, marker_pecov = marker_pecov)
 
 ####Functions to compute the haplotype effect, PEV, and P-Value####
 haplotype_effect_calc = function(block_marker_effects, haplotype){
@@ -126,17 +120,36 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   return(return_list)
 }
 
+####check marker effects file####
+check_effects = function(marker_effects){
+  if(!is.character(marker_effects[,1])){
+    marker_effects[,1] = as.character(marker_effects[,1])
+    warning("Coerced SNP names to characters.")
+  }
+  
+  marker_effects[,2:ncol(marker_effects)] = purrr::imap(marker_effects[,2:ncol(marker_effects)], function(trait, index){
+    if(!is.numeric(marker_effects[,index])){
+      warning(paste0("Coercing marker effects for trait ", index, " to numeric."))
+    }
+    trait = as.numeric(trait)
+    return(trait)
+  })
+}
+
 ####Head function to split by block and compute local GEBV per individual####
 compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov){
   
+  #check marker effects
+  marker_effects = check_effects(marker_effects)
+  
   #ensure markers are in the same order
-  geno = geno[match(marker_effects$SNP, geno[,1]), ]
+  geno = geno[match(marker_effects[,1], geno[,1]), ]
   
   #set up
   #future::plan(multisession, workers = parallel::detectCores() - 1)
   
   #check if marker_pecov is provided
-  if(!missing(marker_pecov)){
+  if(!missing(marker_pecov) & ncol(marker_effects) == 2){
     haplo_test = TRUE
   } else{
     haplo_test = FALSE

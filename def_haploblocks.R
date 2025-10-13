@@ -1,22 +1,12 @@
 ####load dependencies####
 
 library(purrr)
-library(furrr)
-library(future)
-library(parallel)
+#library(furrr)
+#library(future)
+#library(parallel)
 library(dplyr)
 library(progressr)
 
-load(file = "Example_Files/gapit_ld.R")
-load(file = "Example_Files/gapit_map.R")
-#load(file = "Example_Files/tolerance_test_ld.R")
-#load(file = "Example_Files/tolerance_test_map.R")
-
-#toy example - most markers not in LD, so the threshold is VERY low
-gapit_haploblocks = def_blocks(ld = gapit_pairwise_ld, map = map, method = "flanking", 
-                               tolerance = 1, threshold = 0.3, start = "beginning", tol_reset = TRUE)
-
-gapit_haploblocks_df = block_obj_to_df(gapit_haploblocks, map)
 
 #####function to extend the block left####
 

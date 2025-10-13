@@ -13,11 +13,11 @@ ld_func = function(genotypes){
   #pull the chromosome number
   chromo = genotypes[1,2]
   
-  #pull the marker names of hte chromosome
+  #pull the marker names of the chromosome
   marker_names = row.names(genotypes)
   
   #remove chromo and snp name columns, transpose the df so that markers are columns
-  genotypes = genotypes[,-(1:2)]
+  genotypes = genotypes[,-(1:3)]
   genotypes = as.data.frame(t(as.matrix(genotypes)))
   
   #iterate over marker 1 through marker n-1 (all but the last marker) and row bind the output
