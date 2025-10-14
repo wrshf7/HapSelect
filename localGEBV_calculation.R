@@ -69,7 +69,7 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
       #haplotype estimated effect (linear contract of marker effects)
       haplotype_effect = haplotype_effect_calc(block_marker_effects = block_marker_effects, haplotype = haplotype)
       
-      haplotype_pecov = marker_pecov[which(colnames(marker_pecov) %in% markers$SNP), which(colnames(marker_pecov) %in% markers$SNP)]
+      haplotype_pecov = marker_pecov[which(colnames(marker_pecov) %in% markers[,1]), which(colnames(marker_pecov) %in% markers[,1])]
     
       #compute the PEV of the haplotype
       haplotype_variance = haplotype_PEV_calc(haplotype = haplotype, 
