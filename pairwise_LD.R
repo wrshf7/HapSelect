@@ -32,7 +32,7 @@ ld_func = function(genotypes){
       snp2 = marker_names[j]
       
       #compute r^2 of the current two markers
-      snp_cor2 = cor(genotypes[,i],genotypes[,j])^2
+      snp_cor2 = cor(genotypes[,i],genotypes[,j], use = "pairwise.complete.obs")^2
       
       #give the relevant info to the markers being compared in a df
       return_df = data.frame(

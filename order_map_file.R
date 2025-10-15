@@ -40,7 +40,7 @@ check_file = function(map){
 order_map = function(map){
   #check the files
   map = check_file(map)
-  colnames(map) = c("SNP", "Chrom", "Position")
+  colnames(map)[1:3] = c("SNP", "Chrom", "Position")
   
   #create a progress bar - might not be needed as it's so fast
   handlers("txtprogressbar")
