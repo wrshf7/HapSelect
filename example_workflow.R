@@ -43,7 +43,10 @@ load(file = "Example_Files/gapit_genos.R")
 #being the genotypes at each locus for each individual
 #column names of the map information (first 3 columns) will not matter in this case, but the order of map info columns
 #should be the same as the map file columns (SNP ID, Chromosome, Position)
-ld_pairs = pairwise_ld(geno)
+ld_pairs = pairwise_ld(geno, parallelize = FALSE)
+
+#ld_pairs = pairwise_ld(geno, parallelize = TRUE)
+
 
 #load the example file to see the structure if you do not want to run the function
 #load("Example_Files/gapit_ld.R")

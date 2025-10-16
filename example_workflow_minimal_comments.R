@@ -35,6 +35,8 @@ load(file = "Example_Files/gapit_genos.R")
 
 #compute ld
 ld_pairs = pairwise_ld(geno)
+#ld_pairs = pairwise_ld(geno, parallelize = TRUE)
+
 
 #load the example file to see the structure if you do not want to run the function
 #load("Example_Files/gapit_ld.R")

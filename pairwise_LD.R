@@ -59,7 +59,7 @@ ld_func = function(genotypes){
 #####pairwise_ld() - function to calculate LD across all chromos and parallelize chromos - calls ld_func()####
 #requires a genotype matrix with SNP name as the first column, chromosome identifier as the second column, markers as rows, and individuals genotyped as columns 3 onwards
 #genotypes should be dosages: 0,1,2
-pairwise_ld = function(genotype_matrix){
+pairwise_ld = function(genotype_matrix, parallelize = TRUE){
   
   #set row names to the marker names for the internal loop
   row.names(genotype_matrix) = genotype_matrix[,1]
@@ -68,7 +68,9 @@ pairwise_ld = function(genotype_matrix){
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
   
   #setup parallelization using future and parallel package and utilize all but 1 core
-  future::plan(multisession, workers = parallel::detectCores() - 1)
+  if(parallelize){
+    future::plan(multisession, workers = parallel::detectCores() - 1)
+  }
   
   #setup progress bar
   handlers("txtprogressbar")
@@ -80,19 +82,35 @@ pairwise_ld = function(genotype_matrix){
     p = progressor(along = genotype_matrix)
     
     #parallelize the different chromosomes with furrr, provide their genotype data frames, and row bind all chromosomes back together
-    all_ld = furrr::future_map_dfr(genotype_matrix, function(genotypes){
-      
-      #call the ld_func() on the chromosome
-      chromo_ld = ld_func(genotypes)
-      
-      #once it's done, progres the progress bar and return the chromo data frame
-      p()
-      return(chromo_ld)
-    })
+    if(parallelize){
+      all_ld = furrr::future_map_dfr(genotype_matrix, function(genotypes){
+        
+        #call the ld_func() on the chromosome
+        chromo_ld = ld_func(genotypes)
+        
+        #once it's done, progres the progress bar and return the chromo data frame
+        p()
+        return(chromo_ld)
+      })
+    } else {
+      all_ld = purrr::map_dfr(genotype_matrix, function(genotypes){
+        
+        #call the ld_func() on the chromosome
+        chromo_ld = ld_func(genotypes)
+        
+        #once it's done, progres the progress bar and return the chromo data frame
+        p()
+        return(chromo_ld)
+      })
+    }
+    
   })
   
   #release all of the cores and undo parallelization
-  future::plan(sequential)
+  if(parallelize){
+    future::plan(sequential)
+  }
+  
   
   #bind all of the chromosomes tog
   #all_ld = bind_rows(all_ld)
