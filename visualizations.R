@@ -233,3 +233,75 @@ plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = 
   
     
 }
+
+
+###### Function to plot marker density ######
+
+
+plot_marker_density = function(map_df, bin_size_kb = 500, height = 0.3,
+                               chrom_fill = "grey95",
+                               col_low = "white", col_mid = "purple", col_high = "red") {
+  
+  map_df$Chrom = as.factor(map_df$Chrom)
+  map_df = map_df %>% arrange(as.numeric(as.character(Chrom)), Position)
+  bin_size = bin_size_kb / 1e3
+  
+  # Compute chromosome sizes
+  chrom_sizes = map_df %>%
+    group_by(Chrom) %>%
+    summarise(chr_len = max(Position, na.rm = TRUE) / 1e6, .groups = "drop") %>%
+    mutate(y = row_number(),
+           ymin = y - height,
+           ymax = y + height)
+  
+  # Compute bins
+  density_df = map_df %>%
+    mutate(PosMb = Position / 1e6) %>%
+    group_by(Chrom) %>%
+    mutate(bin = floor(PosMb / bin_size)) %>%
+    group_by(Chrom, bin) %>%
+    summarise(
+      StartMb = min(PosMb),
+      EndMb = max(PosMb) + bin_size,
+      Count = n(),
+      .groups = "drop"
+    ) %>%
+    left_join(chrom_sizes %>% select(Chrom, y, ymin, ymax), by = "Chrom")
+  
+  # Compute color scaling limits
+  max_count = max(density_df$Count, na.rm = TRUE)
+  mid_count = mean(density_df$Count, na.rm = TRUE)
+  
+  # ---- Plot ----
+  ggplot() +
+    theme_cowplot() +
+    
+    # Draw density first (behind)
+    geom_rect(
+      data = density_df,
+      aes(xmin = StartMb, xmax = EndMb, ymin = ymin, ymax = ymax, fill = Count),
+      color = NA
+    ) +
+    
+    # Chromosome outlines on top
+    geom_rect(
+      data = chrom_sizes,
+      aes(xmin = 0, xmax = chr_len, ymin = ymin, ymax = ymax),
+      fill = NA, color = "black", linewidth = 0.3
+    ) +
+    
+    scale_fill_gradient2(
+      name = "Marker count",
+      low = col_low,
+      mid = col_mid,
+      high = col_high,
+      midpoint = mid_count,
+      limits = c(0, max_count),
+      na.value = "white"
+    ) +
+    
+    scale_x_continuous("Position (Mb)", expand = c(0, 0)) +
+    scale_y_continuous(breaks = chrom_sizes$y, labels = chrom_sizes$Chrom, expand = c(0, 0.5)) +
+    ylab("Chromosome") +
+    theme(legend.position = "right")
+}
