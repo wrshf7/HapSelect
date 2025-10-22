@@ -1,9 +1,9 @@
 ####load dependencies####
 
 library(purrr)
-#library(furrr)
-#library(future)
-#library(parallel)
+library(furrr)
+library(future)
+library(parallel)
 library(dplyr)
 library(progressr)
 
@@ -293,16 +293,29 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset, threshold
   
 
 #####overall function to track progress, take input, and call blocking functions#####
-def_blocks = function(ld, map, method = "flanking", tolerance = 1, tol_reset = TRUE, threshold = 0.7, start = c("LD", "beginning")){
+def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1, tol_reset = TRUE, threshold = 0.7, start = c("LD", "beginning"), parallel = FALSE){
   
   start = match.arg(start)
+  method = match.arg(method)
   
   #pull the list of chromosomes to parallelize
   chromosomes = sort(unique(ld$Chrom))
   
-  #setup parallelization using futures and parallel package and utilize all but 1 core
-  #future::plan(multisession, workers = parallel::detectCores() - 1)
-  
+  #setup parallelization if called
+  if(parallel == TRUE){
+    #setup parallelization using futures and parallel package and utilize all but 1 core
+    future::plan(multisession, workers = parallel::detectCores() - 1)
+    
+    #parallelization function
+    map_fun = furrr::future_map
+    
+  } else {
+    
+    #don't parallelize
+    map_fun = purrr::map
+    
+  }
+
   #track progress across chromosomes and set up progress bar
   handlers("txtprogressbar")
   with_progress({
@@ -310,8 +323,10 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, tol_reset = T
     #while tracking, set up the progressor for when the progress bar advances
     p = progressor(steps = length(chromosomes))
     
+    
     #form blocks across chromosomes - parallelize each chromosome
-    blocks_list = map(chromosomes, function(chr){
+    blocks_list = map_fun(chromosomes, function(chr){
+      
       
       #call chromosome blocking function
       chromo_blocks = chromo_blocking(chr = chr, ld = ld, map = map, method = method, tolerance = tolerance, 
@@ -323,7 +338,11 @@ def_blocks = function(ld, map, method = "flanking", tolerance = 1, tol_reset = T
       return(chromo_blocks)
     })
   })
-  #plan(sequential)
+  
+  if(parallel == TRUE){
+    plan(sequential)
+  }
+  
   names(blocks_list) = as.character(chromosomes)
   
   return(blocks_list)

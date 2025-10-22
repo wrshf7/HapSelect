@@ -46,8 +46,9 @@ ld_pairs = pairwise_ld(geno)
 #haploblocking - using a threshold of 0.4, a tolerance of 2, 
 #resetting the tolerance between successful marker additions,
 #forming blocks around the highest LD pairs, and using LD between adjacent markers (flanking)
+#small example, so not parallelizing
 haploblocks = def_blocks(ld = ld_pairs, map = map, method = "flanking",
-                         threshold = 0.2, tolerance = 4, tol_reset = TRUE, start = "LD")
+                         threshold = 0.2, tolerance = 4, tol_reset = TRUE, start = "LD", parallel = FALSE)
 
 #turn the block object into a data frame
 haploblocks = block_obj_to_df(haploblocks, map)

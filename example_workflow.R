@@ -76,13 +76,16 @@ ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 #start = c("LD", "beginning"). This indicates whether blocks are formed from the highest LD pairs (i.e., initiate anywhere in a chromosome, "LD") or whether
 #a left to right approach with blocking starting at the first SNP in the chromosome (by position, "beginning") is utilized.
 
-#haploblocking - using a threshold of 0.4, a tolerance of 2, 
+#parallel - if true, set up a paralellization framework. For small marker sets (i.e., a few thousand or less), this will actually make the analysis slower. Parallelization is only
+#recommended for many markers.
+
+#haploblocking - using a threshold of 0.4, a tolerance of 2 as an example, 
 #resetting the tolerance between successful marker additions,
 #forming blocks around the highest LD pairs, and using LD between adjacent markers (flanking)
 #(i.e., not average LD to the block)
 
 haploblocks = def_blocks(ld = ld_pairs, map = map, method = "flanking",
-                          threshold = 0.2, tolerance = 4, tol_reset = TRUE, start = "LD")
+                          threshold = 0.2, tolerance = 4, tol_reset = TRUE, start = "LD", parallel = FALSE)
 
 #turn the block object into a data frame
 haploblocks = block_obj_to_df(haploblocks, map)
