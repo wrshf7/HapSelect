@@ -35,20 +35,25 @@ extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     #if marker to the left is already in a block, break
     if (assigned[left.mkr]) break
     
-    #if utilizing the flanking method, pull the LD of the SNP to the left idetnified from left.mkr
+    #if utilizing the flanking method, pull the LD of the SNP to the left identified from left.mkr
     if (method=="flanking") {
       #singular value?
-      ld.vals = ld.chr[ld.chr$Name1 == left.mkr & ld.chr$Name2 == first.mkr.blk, "LD"]
+      ld.vals = ld.chr[ld.chr$Name1 == left.mkr & ld.chr$Name2 == first.mkr.blk, ][["LD"]]
     }
     
     #if utilizing the average method, then compute the average LD of the new SNP considered with all markers in the block currently
     if (method=="average") {
       #could be multiple values if the block is greater than
-      ld.vals = ld.chr[ld.chr$Name1 == left.mkr & ld.chr$Name2 %in% block, "LD"]
+      ld.vals = ld.chr[ld.chr$Name1 == left.mkr & ld.chr$Name2 %in% block, ][["LD"]]
     }
     
-    #check that the LD value (flanking) or average LD value (average) meets the threshold - mean of a single marker is itself, so it works for both
-    if (mean(ld.vals) <= threshold){
+    #compute the LD of the average (if it's just flanking mean = itself)
+    ld.mean = mean(ld.vals, na.rm = TRUE)
+    
+    
+    #check to see if it meets threshold criteria and check tolerance counter and threshold like left block extension
+    #handles missing values now as well - iterates the tolerance counter
+    if (ld.mean <= threshold || is.nan(ld.mean)){
       
       #check to see if the tolerance threshold has been met, if not add one to the counter
       if(tolerance_counter >= tolerance){
@@ -113,15 +118,20 @@ extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     
     #same as left extension - pull the LD of the marker to the right or the average of the new marker with the rest of the markers in the block originating from the original pair
     if (method=="flanking") {
-      ld.vals = ld.chr[ld.chr$Name1 == last.mkr.blk & ld.chr$Name2 == right.mkr, "LD"]
+      ld.vals = ld.chr[ld.chr$Name1 == last.mkr.blk & ld.chr$Name2 == right.mkr, ][["LD"]]
     }
     
     if (method=="average") {
-      ld.vals = ld.chr[ld.chr$Name1 %in% block & ld.chr$Name2 == right.mkr, "LD"]
+      ld.vals = ld.chr[ld.chr$Name1 %in% block & ld.chr$Name2 == right.mkr, ][["LD"]]
     }
     
+    #compute the LD of the average (if it's just flanking mean = itself)
+    ld.mean = mean(ld.vals, na.rm = TRUE)
+    
+    
     #check to see if it meets threshold criteria and check tolerance counter and threshold like left block extension
-    if (mean(ld.vals) <= threshold){
+    #handles missing values now as well - iterates the tolerance counter
+    if (ld.mean <= threshold || is.nan(ld.mean)){
       
       #check to see if the tolerance threshold has been met, if not add one to the counter
       if(tolerance_counter >= tolerance){
@@ -298,8 +308,12 @@ def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1,
   start = match.arg(start)
   method = match.arg(method)
   
+  
   #pull the list of chromosomes to parallelize
   chromosomes = sort(unique(ld$Chrom))
+  
+  ld = split(ld, ld$Chrom)
+  
   
   #setup parallelization if called
   if(parallel == TRUE){
@@ -325,11 +339,12 @@ def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1,
     
     
     #form blocks across chromosomes - parallelize each chromosome
-    blocks_list = map_fun(chromosomes, function(chr){
+    blocks_list = map_fun(ld, function(chromosome){
       
+      chr = unique(chromosome$Chrom)
       
       #call chromosome blocking function
-      chromo_blocks = chromo_blocking(chr = chr, ld = ld, map = map, method = method, tolerance = tolerance, 
+      chromo_blocks = chromo_blocking(chr = chr, ld = chromosome, map = map, method = method, tolerance = tolerance, 
                                       threshold = threshold, start = start, tol_reset = tol_reset)
       
       #after blocking on the chromosome is finished iterate the progress bar
@@ -398,6 +413,10 @@ chromo_blocks_to_df = function(chromo, map){
 
 #overall function to return block object and apply chromosome-level condensing
 block_obj_to_df = function(block_obj, map){
+  
+  #only select the needed columns
+  map = map[,1:3]
+  
   #Extract first and last SNP and block markers
   block_df = map_dfr(block_obj, function(chromo){
     chromo_df = chromo_blocks_to_df(chromo, map)
