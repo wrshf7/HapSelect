@@ -49,7 +49,7 @@ ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 
 
 #load the example file to see the structure if you do not want to run the function
-#load("Example_Files/gapit_ld.R")
+load("Example_Files/gapit_ld.R")
 
 
 #note: other programs can be utilized to generate the LD file, but make sure the columns c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
@@ -121,7 +121,7 @@ marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = 
 haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
 
 #mean_line = TRUE adds a line to the block variance (scaled)
-funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE)
+funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = TRUE)
 
 haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 

@@ -266,7 +266,7 @@ plot_marker_density = function(map_df, bin_size_kb = 500, height = 0.3,
       Count = n(),
       .groups = "drop"
     ) %>%
-    left_join(chrom_sizes %>% select(Chrom, y, ymin, ymax), by = "Chrom")
+    left_join(chrom_sizes %>% dplyr::select(Chrom, y, ymin, ymax), by = "Chrom")
   
   # Compute color scaling limits
   max_count = max(density_df$Count, na.rm = TRUE)
