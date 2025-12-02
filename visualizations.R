@@ -1,6 +1,5 @@
 library(tidyverse)
 library(cowplot)
-#library(scales)
 
 
 ######Marker Effects#####
@@ -304,4 +303,98 @@ plot_marker_density = function(map_df, bin_size_kb = 500, height = 0.3,
     scale_y_continuous(breaks = chrom_sizes$y, labels = chrom_sizes$Chrom, expand = c(0, 0.5)) +
     ylab("Chromosome") +
     theme(legend.position = "right")
+}
+
+##### LD Decay Plot ######
+
+plot_ld_decay = function(
+    map, ld,
+    max_kb = 500,
+    point_color = "#A7A8AA",
+    curve_color = "#A01FF0",
+    alpha = 0.2,
+    span = 0.3,
+    method = c("gam_tp", "gam_cr", "exp", "loess"),
+    k = 50
+) {
+  
+  # Expect these columns from your objects
+  if (!all(c("SNP", "Chromosome", "Position") %in% names(map))) {
+    stop("Map must contain: SNP, Chromosome, Position")
+  }
+  if (!all(c("Name1", "Name2", "LD") %in% names(ld))) {
+    stop("LD file must contain: Name1, Name2, LD")
+  }
+  
+  method = match.arg(method)
+  
+  # merge Name1 and Name2 to map to get positions
+  ld2 = ld %>%
+    rename(SNP = Name1) %>%
+    left_join(map, by = "SNP") %>%
+    rename(Chrom1 = Chromosome, Pos1 = Position, Name1 = SNP) %>%
+    rename(SNP = Name2) %>%
+    left_join(map, by = "SNP") %>%
+    rename(Chrom2 = Chromosome, Pos2 = Position)
+  
+  ld2 = ld2[ld2$Chrom1 == ld2$Chrom2, ]
+  
+  # compute distance (bp → kb), using absolute difference
+  ld2 = ld2 %>%
+    mutate(
+      dist_bp = abs(Pos2 - Pos1),
+      dist_kb = dist_bp / 1000
+    ) %>%
+    filter(!is.na(dist_kb)) %>%
+    filter(dist_kb <= max_kb)
+  
+  # plot LD decay
+  ld_decay_plot = ggplot(ld2, aes(x = dist_kb, y = LD, group = 1)) +
+    geom_point(
+      shape = 21,              # open circles
+      color = point_color,
+      fill = NA,
+      alpha = alpha,
+      stroke = 0.3
+    ) +
+    labs(
+      x = "Distance (kb)",
+      y = expression(LD *","~R^2),
+      title = "LD Decay Curve"
+    ) + theme_cowplot()
+  
+  if(method %in% c("gam_tp", "gam_cr")){
+    formula_str = ifelse(method == "gam_tp",
+                         "y ~ s(x, k = k)",
+                         "y ~ s(x, bs = 'cr', k = k)"
+                         )
+    
+    ld_decay_plot = ld_decay_plot + geom_smooth(
+      method = "gam",
+      formula = as.formula(formula_str),
+      se = FALSE,
+      color = curve_color,
+      linewidth = 1.1
+    )
+  } else if(method == "exp"){
+    nls_fit = nls(LD ~ a * exp(-b * dist_kb),
+                   data = ld2,
+                   start = list(a = max(ld2$LD), b = 0.01)
+    )
+    
+    # Generate predicted curve
+    grid = data.frame(dist_kb = seq(0, max(ld2$dist_kb), length.out = 500))
+    grid$fit = predict(nls_fit, newdata = grid)
+    
+    # Plot
+    ld_decay_plot = ld_decay_plot + 
+      geom_line(data = grid, aes(x = dist_kb, y = fit),
+                color = curve_color,
+                linewidth = 1.1) 
+  } else{
+    ld_decay_plot = ld_decay_plot + geom_smooth(
+      method = "loess", span = span, se = FALSE, color = curve_color
+    )
+  }
+  return(ld_decay_plot)
 }

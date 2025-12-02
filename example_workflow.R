@@ -121,12 +121,24 @@ marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = 
 haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
 
 #mean_line = TRUE adds a line to the block variance (scaled)
-funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = TRUE)
+funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE)
 
 haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 
 #marker density plot
 marker_density_plot = plot_marker_density(map_df = map, bin_size_kb = 500)
+
+#LD decay plot
+#plot the LD decay utilizing the map and LD objects
+#max_kb specified how far out to compute LD decay and filters the LD structure, which helps to reduce computation time
+#method specifies whether to fit a GAM thin-plate regression (gam_tp), GAM cubic spline regression (gam_cr), expontential decay (exp), or LOESS (loess) curve
+#span controls the level of smoothing for the LOESS method - specify between 0 and 1
+#closer to 0 = little to no smoothing, closer to 1 = very smoothed and likely monotonic
+#k is the number of basis functions/knots in the gam options - experiment with values between 10 and 100
+#the lower the number of k, the more smoothed it is
+#exponential does not use either of the smoothing values and is guaranteed to be monotonic
+
+ld_decay_plot = plot_ld_decay(map = map, ld = ld, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
 
 ###### select top 15 haploblocks (arbitrary) and perform the GA ######
 
