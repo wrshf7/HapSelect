@@ -9,7 +9,7 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
   
   #### fitness function ####
   # Calculates total score by summing the best expected offspring GEBV per block
-  ohs_fitness_custom = function(localGEBV, selected_ind, same_ind_ok){
+  ohs_fitness_custom = function(localGEBV, selected_ind, selfing){
     # Subset localGEBV matrix to only selected individuals
     sel_localGEBV = localGEBV[selected_ind, , drop = FALSE]
     
@@ -48,7 +48,7 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
   # Wrapper that limits the solution to n_founders and calls the fitness function - GA function doesn't allow for multiple arguments
   fitness_wrapper = function(selected_ind){
     selected_ind = selected_ind[1:n_founders]  # Ensure the input is the right length
-    total_score = ohs_fitness_custom(localGEBV = localGEBV, selected_ind = selected_ind, same_ind_ok = FALSE)
+    total_score = ohs_fitness_custom(localGEBV = localGEBV, selected_ind = selected_ind, selfing = selfing)
     return(total_score)
   }
   

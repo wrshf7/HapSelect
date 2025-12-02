@@ -125,6 +125,8 @@ funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = TRUE
 
 haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 
+#marker density plot
+marker_density_plot = plot_marker_density(map_df = map, bin_size_kb = 500)
 
 ###### select top 15 haploblocks (arbitrary) and perform the GA ######
 
