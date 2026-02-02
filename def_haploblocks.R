@@ -449,7 +449,7 @@ block_summary = function(block_df){
     Mean_Block_Size_kb = mean_size,
     Max_Block_Size_kb = max_size,
     Singeton_Blocks = singletons,
-    Percent_Singleton_Blocks = perc_singeltons
+    Percent_Singleton_Blocks = perc_singeltons * 100
   )
   
   return(return_df)
