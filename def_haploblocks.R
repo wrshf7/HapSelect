@@ -433,3 +433,24 @@ block_obj_to_df = function(block_obj, map){
   return(block_df)
 }
 
+
+######Create summary information of haploblock df########
+
+block_summary = function(block_df){
+  mean_snp = mean(block_df$Num_SNP, na.rm = TRUE)
+  max_snp = max(block_df$Num_SNP, na.rm = TRUE)
+  mean_size = mean(block_df[block_df$Physical_Distance_kb !=0, "Physical_Distance_kb"] , na.rm = TRUE)
+  max_size = max(block_df[block_df$Physical_Distance_kb !=0, "Physical_Distance_kb"] , na.rm = TRUE)
+  singletons = nrow(block_df[block_df$Num_SNP == 1 & !is.na(block_df$Num_SNP), ])
+  perc_singeltons = nrow(block_df[block_df$Num_SNP == 1 & !is.na(block_df$Num_SNP), ]) / nrow(block_df[!is.na(block_df$Num_SNP), ])
+  return_df = data.frame(
+    Mean_SNP_per_Block = mean_snp,
+    Max_SNP_per_Block = max_snp,
+    Mean_Block_Size_kb = mean_size,
+    Max_Block_Size_kb = max_size,
+    Singeton_Blocks = singletons,
+    Percent_Singleton_Blocks = perc_singeltons
+  )
+  
+  return(block_summary)
+}
