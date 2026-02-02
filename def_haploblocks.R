@@ -452,5 +452,5 @@ block_summary = function(block_df){
     Percent_Singleton_Blocks = perc_singeltons
   )
   
-  return(block_summary)
+  return(return_df)
 }
