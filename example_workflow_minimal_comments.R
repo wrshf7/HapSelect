@@ -39,7 +39,9 @@ ld_pairs = pairwise_ld(geno)
 
 
 #load the example file to see the structure if you do not want to run the function
-#load("Example_Files/gapit_ld.R")
+load("Example_Files/gapit_ld.R")
+ld_pairs = gapit_pairwise_ld
+
 
 #####make haploblocks#####
 
