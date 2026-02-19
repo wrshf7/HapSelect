@@ -50,7 +50,7 @@ ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 
 #load the example file to see the structure if you do not want to run the function
 load("Example_Files/gapit_ld.R")
-
+ld_pairs = gapit_pairwise_ld
 
 #note: other programs can be utilized to generate the LD file, but make sure the columns c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
 #exist in the data frame
@@ -138,7 +138,7 @@ marker_density_plot = plot_marker_density(map_df = map, bin_size_kb = 500)
 #the lower the number of k, the more smoothed it is
 #exponential does not use either of the smoothing values and is guaranteed to be monotonic
 
-ld_decay_plot = plot_ld_decay(map = map, ld = ld, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
+ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
 
 ###### select top 15 haploblocks (arbitrary) and perform the GA ######
 
@@ -152,7 +152,7 @@ haploblock_top_blocks = haploblock_effects[1:15, ]
 
 #pull out the localGEBV corresponding to the top 15
 localGEBV = haploblock_obj$Haplotype_Effect_Matrix
-localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_effects$Block_ID, ]
+localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_top_blocks$Block_ID, ]
 
 #transpose it and turn it into a matrix for the GA
 localGEBV = as.data.frame(t(as.matrix(localGEBV)))

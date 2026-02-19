@@ -73,7 +73,7 @@ marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = 
 haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
 funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE)
 haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
-ld_decay_plot = plot_ld_decay(map = map, ld = ld, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
+ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
 
 ###### select top 15 haploblocks (arbitrary) and perform the GA ######
 
@@ -81,7 +81,7 @@ haploblock_effects = haploblock_obj$Haploblocks
 haploblock_effects = haploblock_effects[order(haploblock_effects$Block_Var, decreasing = TRUE), ]
 haploblock_top_blocks = haploblock_effects[1:15, ]
 localGEBV = haploblock_obj$Haplotype_Effect_Matrix
-localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_effects$Block_ID, ]
+localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_top_blocks$Block_ID, ]
 localGEBV = as.data.frame(t(as.matrix(localGEBV)))
 
 
