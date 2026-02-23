@@ -85,7 +85,8 @@ ld_pairs = gapit_pairwise_ld
 #(i.e., not average LD to the block)
 
 haploblocks = def_blocks(ld = ld_pairs, map = map, method = "flanking",
-                          threshold = 0.2, tolerance = 4, tol_reset = TRUE, start = "LD", parallel = FALSE)
+                          threshold = 0.2, tolerance = 4, tol_reset = TRUE, 
+                         start = "LD", parallel = FALSE)
 
 #turn the block object into a data frame
 haploblocks = block_obj_to_df(haploblocks, map)
@@ -97,19 +98,41 @@ haploblocks = block_obj_to_df(haploblocks, map)
 #p-values of specific haplotype effects - very much theoretical at this point
 #the marker pecov structure is a matrix of prediction error (co)variances between the markers.
 #The rows and columns indicate markers and should be in the same order as marker effects
+#NOTE: set_missing_NA MUST be set to TRUE to evaluate this!
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
 load(file = "Example_Files/gapit_marker_pecov.R")
 load(file = "Example_Files/gapit_marker_effects.R")
 
-#ideally you just set missing values to NA. This would be fine for LD calculations,
+#with well-curated marker data, ideally you just set missing genotype values to NA. This would be fine for LD calculations,
 #calculating marker effects, and computing localGEBV
 #I'm just keeping it simple for this example and rounding so there are no missing values
 #Non-integers represent imputed values, which must NOT be used for localGEBV!
+
 geno[,4:ncol(geno)] = round(geno[,4:ncol(geno)], 0)
 
-haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks, marker_pecov = marker_pecov)
+#everything is as before, but set_missing_NA is an option that, if set to TRUE, sets any localGEBV with >= 1 missing genotype
+#to NA. If set to FALSE, it will compute localGEBV based on non-missing genotypes and only be NA if all genotypes are missing.
+
+#center = TRUE is the default and in the vast majority of cases needed. When estimating markers, USUALLY the genotype matrix is centered.
+#Thus, marker effects are relative to centered genotypes. This is always true for GBLUP backsolve and I believe 
+#is more or less always true for Bayesian alphabet models and rrBLUP. This is important to pay attention to
+#you MUST get this right to prevent biased results!
+
+#A good confirmation is to reconstruct GEBV from Zu, where Z is the marker matrix and u are the marker effects.
+#The mean should be 0 (or very close to it) and reflect GBLUP GEBV if using rrBLUP, BayesC, or GBLUP backsolve methods.
+#If the reconstructed GEBV mean is meaningfully away from 0, it indicates the wrong marker matrix (i.e., needs to be centered) 
+#is being used or the marker matrix was not centered when estimating marker effects.
+
+#The package will internally center markers if center = TRUE. If the matrix is already centered, centering won't change the values
+#or centering can be set to FALSE.
+
+#If you want genotype/haplotype configurations to match the 0/1/2 format (or -1/0/1 if that was utilized), provide the uncentered genotype matrix and set center = TRUE.
+#Otherwise, the reported genotype/haplotype configurations will reflect centered values. For clarity, I recommend providing 0/1/2 or -1/0/1 format.
+
+haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks, 
+                                    marker_pecov = marker_pecov, set_missing_NA = TRUE, center = TRUE)
 
 ###### do some visualizations ######
 

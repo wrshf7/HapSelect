@@ -11,13 +11,22 @@ library(progressr)
 
 
 ####Functions to compute the haplotype effect, PEV, and P-Value####
-haplotype_effect_calc = function(block_marker_effects, haplotype){
+haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_block, center){
   #haplotype estimated effect (linear contract of marker effects)
+  
+  if(center){
+    haplotype = haplotype - marker_means_block
+  }
+  
+  haplotype[is.na(haplotype)] = 0
   haplotype_effect = (t(block_marker_effects) %*% haplotype)[1,1]
   return(haplotype_effect)
 }
 
-haplotype_PEV_calc = function(haplotype, haplotype_pecov){
+haplotype_PEV_calc = function(haplotype, haplotype_pecov, marker_means_block, center){
+  if(center){
+    haplotype = haplotype - marker_means_block
+  }
   PEV = (t(haplotype) %*% haplotype_pecov %*% haplotype)[1,1]
   return(PEV)
 }
@@ -28,7 +37,8 @@ haplotype_p_value_calc = function(haplotype_effect, haplotype_PEV){
 
 ####Function to compute local GEBV for all individuals at a given haploblock, define unique haplotypes, and compute other metrics######
 #unique haplotypes
-local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pecov, haplo_test){
+local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pecov, 
+                                 haplo_test, marker_means_block, set_missing_NA, center){
 
   #extract all haplotypes and unique haplotypes
   haplotypes = purrr::map(geno_markers, function(haplotype){
@@ -36,7 +46,12 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   }) %>% do.call(c,.)
   
   unique_haplotypes = unique(haplotypes)
-  unique_haplotypes = unique_haplotypes[!grepl("NA", unique_haplotypes)]
+  if(set_missing_NA == TRUE){
+    unique_haplotypes = unique_haplotypes[!grepl("NA", unique_haplotypes)]
+  } else {
+    unique_haplotypes = unique_haplotypes[grepl("\\d+", unique_haplotypes)]
+  }
+  
 
   
   
@@ -45,13 +60,46 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   
   
   #vector of unique haplotype effects, haplotype variances, and p-values
-  if(!haplo_test){
+  if(haplo_test & set_missing_NA){
     
-    haplotype_effects = purrr::map(unique_haplotypes, function(haplotype){
+    haplotype_effects = purrr::map_dfr(unique_haplotypes, function(haplotype){
       haplotype = as.numeric(strsplit(haplotype, "")[[1]])
       
       #haplotype estimated effect (linear contract of marker effects)
-      haplotype_effect = haplotype_effect_calc(block_marker_effects = block_marker_effects, haplotype = haplotype)
+      haplotype_effect = haplotype_effect_calc(block_marker_effects = block_marker_effects, haplotype = haplotype, 
+                                               marker_means_block = marker_means_block, center = center)
+      
+      haplotype_pecov = marker_pecov[which(colnames(marker_pecov) %in% markers[,1]), which(colnames(marker_pecov) %in% markers[,1])]
+      
+      #compute the PEV of the haplotype
+      haplotype_variance = haplotype_PEV_calc(haplotype = haplotype, 
+                                              haplotype_pecov = haplotype_pecov,
+                                              marker_means_block = marker_means_block,
+                                              center = center)
+      
+      #compute the p-value
+      haplotype_p_value = haplotype_p_value_calc(haplotype_effect = haplotype_effect, 
+                                                 haplotype_PEV = haplotype_variance)
+      
+      return_df = data.frame(
+        Haplotype_Effect = haplotype_effect,
+        Haplotype_PEV = haplotype_variance,
+        Haplotype_Effect_p_value = haplotype_p_value
+      )
+      
+      return(return_df)
+    })
+  } else {
+    
+    haplotype_effects = purrr::map(unique_haplotypes, function(haplotype){
+      haplotype = regmatches(haplotype, gregexpr("NA|[0-2]", haplotype, perl = TRUE))[[1]]
+      haplotype[haplotype == "NA"] = NA
+      haplotype = as.numeric(haplotype)
+      
+      #haplotype estimated effect (linear contract of marker effects)
+      haplotype_effect = haplotype_effect_calc(block_marker_effects = block_marker_effects, 
+                                               haplotype = haplotype, marker_means_block = marker_means_block,
+                                               center = center)
       
       return(haplotype_effect)
       
@@ -61,32 +109,6 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
       Haplotype_Effect = haplotype_effects
     )
     
-  } else if(haplo_test){
-    
-    haplotype_effects = purrr::map_dfr(unique_haplotypes, function(haplotype){
-      haplotype = as.numeric(strsplit(haplotype, "")[[1]])
-      
-      #haplotype estimated effect (linear contract of marker effects)
-      haplotype_effect = haplotype_effect_calc(block_marker_effects = block_marker_effects, haplotype = haplotype)
-      
-      haplotype_pecov = marker_pecov[which(colnames(marker_pecov) %in% markers[,1]), which(colnames(marker_pecov) %in% markers[,1])]
-    
-      #compute the PEV of the haplotype
-      haplotype_variance = haplotype_PEV_calc(haplotype = haplotype, 
-                                              haplotype_pecov = haplotype_pecov)
-    
-      #compute the p-value
-      haplotype_p_value = haplotype_p_value_calc(haplotype_effect = haplotype_effect, 
-                                                 haplotype_PEV = haplotype_variance)
-    
-      return_df = data.frame(
-        Haplotype_Effect = haplotype_effect,
-        Haplotype_PEV = haplotype_variance,
-        Haplotype_Effect_p_value = haplotype_p_value
-      )
-    
-      return(return_df)
-    })
   }
   
   
@@ -144,7 +166,7 @@ check_effects = function(marker_effects){
 }
 
 ####Head function to split by block and compute local GEBV per individual####
-compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov){
+compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, center = TRUE){
   
   #check marker effects
   marker_effects = check_effects(marker_effects)
@@ -152,6 +174,13 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
   #ensure markers are in the same order
   geno = geno[match(marker_effects[,1], geno[,1]), ]
   
+  marker_means = apply(geno[,4:ncol(geno)], 1, function(x){
+    row_mean = sum(x, na.rm = TRUE) / length(x[!is.na(x)])
+    return(row_mean)
+  })
+
+  names(marker_means) = geno[,1]
+
   #set up
   #future::plan(multisession, workers = parallel::detectCores() - 1)
   
@@ -185,19 +214,26 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
       
       #extract genotypes of the markers
       geno_markers = geno[geno[,1] %in% markers[,1], 4:ncol(geno)]
-      
+      marker_means_block = marker_means[marker_ids]
+
       #compute all of the necessary stats and values
+      #For Zane: this is probably inefficient, there's a better way to do this. I just had little time and this was
+      #the first way I thought to do it. Low priority, but an area to help clean up the code
       if(haplo_test){
         local_GEBV_obj = local_GEBV_haploblock(haploblock_ID = haploblock, 
                                                markers = markers, 
                                                geno_markers = geno_markers, 
                                                marker_pecov = marker_pecov,
-                                               haplo_test = TRUE)
+                                               haplo_test = TRUE, 
+                                               marker_means_block = marker_means_block,
+                                               set_missing_NA = set_missing_NA, center = center)
       }else{
         local_GEBV_obj = local_GEBV_haploblock(haploblock_ID = haploblock, 
                                                markers = markers, 
                                                geno_markers = geno_markers,
-                                               haplo_test = FALSE)
+                                               haplo_test = FALSE, 
+                                               marker_means_block = marker_means_block,
+                                               set_missing_NA = set_missing_NA, center = center)
       }
       
       #progress the progress bar
