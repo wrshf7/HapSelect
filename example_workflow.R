@@ -177,7 +177,7 @@ haploblock_top_blocks = haploblock_effects[1:15, ]
 localGEBV = haploblock_obj$Haplotype_Effect_Matrix
 localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_top_blocks$Block_ID, ]
 
-#transpose it and turn it into a matrix for the GA
+#transpose it and turn it into a matrix for the GA, blocks MUST be columns and individuals must be rows!
 localGEBV = as.data.frame(t(as.matrix(localGEBV)))
 
 
