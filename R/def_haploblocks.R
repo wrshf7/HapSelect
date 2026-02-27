@@ -1,11 +1,5 @@
 ####load dependencies####
 
-library(purrr)
-library(furrr)
-library(future)
-library(parallel)
-library(dplyr)
-library(progressr)
 
 
 #####function to extend the block left####

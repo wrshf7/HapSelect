@@ -1,0 +1,31 @@
+Package: FastStack
+Type: Package
+Title: Haplotype Block Discovery and localGEBV Analysis
+Version: 0.1.0
+Authors@R: c(
+    person(
+      "Will", "Shaffer",
+      email = "w.shaffer@uq.edu.au",
+      role = c("aut", "cre")
+    )
+  )
+Description: Provides tools to order marker maps, compute pairwise linkage
+    disequilibrium, define haplotype blocks, estimate local genomic estimated
+    breeding values (localGEBV), visualize marker and haplotype patterns,
+    and optimize parent selection with a genetic algorithm workflow.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Imports:
+    cowplot,
+    dplyr,
+    furrr,
+    future,
+    GA,
+    ggplot2,
+    progressr,
+    purrr
+Suggests:
+    AGHmatrix,
+    mvtnorm,
+    sommer

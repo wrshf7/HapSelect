@@ -1,22 +1,38 @@
 ####load dependencies####
-library(progressr)
-library(furrr)
-library(future)
-library(parallel)
-library(tidyverse)
-library(cowplot)
-library(GA)
+# Package functions and required dependencies are provided by FastStack.
 
-#set working directory to the location of the scripts
-#setwd("")
+required_fns <- c(
+  "order_map", "pairwise_ld", "def_blocks", "block_obj_to_df",
+  "compute_local_GEBV", "marker_effects_plot", "unique_haplo_effects_plot",
+  "block_var_funnel_plot", "plot_haploblocks", "plot_marker_density",
+  "plot_ld_decay", "genetic_algorithm"
+)
 
-#load scripts
-source("order_map_file.R")
-source("pairwise_LD.R")
-source("def_haploblocks.R")
-source("localGEBV_calculation.R")
-source("visualizations.R")
-source("genetic_algorithm.R")
+missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function")]
+if (length(missing_fns) > 0) {
+  stop(
+    "Package functions are not loaded. Run devtools::load_all('.') ",
+    "or library(FastStack) before sourcing this script."
+  )
+}
+
+# Resolve bundled example data for both installed and development usage.
+extdata_file <- function(name) {
+  installed <- system.file("extdata", name, package = "FastStack")
+  if (nzchar(installed)) {
+    return(installed)
+  }
+
+  local <- file.path("inst", "extdata", name)
+  if (file.exists(local)) {
+    return(local)
+  }
+
+  stop(
+    "Could not locate extdata file: ", name,
+    ". Run from package root or install/load FastStack."
+  )
+}
 
 ######Pairwise LD#########
 
@@ -24,7 +40,7 @@ source("genetic_algorithm.R")
 #the map file chromosomes MUST be numeric!
 #First column should be SNP ID, second column should be chromosome, and third
 #column should be the position
-load(file = "Example_Files/gapit_map.R")
+load(file = extdata_file("gapit_map.R"))
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
@@ -35,7 +51,7 @@ map2 = order_map(map = map2)
 
 #loading the genotype file from an R object
 
-load(file = "Example_Files/gapit_genos.R")
+load(file = extdata_file("gapit_genos.R"))
 
 #compute ld
 
@@ -49,7 +65,7 @@ ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 
 
 #load the example file to see the structure if you do not want to run the function
-load("Example_Files/gapit_ld.R")
+load(extdata_file("gapit_ld.R"))
 ld_pairs = gapit_pairwise_ld
 
 #note: other programs can be utilized to generate the LD file, but make sure the columns c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
@@ -102,8 +118,8 @@ haploblocks = block_obj_to_df(haploblocks, map)
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-load(file = "Example_Files/gapit_marker_pecov.R")
-load(file = "Example_Files/gapit_marker_effects.R")
+load(file = extdata_file("gapit_marker_pecov.R"))
+load(file = extdata_file("gapit_marker_effects.R"))
 
 #with well-curated marker data, ideally you just set missing genotype values to NA. This would be fine for LD calculations,
 #calculating marker effects, and computing localGEBV

@@ -4,12 +4,12 @@ library(AGHmatrix)
 library(sommer)
 library(mvtnorm)
 
-load(file = "Example_Files/gapit_pheno.R")
-load(file = "Example_Files/gapit_genos.R")
-load(file = "Example_Files/gapit_geno_mat.R")
-load(file = "Example_Files/gapit_map.R")
-load(file = "Example_Files/markers.R")
-load(file = "Example_Files/individual_order.R")
+load(file = "inst/extdata/gapit_pheno.R")
+load(file = "inst/extdata/gapit_genos.R")
+load(file = "inst/extdata/gapit_geno_mat.R")
+load(file = "inst/extdata/gapit_map.R")
+load(file = "inst/extdata/markers.R")
+load(file = "inst/extdata/individual_order.R")
 
 ####make genomic relationship matrix####
 #no need to filter - already filtered for maf

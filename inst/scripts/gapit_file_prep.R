@@ -1,13 +1,13 @@
 library(dplyr)
 
 ####GAPIT maize example with 3k SNP####
-#pheno = read.table("Example_Files/mdp_traits.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
-geno = read.table("Example_Files/mdp_genotype_test.hmp.txt", sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+#pheno = read.table("inst/extdata/mdp_traits.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+geno = read.table("inst/extdata/mdp_genotype_test.hmp.txt", sep = "\t", header = FALSE, stringsAsFactors = FALSE)
 individuals_geno = geno[1,12:ncol(geno)]
-geno = read.table("Example_Files/mdp_genotype_test.hmp.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
-map = read.table("Example_Files/mdp_SNP_information.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+geno = read.table("inst/extdata/mdp_genotype_test.hmp.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+map = read.table("inst/extdata/mdp_SNP_information.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
 
-pheno = read.table("Example_Files/mdp_traits_validation.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+pheno = read.table("inst/extdata/mdp_traits_validation.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 
 #turn genotypes into dosages
 geno = geno[,c(1,3,4,12:ncol(geno))]
@@ -71,17 +71,17 @@ individuals_geno = lapply(individuals_geno, function(x)x) %>% do.call(c,.)
 
 #map file is in the same order as the genotype file
 
-save(pheno, file = "Example_Files/gapit_pheno.R")
-save(geno, file = "Example_Files/gapit_genos.R")
-save(geno_mat, file = "Example_Files/gapit_geno_mat.R")
-save(map, file = "Example_Files/gapit_map.R")
-save(markers, file = "Example_Files/markers.R")
-save(individuals_geno, file = "Example_Files/individual_order.R")
+save(pheno, file = "inst/extdata/gapit_pheno.R")
+save(geno, file = "inst/extdata/gapit_genos.R")
+save(geno_mat, file = "inst/extdata/gapit_geno_mat.R")
+save(map, file = "inst/extdata/gapit_map.R")
+save(markers, file = "inst/extdata/markers.R")
+save(individuals_geno, file = "inst/extdata/individual_order.R")
 
 #####original chickpea files, but have issues with population structure#####
-# load("Example_Files/geno.R")
-# load("Example_Files/map.R")
-# phenos = read.table("Example_Files/BLUEs.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+# load("inst/extdata/geno.R")
+# load("inst/extdata/map.R")
+# phenos = read.table("inst/extdata/BLUEs.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
 # 
 # geno_G_mat = geno
 # 

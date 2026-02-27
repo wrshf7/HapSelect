@@ -1,6 +1,4 @@
 #####load dependencies####
-library(purrr)
-library(progressr)
 
 
 

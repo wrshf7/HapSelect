@@ -1,5 +1,3 @@
-library(tidyverse)
-library(GA)
 
 ####main function####
 genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500, run = 50, selfing = FALSE, pmutation = 0.1, pcrossover = 0.8, pelite = 0.5){

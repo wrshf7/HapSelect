@@ -1,10 +1,4 @@
 ####load dependencies####
-library(purrr)
-library(progressr)
-library(furrr)
-library(future)
-library(dplyr)
-library(parallel)
 
 
 #####ld_func() - function to calculate LD within a chromosome utilizing the subsetted marker genotype file####
