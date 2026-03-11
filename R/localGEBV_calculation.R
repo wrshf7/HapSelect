@@ -1,12 +1,5 @@
 ####load dependencies####
 
-#library(furrr)
-#library(future)
-#library(parallel)
-
-
-
-
 ####Functions to compute the haplotype effect, PEV, and P-Value####
 haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_block, center){
   #haplotype estimated effect (linear contract of marker effects)
