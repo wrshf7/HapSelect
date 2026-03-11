@@ -25,7 +25,3 @@ Imports:
     ggplot2,
     progressr,
     purrr
-Suggests:
-    AGHmatrix,
-    mvtnorm,
-    sommer
