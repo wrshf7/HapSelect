@@ -16,27 +16,9 @@ if (length(missing_fns) > 0) {
   )
 }
 
-# Resolve bundled example data for both installed and development usage.
-extdata_file <- function(name) {
-  installed <- system.file("extdata", name, package = "FastStack")
-  if (nzchar(installed)) {
-    return(installed)
-  }
-
-  local <- file.path("inst", "extdata", name)
-  if (file.exists(local)) {
-    return(local)
-  }
-
-  stop(
-    "Could not locate extdata file: ", name,
-    ". Run from package root or install/load FastStack."
-  )
-}
-
 ######Pairwise LD#########
 
-load(file = extdata_file("gapit_map.R"))
+data("map", package = "FastStack")
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
@@ -46,14 +28,14 @@ map2 = order_map(map = map2)
 
 #loading the genotype file from an R object
 
-load(file = extdata_file("gapit_genos.R"))
+data("geno", package = "FastStack")
 
 #compute ld
 
 ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 
 #load the example file to see the structure if you do not want to run the function
-load(extdata_file("gapit_ld.R"))
+data("gapit_pairwise_ld", package = "FastStack")
 ld_pairs = gapit_pairwise_ld
 
 #####make haploblocks#####
@@ -67,8 +49,8 @@ haploblocks = block_obj_to_df(haploblocks, map)
 
 ##### compute localGEBV using marker effects #####
 
-load(file = extdata_file("gapit_marker_pecov.R"))
-load(file = extdata_file("gapit_marker_effects.R"))
+data("marker_pecov", package = "FastStack")
+data("marker_effects", package = "FastStack")
 
 #with well-curated marker data, ideally you just set missing genotype values to NA. This would be fine for LD calculations,
 #calculating marker effects, and computing localGEBV
