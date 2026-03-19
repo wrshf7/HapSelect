@@ -1,4 +1,7 @@
-####load dependencies####
+#####################################
+    ####  load dependencies  ####
+#####################################
+
 # Package functions and required dependencies are provided by FastStack.
 
 required_fns <- c(
@@ -16,68 +19,95 @@ if (length(missing_fns) > 0) {
   )
 }
 
-######Pairwise LD#########
 
+#################################
+    ####  Pairwise LD  ####
+#################################
+
+
+#loading map file from an R object
 data("map", package = "FastStack")
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
-
-#check that the map file is ordered - using simulated unordered map
 map2 = order_map(map = map2)
 
 #loading the genotype file from an R object
-
 data("geno", package = "FastStack")
 
-#compute ld
 
+#compute ld
 ld_pairs = pairwise_ld(geno, parallelize = FALSE)
+#This is very slow and is just for demonstration purposes only!
+
+
 
 #load the example file to see the structure if you do not want to run the function
-data("gapit_pairwise_ld", package = "FastStack")
-ld_pairs = gapit_pairwise_ld
+data("pairwise_ld", package = "FastStack")
+#We recommend using PLINK v1.9 for LD calculations.
 
-#####make haploblocks#####
+#########################################
+  #####  Compute Haploblocks  #####
+#########################################
+
+#haploblocking
 
 haploblocks = def_blocks(ld = ld_pairs, map = map, method = "flanking",
-                         threshold = 0.2, tolerance = 4, tol_reset = TRUE, 
+                         threshold = 0.2, tolerance = 4, tol_reset = TRUE,
                          start = "LD", parallel = FALSE)
 
+#turn the block object into a data frame
 haploblocks = block_obj_to_df(haploblocks, map)
 
+#######################################
+    #### Compute localGEBV  #####
+#######################################
 
-##### compute localGEBV using marker effects #####
+#the marker pecov (prediction error covariance matrix) is only needed if you want to compute
+#p-values of specific haplotype effects - very much theoretical at this point
 
+#the first column in the marker effects file should be the SNP ID (same as the map file) and the second
+#column should be the marker effect estimated from a model.
 data("marker_pecov", package = "FastStack")
 data("marker_effects", package = "FastStack")
 
-#with well-curated marker data, ideally you just set missing genotype values to NA. This would be fine for LD calculations,
-#calculating marker effects, and computing localGEBV
-#I'm just keeping it simple for this example and rounding so there are no missing values
-#Non-integers represent imputed values, which must NOT be used for localGEBV!
 
-geno[,4:ncol(geno)] = round(geno[,4:ncol(geno)], 0)
 
-haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks, 
+
+#localGEBV calculation
+haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
                                     marker_pecov = marker_pecov, set_missing_NA = TRUE, center = TRUE)
-
-###### do some visualizations ######
+##################################
+   ####  Visualizations  #####
+##################################
 
 marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position)
+marker_plot
+
 haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
+haplo_eff_plot
+
 funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE)
+funnel_plot
+
 haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
+haploblock_plot
+
 marker_density_plot = plot_marker_density(map_df = map, bin_size_kb = 500)
+marker_density_plot
 
 ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
+ld_decay_plot
 
-###### select top 15 haploblocks (arbitrary) and perform the GA ######
 
+##############################################
+   #### Parent Selection with the GA ####
+##############################################
+
+#select top 15 haploblocks (arbitrary) and perform the GA
 haploblock_effects = haploblock_obj$Haploblocks
 haploblock_effects = haploblock_effects[order(haploblock_effects$Block_Var, decreasing = TRUE), ]
 haploblock_top_blocks = haploblock_effects[1:15, ]
-
 localGEBV = haploblock_obj$Haplotype_Effect_Matrix
 localGEBV = localGEBV[row.names(localGEBV) %in% haploblock_top_blocks$Block_ID, ]
 
@@ -85,7 +115,8 @@ localGEBV = as.data.frame(t(as.matrix(localGEBV)))
 
 
 #run the GA
-GA_output = genetic_algorithm(localGEBV = localGEBV, n_founders = 20, popSize = 10, maxiter = 300, 
+GA_output = genetic_algorithm(localGEBV = localGEBV, n_founders = 20, popSize = 10, maxiter = 300,
                               run = 150, selfing = FALSE, pmutation = 0.2, pcrossover = 0.8, pelite = 0.5)
 
+#one unique set of parents
 GA_output$One_Solution
