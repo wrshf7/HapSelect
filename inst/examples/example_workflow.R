@@ -53,7 +53,7 @@ data("geno", package = "FastStack")
 #being the genotypes at each locus for each individual
 #column names of the map information (first 3 columns) will not matter in this case, but the order of map info columns
 #should be the same as the map file columns (SNP ID, Chromosome, Position)
-ld_pairs = pairwise_ld(geno, parallelize = FALSE)
+#ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 
 #This is very slow and is just for demonstration purposes only!
 
@@ -89,7 +89,7 @@ data("pairwise_ld", package = "FastStack")
 #a left to right approach with blocking starting at the first SNP in the chromosome (by position, "beginning") is utilized.
 
 #parallel - if true, set up a paralellization framework. For small marker sets (i.e., a few thousand or less), this will actually make the analysis slower. Parallelization is only
-#recommended for many markers.
+#recommended for many markers. Note: This only works for windows currently and WILL increase memory requirements! Only set to TRUE if it is working while on FALSE.
 
 #haploblocking - using a threshold of 0.4, a tolerance of 2 as an example,
 #resetting the tolerance between successful marker additions,

@@ -37,7 +37,7 @@ data("geno", package = "FastStack")
 
 
 #compute ld
-ld_pairs = pairwise_ld(geno, parallelize = FALSE)
+#ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 #This is very slow and is just for demonstration purposes only!
 
 
