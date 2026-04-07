@@ -43,7 +43,7 @@ test_that("ld_func computes pairwise LD for an in-memory chromosome set", {
   observed_pairs <- paste(observed$Name1, observed$Name2, sep = "::")
   expected_pair_labels <- paste(expected_pairs$Name1, expected_pairs$Name2, sep = "::")
 
-  # Check overall output structure and pair count
+  # Check overall output structure and pair count - choose being the binomial coefficient. E.g., length of combn() output
   expect_equal(nrow(observed), choose(nrow(genotypes), 2))
   expect_named(observed, c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD"))
 

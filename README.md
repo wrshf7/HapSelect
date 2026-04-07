@@ -12,6 +12,7 @@ From the package root in R:
 install.packages("devtools")
 devtools::install(".")
 ```
+Alternatively, download a .zip archive, decompress the .zip file, and run in R:
 
 ## Run Example Workflow
 
