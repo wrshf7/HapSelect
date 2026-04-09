@@ -11,12 +11,12 @@ Authors@R: c(
     person(
       "Zane", "Carter",
       email = "zane.carter@uq.net.au",
-      role = c("aut", "cre")
+      role = c("aut")
     ),
     person(
       "Victor", "Papin",
       email = "v.papin@uq.edu.au",
-      role = c("aut", "cre")
+      role = c("aut")
     )
   )
 Description: Provides tools to order marker maps, compute pairwise linkage
@@ -36,3 +36,6 @@ Imports:
     progressr,
     purrr,
     rrBLUP
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

@@ -10,7 +10,7 @@ check_BLUE = function(BLUE, geno){
 solve_marker_effects = function(geno, BLUE){
 
   if(!check_BLUE(BLUE, geno)){
-    stop("Ensure the first column is the exact genotype name in the genotype file and the second column is a singular adjusted, singular phenotype, BLUE, or de-regressed BLUP (no additional fixed or random effects can be fit).")
+    stop("Ensure the first column is the exact genotype name in the genotype file and the second column is a singular adjusted phenotype, singular phenotype, BLUE, or de-regressed BLUP (no additional fixed or random effects can be fit).")
   }
 
   #checking to ensure the first genotype column is numeric and not the position/chromosome column.
