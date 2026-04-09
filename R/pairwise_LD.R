@@ -58,7 +58,7 @@ pairwise_ld = function(genotype_matrix, parallelize = TRUE){
   #set row names to the marker names for the internal loop
   row.names(genotype_matrix) = genotype_matrix[,1]
   
-  #split the genotype matrix
+  #split the genotype matrix by chromosome for parallelization
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
   
   #setup parallelization using future and parallel package and utilize all but 1 core

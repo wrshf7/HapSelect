@@ -1,61 +1,76 @@
 ####load dependencies####
 
-
-
-#####function to extend the block left####
-
-extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance, tol_reset){
+#####function to extend a block in a given direction, either left or right
+# direction must be either -1 for left or +1 for right
+extend_block = function(direction, edge_marker, markers, assigned, ld_pairs, block, method, threshold, tolerance, tol_reset){
   
   #start counting LD pairs that didn't meet the threshold and track the marker for the next iteration to see if it should be included
   tolerance_counter = 0
   failed_markers = c()
   
-  #repeat left extension until break point is reached (tolerance and threshold)
+  # repeat extension until break point is reached (tolerance and threshold)
   repeat {
     
     #extract index of the first marker in the block from the SNP pair
-    first.idx = match(first.mkr.blk, snps.chr)
+    edge_index = match(edge_marker, markers)
     
-    #don't extend left if it was the first marker
-    if (first.idx == 1) break
+    #don't extend if it was the first marker
+    # if extending left, the edge marker is the first marker in the block, so we check if it's the first marker in the chromosome
+    if (direction == -1 && edge_index == 1) break
+    # if extending right, the edge marker is the last marker in the block, so we check if it's the last marker in the chromosome
+    if (direction == 1 && edge_index == length(markers)) break
     
-    #get index of marker to the left of the first SNP in the block - modify for skipped markers from tolerance fail
-    left.mkr = snps.chr[first.idx - (length(failed_markers) + 1) ]
+    #get index of marker to the left/right of the first SNP in the block - modify for skipped markers from tolerance fail
+    if (direction == -1) {
+      # if extending left, the candidate marker is to the left of the edge marker, so we subtract from the index
+      candidate_marker = markers[edge_index - (length(failed_markers) + 1)]
+    } else {
+      # if extending right, the candidate marker is to the right of the edge marker, so we add to the index
+      candidate_marker = markers[edge_index + (length(failed_markers) + 1)]
+    }
     
     #added check if tolerance checks for failed_markers was out of bounds
-    if(length(left.mkr) == 0) break
-    if(is.na(left.mkr)) break
+    if(length(candidate_marker) == 0) break
+    if(is.na(candidate_marker)) break
     
-    #if marker to the left is already in a block, break
-    if (assigned[left.mkr]) break
+    #if the candidate marker is already in a block, break
+    if (assigned[candidate_marker]) break
     
-    #if utilizing the flanking method, pull the LD of the SNP to the left identified from left.mkr
-    if (method=="flanking") {
-      #singular value?
-      ld.vals = ld.chr[ld.chr$Name1 == left.mkr & ld.chr$Name2 == first.mkr.blk, ][["LD"]]
+    #if utilizing the flanking method, pull the LD of the SNP to the left/right identified from candidate_marker
+    if (method == "flanking") {
+      if (direction == -1) {
+        # if extending left, the edge marker is to the right of the candidate marker, so Name1 is candidate and Name2 is edge
+        ld_vals = ld_pairs[ld_pairs$Name1 == candidate_marker & ld_pairs$Name2 == edge_marker, ][["LD"]]
+      } else {
+        # if extending right, the edge marker is to the left of the candidate marker, so Name1 is edge and Name2 is candidate
+        ld_vals = ld_pairs[ld_pairs$Name1 == edge_marker & ld_pairs$Name2 == candidate_marker, ][["LD"]]
+      }
     }
     
     #if utilizing the average method, then compute the average LD of the new SNP considered with all markers in the block currently
     if (method=="average") {
-      #could be multiple values if the block is greater than
-      ld.vals = ld.chr[ld.chr$Name1 == left.mkr & ld.chr$Name2 %in% block, ][["LD"]]
+      if (direction == -1) {
+        # if extending left, the candidate marker is to the left of the block, so Name1 is candidate and Name2 is any marker in the block
+        ld_vals = ld_pairs[ld_pairs$Name1 == candidate_marker & ld_pairs$Name2 %in% block, ][["LD"]]
+      } else {
+        # if extending right, the candidate marker is to the right of the block, so Name1 is any marker in the block and Name2 is candidate
+        ld_vals = ld_pairs[ld_pairs$Name1 %in% block & ld_pairs$Name2 == candidate_marker, ][["LD"]]
+      }
     }
     
     #compute the LD of the average (if it's just flanking mean = itself)
-    ld.mean = mean(ld.vals, na.rm = TRUE)
-    
+    ld_mean = mean(ld_vals, na.rm = TRUE)
     
     #check to see if it meets threshold criteria and check tolerance counter and threshold like left block extension
     #handles missing values now as well - iterates the tolerance counter
-    if (ld.mean <= threshold || is.nan(ld.mean)){
+    if (ld_mean <= threshold || is.nan(ld_mean)) {
       
       #check to see if the tolerance threshold has been met, if not add one to the counter
-      if(tolerance_counter >= tolerance){
+      if(tolerance_counter >= tolerance) {
         break
-      }
-      else{
+      } else {
         tolerance_counter = tolerance_counter + 1
-        failed_markers = c(left.mkr, failed_markers)
+        failed_markers = c(candidate_marker, failed_markers)
         next
       }
     } 
@@ -66,104 +81,36 @@ extend_left = function(first.mkr.blk, snps.chr, assigned, ld.chr, block, method,
     }
     
     #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
-    if(length(failed_markers) > 0){
-      block = c(left.mkr, failed_markers, block)
+    if(length(failed_markers) > 0) {
+      if (direction == -1) {
+        # if extending left, the candidate marker and failed markers are added to the left of the block
+        block = c(candidate_marker, failed_markers, block)
+      } else {
+        # if extending right, the candidate marker and failed markers are added to the right of the block
+        block = c(block, failed_markers, candidate_marker)
+      }
       
       #reset to track for further extension
       failed_markers = c()
     } else{
-      block = c(left.mkr, block)
+      if (direction == -1) {
+        # if extending left, the candidate marker is added to the left of the block
+        block = c(candidate_marker, block)
+      } else {
+        # if extending right, the candidate marker is added to the right of the block
+        block = c(block, candidate_marker)
+      }
     }
     
-    
     #update the first marker and repeat the loop
-    first.mkr.blk = left.mkr
+    edge_marker = candidate_marker
   }
-  
   
   #return relevant objects
   return(block)
 }
 
-#####function to extend the block right#####
-
-extend_right = function(last.mkr.blk, snps.chr, assigned, ld.chr, block, method, threshold, tolerance, tol_reset){
-  
-  tolerance_counter = 0
-  failed_markers = c()
-  
-  #keep extending until the break signal is initiated
-  repeat{
-    #starting from the second marker of the original pair (last marker)
-    last.idx = match(last.mkr.blk, snps.chr)
-    
-    #if it's the last marker in the chromo, don't extend
-    if (last.idx == length(snps.chr)) break
-    
-    #if not, find the next marker - modify by failed markers when considering skipped markers from tolerance
-    right.mkr = snps.chr[last.idx + (length(failed_markers) + 1)]
-
-    #added check if tolerance checks for failed_markers was out of bounds
-    if(length(right.mkr) == 0) break
-    if(is.na(right.mkr)) break
-    
-    #check if the next marker is already in a block
-    if (assigned[right.mkr]) break
-    
-    #same as left extension - pull the LD of the marker to the right or the average of the new marker with the rest of the markers in the block originating from the original pair
-    if (method=="flanking") {
-      ld.vals = ld.chr[ld.chr$Name1 == last.mkr.blk & ld.chr$Name2 == right.mkr, ][["LD"]]
-    }
-    
-    if (method=="average") {
-      ld.vals = ld.chr[ld.chr$Name1 %in% block & ld.chr$Name2 == right.mkr, ][["LD"]]
-    }
-    
-    #compute the LD of the average (if it's just flanking mean = itself)
-    ld.mean = mean(ld.vals, na.rm = TRUE)
-    
-    
-    #check to see if it meets threshold criteria and check tolerance counter and threshold like left block extension
-    #handles missing values now as well - iterates the tolerance counter
-    if (ld.mean <= threshold || is.nan(ld.mean)){
-      
-      #check to see if the tolerance threshold has been met, if not add one to the counter
-      if(tolerance_counter >= tolerance){
-        break
-      }
-      else{
-        tolerance_counter = tolerance_counter + 1
-        failed_markers = c(failed_markers, right.mkr)
-        next
-      }
-    } 
-    
-    #reset tolerance counter if option is provided
-    if(tol_reset){
-      tolerance_counter = 0
-    }
-
-    #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
-    if(length(failed_markers) > 0){
-      block = c(block, failed_markers, right.mkr)
-      
-      #reset to track for further extension
-      failed_markers = c()
-      
-    } else{
-      block = c(block, right.mkr)
-    }
-    
-    #update the last marker
-    last.mkr.blk = right.mkr
-    
-  }
-  return(block)
-}
-
-
 #####function to find a SNP pair to start block extension#####
-
 make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr, last.mkr.chr, 
                        assigned, method, threshold, tolerance, tol_reset, start){
   
@@ -194,11 +141,32 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
       block = c(first.mkr.blk, last.mkr.blk)
       
       #extend the block
-      block = extend_left(first.mkr.blk = first.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                          ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance, tol_reset = tol_reset)
-      
-      block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance, tol_reset = tol_reset)
+      #extend left
+      block = extend_block(
+        direction = -1, 
+        edge_marker = first.mkr.blk,
+        markers = snps.chr, 
+        assigned = assigned, 
+        ld_pairs = ld.chr, 
+        block = block, 
+        method = method,
+        threshold = threshold,
+        tolerance = tolerance,
+        tol_reset = tol_reset
+      )
+      #extend right
+      block = extend_block(
+        direction = 1,
+        edge_marker = last.mkr.blk, 
+        markers = snps.chr, 
+        assigned = assigned, 
+        ld_pairs = ld.chr, 
+        block = block, 
+        method = method, 
+        threshold = threshold, 
+        tolerance = tolerance, 
+        tol_reset = tol_reset
+      )
       
       #update the assigned variable to indicate that SNP have been assigned to a block
       assigned[block] = TRUE
@@ -231,8 +199,18 @@ make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr
       block = last.mkr.blk
       
       #extend the block
-      block = extend_right(last.mkr.blk = last.mkr.blk, snps.chr = snps.chr, assigned = assigned, 
-                           ld.chr = ld.chr, block = block, method = method, threshold = threshold, tolerance = tolerance, tol_reset = tol_reset)
+      block = extend_block(
+        direction = 1, 
+        edge_marker = last.mkr.blk, 
+        markers = snps.chr, 
+        assigned = assigned, 
+        ld_pairs = ld.chr, 
+        block = block, 
+        method = method,
+        threshold = threshold,
+        tolerance = tolerance, 
+        tol_reset = tol_reset
+      )
       
       #update the assigned variable to indicate that SNP have been assigned to a block
       assigned[block] = TRUE
@@ -357,14 +335,8 @@ def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1,
   return(blocks_list)
 }
 
-
-
-
-
-
 #####Turn blocks into a dataframe####
 #function to pull SNP locations and chromosome of the block and then order the blocks
-
 
 #function to condense chromosome blocks into a df
 chromo_blocks_to_df = function(chromo, map){
@@ -404,7 +376,6 @@ chromo_blocks_to_df = function(chromo, map){
   return(chromo_df)
 }
 
-
 #overall function to return block object and apply chromosome-level condensing
 block_obj_to_df = function(block_obj, map){
   
@@ -426,7 +397,6 @@ block_obj_to_df = function(block_obj, map){
   
   return(block_df)
 }
-
 
 ######Create summary information of haploblock df########
 
