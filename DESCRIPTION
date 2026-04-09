@@ -7,12 +7,22 @@ Authors@R: c(
       "Will", "Shaffer",
       email = "w.shaffer@uq.edu.au",
       role = c("aut", "cre")
+    ),
+    person(
+      "Zane", "Carter",
+      email = "zane.carter@uq.net.au",
+      role = c("aut")
+    ),
+    person(
+      "Victor", "Papin",
+      email = "v.papin@uq.edu.au",
+      role = c("aut")
     )
   )
 Description: Provides tools to order marker maps, compute pairwise linkage
-    disequilibrium, define haplotype blocks, estimate local genomic estimated
-    breeding values (localGEBV), visualize marker and haplotype patterns,
-    and optimize parent selection with a genetic algorithm workflow.
+    disequilibrium, define haplotype blocks (haploblocks), estimate local genomic estimated
+    breeding values (localGEBV), visualize marker and localGEBV patterns,
+    and optimize parent selection for genomic selection with a genetic algorithm workflow.
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
@@ -27,4 +37,3 @@ Imports:
     purrr
 Suggests:
     testthat (>= 3.0.0)
-Config/testthat/edition: 3
