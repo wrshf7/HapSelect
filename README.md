@@ -14,6 +14,10 @@ devtools::install(".")
 ```
 Alternatively, download a .zip archive, decompress the .zip file, and run in R:
 
+```r
+install.packages("/path/to/extracted/folder/FastStack/", repos = NULL) 
+```
+
 ## Run Example Workflow
 
 ```r
