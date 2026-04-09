@@ -64,6 +64,8 @@ data("pairwise_ld", package = "FastStack")
 
 #note: other programs can be utilized to generate the LD file, but make sure the columns c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
 #exist in the data frame. We recommend using PLINK v1.9 for LD calculations.
+#If you have a PLINK binary fileset (.bed/.bim/.fam), you can also use:
+#ld_pairs = plink_pairwise_ld("path/to/plink_prefix")
 
 #Locus1 and Locus2 are numeric indices and MUST reference the order of the markers (i.e., ordered by chromosome and position in chromosome)
 #A good way to do this is to assign Locus1 as 1:nrow(map) to the ordered map file. You can then join the LD data frame and

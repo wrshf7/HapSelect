@@ -45,6 +45,8 @@ ld_pairs = pairwise_ld(geno, parallelize = FALSE)
 #load the example file to see the structure if you do not want to run the function
 data("pairwise_ld", package = "FastStack")
 #We recommend using PLINK v1.9 for LD calculations.
+#If you have a PLINK binary fileset (.bed/.bim/.fam), you can also use:
+#ld_pairs = plink_pairwise_ld("path/to/plink_prefix")
 
 #########################################
   #####  Compute Haploblocks  #####

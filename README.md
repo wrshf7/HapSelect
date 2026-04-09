@@ -1,6 +1,8 @@
 # FastStack
-
 Minimal R package for haplotype block workflows and localGEBV analysis.
+
+## Contributing
+For details on contributing to this package, see [the development guide](DEVELOPMENT.md).
 
 ## Install
 
@@ -10,6 +12,7 @@ From the package root in R:
 install.packages("devtools")
 devtools::install(".")
 ```
+Alternatively, download a .zip archive, decompress the .zip file, and run in R:
 
 ## Run Example Workflow
 
