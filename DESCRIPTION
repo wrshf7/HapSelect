@@ -34,8 +34,6 @@ Imports:
     GA,
     ggplot2,
     progressr,
-    purrr,
-    rrBLUP
+    purrr
 Suggests:
     testthat (>= 3.0.0)
-Config/testthat/edition: 3
