@@ -35,6 +35,9 @@ Imports:
     ggplot2,
     progressr,
     purrr,
+    Rcpp,
     rrBLUP
+LinkingTo:
+    Rcpp
 Suggests:
     testthat (>= 3.0.0)

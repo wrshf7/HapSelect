@@ -196,12 +196,12 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_idx,
 
     repeat {
 
-      seed_marker_right = as.character(marker_names[position])
-      block          = seed_marker_right
+      seed_marker = as.character(marker_names[position])
+      block          = seed_marker
 
       block = extend_block(
         direction    = 1,
-        edge_marker  = seed_marker_right,
+        edge_marker  = seed_marker,
         marker_names = marker_names,
         marker_idx   = marker_idx,
         assigned     = assigned,
@@ -224,6 +224,26 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_idx,
   return(list(chrom_blocks, assigned))
 }
 
+# make_blocks_c ---------------------------------------------------------------
+# Wrapper around the C++ implementation of make_blocks. Accepts the same
+# arguments and returns the same result, but delegates to compiled code.
+# See make_blocks for full parameter documentation.
+make_blocks_c = function(ld_lookup, ld_adj, marker_names, marker_idx,
+                          marker_positions, first_marker, last_marker, assigned,
+                          method, threshold, tolerance, tol_reset, start) {
+  make_blocks_cpp(
+    ld_lookup    = ld_lookup,
+    ld_adj       = ld_adj,
+    marker_names = marker_names,
+    marker_idx   = marker_idx,
+    assigned     = assigned,
+    method       = method,
+    threshold    = threshold,
+    tolerance    = as.integer(tolerance),
+    tol_reset    = tol_reset,
+    start        = start
+  )
+}
 
 # chromo_blocking --------------------------------------------------------------
 # Coordinates haploblock formation for a single chromosome. Prepares the
@@ -258,7 +278,7 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
   ld_lookup  = setNames(ld_chrom$LD, paste(ld_chrom$Name1, ld_chrom$Name2, sep = ","))
   marker_idx = setNames(seq_along(marker_names), marker_names)
 
-  result = make_blocks(
+  result = make_blocks_c(
     ld_lookup        = ld_lookup,
     ld_adj           = ld_adj,
     marker_names     = marker_names,

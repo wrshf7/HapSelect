@@ -1,3 +1,5 @@
+useDynLib(FastStack, .registration = TRUE)
+importFrom(Rcpp, sourceCpp)
 import(cowplot)
 import(dplyr)
 import(furrr)
@@ -7,6 +9,7 @@ import(ggplot2)
 import(progressr)
 import(purrr)
 
+export(make_blocks_cpp)
 export(block_obj_to_df)
 export(block_summary)
 export(block_var_funnel_plot)
