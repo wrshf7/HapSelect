@@ -1,7 +1,8 @@
 ####load dependencies####
 
 # extend_block -----------------------------------------------------------------
-# Extends a haploblock in one direction (left or right) by evaluating candidate
+# NOTE: This is an R implementation and it is much slower than the C++ version in extend_block.cpp. (3.5× to 17.5× depending on method and settings)
+#       It is retained here for clarity and testing purposes.
 # markers one at a time until the LD threshold is no longer met.
 #
 # direction    : -1 to extend left, +1 to extend right
@@ -103,6 +104,8 @@ extend_block = function(direction, edge_marker, marker_names, marker_idx,
 
 
 # make_blocks ------------------------------------------------------------------
+# NOTE: This is an R implementation and it is much slower than the C++ version in make_blocks.cpp (3.5× to 17.5× depending on method and settings)
+#       It is retained here for clarity and testing purposes.
 # Drives block formation for a single chromosome. Finds seed marker pairs and
 # calls extend_block to grow each block left and right. Any markers not absorbed
 # into a block remain unassigned and are handled by the caller.
@@ -227,7 +230,7 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_idx,
 # make_blocks_c ---------------------------------------------------------------
 # Wrapper around the C++ implementation of make_blocks. Accepts the same
 # arguments and returns the same result, but delegates to compiled code.
-# See make_blocks for full parameter documentation.
+# This is much faster than the R implementation, especially on larger chromosomes, and is the default in chromo_blocking.
 make_blocks_c = function(ld_lookup, ld_adj, marker_names, marker_idx,
                           marker_positions, first_marker, last_marker, assigned,
                           method, threshold, tolerance, tol_reset, start) {
@@ -278,6 +281,7 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
   ld_lookup  = setNames(ld_chrom$LD, paste(ld_chrom$Name1, ld_chrom$Name2, sep = ","))
   marker_idx = setNames(seq_along(marker_names), marker_names)
 
+  # call the main blocking function implemented in C++
   result = make_blocks_c(
     ld_lookup        = ld_lookup,
     ld_adj           = ld_adj,
@@ -293,6 +297,23 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
     tol_reset        = tol_reset,
     start            = start
   )
+
+  # Alternatively, to use the R implementation of make_blocks, comment out the above call to make_blocks_c and uncomment the line below to call make_blocks instead.
+  # result = make_blocks(
+  #   ld_lookup        = ld_lookup,
+  #   ld_adj           = ld_adj,
+  #   marker_names     = marker_names,
+  #   marker_idx       = marker_idx,
+  #   marker_positions = marker_positions,
+  #   first_marker     = first_marker,
+  #   last_marker      = last_marker,
+  #   assigned         = assigned,
+  #   method           = method,
+  #   threshold        = threshold,
+  #   tolerance        = tolerance,
+  #   tol_reset        = tol_reset,
+  #   start            = start
+  # )
 
   chrom_blocks = result[[1]]
   assigned     = result[[2]]
