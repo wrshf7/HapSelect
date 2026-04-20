@@ -4,31 +4,34 @@
 # Extends a haploblock in one direction (left or right) by evaluating candidate
 # markers one at a time until the LD threshold is no longer met.
 #
-# direction      : -1 to extend left, +1 to extend right
-# edge_marker    : the marker currently at the boundary of the block in the
-#                  direction of extension
-# marker_names   : ordered list of marker names for the chromosome,
-#                  sorted by physical position
-# assigned       : lookup table of marker name -> TRUE/FALSE indicating whether
-#                  each marker has already been placed in a block
-# ld_chrom       : table of all pairwise LD values for the chromosome
-#                  (columns: Name1, Name2, LD)
-# block          : marker names currently in the block
-# method         : "flanking" — LD of candidate vs edge marker only;
-#                  "average"  — mean LD of candidate vs all markers in the block
-# threshold      : minimum LD value required to extend the block
-# tolerance      : number of consecutive below-threshold markers allowed before
-#                  stopping (absorbed into the block if a later marker meets the threshold)
-# tol_reset      : if TRUE, reset the tolerance counter after each accepted marker
-extend_block = function(direction, edge_marker, marker_names, assigned, ld_lookup,
-                        block, method, threshold, tolerance, tol_reset) {
+# direction    : -1 to extend left, +1 to extend right
+# edge_marker  : the marker currently at the boundary of the block in the
+#                direction of extension
+# marker_names : ordered list of marker names for the chromosome,
+#                sorted by physical position
+# marker_idx   : named integer lookup of marker name -> position index,
+#                pre-built in chromo_blocking for O(1) position lookups
+# assigned     : lookup table of marker name -> TRUE/FALSE indicating whether
+#                each marker has already been placed in a block
+# ld_lookup    : named numeric lookup of "Name1,Name2" -> LD value,
+#                pre-built in chromo_blocking for O(1) LD lookups
+# block        : marker names currently in the block
+# method       : "flanking" — LD of candidate vs edge marker only;
+#                "average"  — mean LD of candidate vs all markers in the block
+# threshold    : minimum LD value required to extend the block
+# tolerance    : number of consecutive below-threshold markers allowed before
+#                stopping (absorbed into the block if a later marker meets the threshold)
+# tol_reset    : if TRUE, reset the tolerance counter after each accepted marker
+extend_block = function(direction, edge_marker, marker_names, marker_idx,
+                        assigned, ld_lookup, block, method, threshold,
+                        tolerance, tol_reset) {
 
   tolerance_counter = 0
-  failed_markers       = c()
+  failed_markers    = c()
 
   repeat {
 
-    edge_index = match(edge_marker, marker_names)
+    edge_index = marker_idx[[edge_marker]]
 
     if (direction == -1 && edge_index == 1)                  break
     if (direction ==  1 && edge_index == length(marker_names))  break
@@ -104,12 +107,14 @@ extend_block = function(direction, edge_marker, marker_names, assigned, ld_looku
 # calls extend_block to grow each block left and right. Any markers not absorbed
 # into a block remain unassigned and are handled by the caller.
 #
-# ld_lookup        : lookup table of pairwise LD values for the chromosome
-#                    (keys: "Name1,Name2", values: LD)
-# ld_adj           : subset of ld_chrom containing only immediately adjacent
-#                    marker pairs (Locus2 == Locus1 + 1); used to find seed pairs
+# ld_lookup        : named numeric lookup of "Name1,Name2" -> LD value,
+#                    pre-built in chromo_blocking for O(1) LD lookups
+# ld_adj           : adjacent-only subset of the chromosome LD table
+#                    (Locus2 == Locus1 + 1); used to find seed pairs
 # marker_names     : ordered list of marker names for the chromosome,
 #                    sorted by physical position
+# marker_idx       : named integer lookup of marker name -> position index,
+#                    pre-built in chromo_blocking for O(1) position lookups
 # marker_positions : physical positions of each marker, matching the order of marker_names
 # first_marker     : name of the first (leftmost) marker on the chromosome
 # last_marker      : name of the last (rightmost) marker on the chromosome
@@ -121,9 +126,9 @@ extend_block = function(direction, edge_marker, marker_names, assigned, ld_looku
 # tol_reset        : whether to reset the tolerance counter on each accepted marker
 # start            : "LD"        — seed from the highest-LD adjacent pair first;
 #                    "beginning" — sweep left to right from the first marker
-make_blocks = function(ld_lookup, ld_adj, marker_names, marker_positions, first_marker,
-                       last_marker, assigned, method, threshold, tolerance,
-                       tol_reset, start) {
+make_blocks = function(ld_lookup, ld_adj, marker_names, marker_idx,
+                       marker_positions, first_marker, last_marker, assigned,
+                       method, threshold, tolerance, tol_reset, start) {
 
   chrom_blocks = list()
 
@@ -147,29 +152,31 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_positions, first_
       block = c(seed_marker_left, seed_marker_right)
 
       block = extend_block(
-        direction = -1,
+        direction    = -1,
         edge_marker  = seed_marker_left,
         marker_names = marker_names,
-        assigned  = assigned,
-        ld_lookup = ld_lookup,
-        block     = block,
-        method    = method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset
+        marker_idx   = marker_idx,
+        assigned     = assigned,
+        ld_lookup    = ld_lookup,
+        block        = block,
+        method       = method,
+        threshold    = threshold,
+        tolerance    = tolerance,
+        tol_reset    = tol_reset
       )
 
       block = extend_block(
-        direction = 1,
+        direction    = 1,
         edge_marker  = seed_marker_right,
         marker_names = marker_names,
-        assigned  = assigned,
-        ld_lookup = ld_lookup,
-        block     = block,
-        method    = method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset
+        marker_idx   = marker_idx,
+        assigned     = assigned,
+        ld_lookup    = ld_lookup,
+        block        = block,
+        method       = method,
+        threshold    = threshold,
+        tolerance    = tolerance,
+        tol_reset    = tol_reset
       )
 
       assigned[block] = TRUE
@@ -193,22 +200,23 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_positions, first_
       block          = seed_marker_right
 
       block = extend_block(
-        direction = 1,
+        direction    = 1,
         edge_marker  = seed_marker_right,
         marker_names = marker_names,
-        assigned  = assigned,
-        ld_lookup = ld_lookup,
-        block     = block,
-        method    = method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset
+        marker_idx   = marker_idx,
+        assigned     = assigned,
+        ld_lookup    = ld_lookup,
+        block        = block,
+        method       = method,
+        threshold    = threshold,
+        tolerance    = tolerance,
+        tol_reset    = tol_reset
       )
 
       assigned[block] = TRUE
       chrom_blocks[[length(chrom_blocks) + 1]] = block
 
-      position = match(block[length(block)], marker_names) + 1
+      position = marker_idx[[block[length(block)]]] + 1
       if (position > total_snps) break
     }
   }
@@ -219,8 +227,8 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_positions, first_
 
 # chromo_blocking --------------------------------------------------------------
 # Coordinates haploblock formation for a single chromosome. Prepares the
-# chromosome-level data, calls make_blocks, then adds any unassigned markers as
-# singleton blocks.
+# chromosome-level data, builds the O(1) lookup structures, calls make_blocks,
+# then adds any unassigned markers as singleton blocks.
 #
 # chr       : chromosome identifier (matches values in ld$Chrom)
 # ld        : pairwise LD table, pre-filtered to this chromosome
@@ -233,15 +241,9 @@ make_blocks = function(ld_lookup, ld_adj, marker_names, marker_positions, first_
 chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
                            threshold, start) {
 
-  # subset the LD table to this chromosome
   ld_chrom = ld[ld$Chrom == chr, ]
-  
-  # Create a lookup table of marker name -> physical position for this chromosome
-  ld_lookup = setNames(ld_chrom$LD, paste(ld_chrom$Name1, ld_chrom$Name2, sep = ","))
-
-  # subset to adjacent pairs for seeding
   ld_adj   = ld_chrom[ld_chrom$Locus2 == ld_chrom$Locus1 + 1, ]
-  
+
   marker_names     = unique(c(ld_chrom$Name1, ld_chrom$Name2))
   marker_positions = map$Position[match(marker_names, map$SNP)]
   marker_names     = marker_names[order(marker_positions)]
@@ -252,19 +254,24 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
   assigned        = rep(FALSE, length(marker_names))
   names(assigned) = marker_names
 
-  result      = make_blocks(
-    ld_lookup      = ld_lookup,
-    ld_adj         = ld_adj,
+  # build once per chromosome; passed down to avoid rebuilding on every extension step
+  ld_lookup  = setNames(ld_chrom$LD, paste(ld_chrom$Name1, ld_chrom$Name2, sep = ","))
+  marker_idx = setNames(seq_along(marker_names), marker_names)
+
+  result = make_blocks(
+    ld_lookup        = ld_lookup,
+    ld_adj           = ld_adj,
     marker_names     = marker_names,
+    marker_idx       = marker_idx,
     marker_positions = marker_positions,
     first_marker     = first_marker,
     last_marker      = last_marker,
-    assigned      = assigned,
-    method        = method,
-    threshold     = threshold,
-    tolerance     = tolerance,
-    tol_reset     = tol_reset,
-    start         = start
+    assigned         = assigned,
+    method           = method,
+    threshold        = threshold,
+    tolerance        = tolerance,
+    tol_reset        = tol_reset,
+    start            = start
   )
 
   chrom_blocks = result[[1]]
