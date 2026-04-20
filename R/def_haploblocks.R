@@ -20,7 +20,7 @@
 # tolerance      : number of consecutive below-threshold markers allowed before
 #                  stopping (absorbed into the block if a later marker meets the threshold)
 # tol_reset      : if TRUE, reset the tolerance counter after each accepted marker
-extend_block = function(direction, edge_marker, marker_names, assigned, ld_chrom,
+extend_block = function(direction, edge_marker, marker_names, assigned, ld_lookup,
                         block, method, threshold, tolerance, tol_reset) {
 
   tolerance_counter = 0
@@ -46,20 +46,20 @@ extend_block = function(direction, edge_marker, marker_names, assigned, ld_chrom
     if (method == "flanking") {
       if (direction == -1) {
         # candidate is to the left so Name1 = candidate, Name2 = edge
-        ld_vals = ld_chrom[ld_chrom$Name1 == candidate_marker & ld_chrom$Name2 == edge_marker, ][["LD"]]
+        ld_vals = ld_lookup[paste(candidate_marker, edge_marker, sep = ",")]
       } else {
         # candidate is to the right so Name1 = edge, Name2 = candidate
-        ld_vals = ld_chrom[ld_chrom$Name1 == edge_marker & ld_chrom$Name2 == candidate_marker, ][["LD"]]
+        ld_vals = ld_lookup[paste(edge_marker, candidate_marker, sep = ",")]
       }
     }
 
     if (method == "average") {
       if (direction == -1) {
         # candidate is to the left so Name1 = candidate, Name2 = any block SNP
-        ld_vals = ld_chrom[ld_chrom$Name1 == candidate_marker & ld_chrom$Name2 %in% block, ][["LD"]]
+        ld_vals = ld_lookup[paste(candidate_marker, block, sep = ",")]
       } else {
         # candidate is to the right so Name1 = any block SNP, Name2 = candidate
-        ld_vals = ld_chrom[ld_chrom$Name1 %in% block & ld_chrom$Name2 == candidate_marker, ][["LD"]]
+        ld_vals = ld_lookup[paste(block, candidate_marker, sep = ",")]
       }
     }
 
@@ -104,8 +104,8 @@ extend_block = function(direction, edge_marker, marker_names, assigned, ld_chrom
 # calls extend_block to grow each block left and right. Any markers not absorbed
 # into a block remain unassigned and are handled by the caller.
 #
-# ld_chrom         : table of all pairwise LD values for the chromosome
-#                    (columns: Chrom, Locus1, Locus2, Name1, Name2, LD)
+# ld_lookup        : lookup table of pairwise LD values for the chromosome
+#                    (keys: "Name1,Name2", values: LD)
 # ld_adj           : subset of ld_chrom containing only immediately adjacent
 #                    marker pairs (Locus2 == Locus1 + 1); used to find seed pairs
 # marker_names     : ordered list of marker names for the chromosome,
@@ -121,7 +121,7 @@ extend_block = function(direction, edge_marker, marker_names, assigned, ld_chrom
 # tol_reset        : whether to reset the tolerance counter on each accepted marker
 # start            : "LD"        — seed from the highest-LD adjacent pair first;
 #                    "beginning" — sweep left to right from the first marker
-make_blocks = function(ld_chrom, ld_adj, marker_names, marker_positions, first_marker,
+make_blocks = function(ld_lookup, ld_adj, marker_names, marker_positions, first_marker,
                        last_marker, assigned, method, threshold, tolerance,
                        tol_reset, start) {
 
@@ -151,7 +151,7 @@ make_blocks = function(ld_chrom, ld_adj, marker_names, marker_positions, first_m
         edge_marker  = seed_marker_left,
         marker_names = marker_names,
         assigned  = assigned,
-        ld_chrom  = ld_chrom,
+        ld_lookup = ld_lookup,
         block     = block,
         method    = method,
         threshold = threshold,
@@ -164,7 +164,7 @@ make_blocks = function(ld_chrom, ld_adj, marker_names, marker_positions, first_m
         edge_marker  = seed_marker_right,
         marker_names = marker_names,
         assigned  = assigned,
-        ld_chrom  = ld_chrom,
+        ld_lookup = ld_lookup,
         block     = block,
         method    = method,
         threshold = threshold,
@@ -197,7 +197,7 @@ make_blocks = function(ld_chrom, ld_adj, marker_names, marker_positions, first_m
         edge_marker  = seed_marker_right,
         marker_names = marker_names,
         assigned  = assigned,
-        ld_chrom  = ld_chrom,
+        ld_lookup = ld_lookup,
         block     = block,
         method    = method,
         threshold = threshold,
@@ -233,9 +233,15 @@ make_blocks = function(ld_chrom, ld_adj, marker_names, marker_positions, first_m
 chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
                            threshold, start) {
 
+  # subset the LD table to this chromosome
   ld_chrom = ld[ld$Chrom == chr, ]
-  ld_adj   = ld_chrom[ld_chrom$Locus2 == ld_chrom$Locus1 + 1, ]
+  
+  # Create a lookup table of marker name -> physical position for this chromosome
+  ld_lookup = setNames(ld_chrom$LD, paste(ld_chrom$Name1, ld_chrom$Name2, sep = ","))
 
+  # subset to adjacent pairs for seeding
+  ld_adj   = ld_chrom[ld_chrom$Locus2 == ld_chrom$Locus1 + 1, ]
+  
   marker_names     = unique(c(ld_chrom$Name1, ld_chrom$Name2))
   marker_positions = map$Position[match(marker_names, map$SNP)]
   marker_names     = marker_names[order(marker_positions)]
@@ -247,8 +253,8 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
   names(assigned) = marker_names
 
   result      = make_blocks(
-    ld_chrom      = ld_chrom,
-    ld_adj        = ld_adj,
+    ld_lookup      = ld_lookup,
+    ld_adj         = ld_adj,
     marker_names     = marker_names,
     marker_positions = marker_positions,
     first_marker     = first_marker,
