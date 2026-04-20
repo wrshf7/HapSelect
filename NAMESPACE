@@ -6,7 +6,6 @@ import(GA)
 import(ggplot2)
 import(progressr)
 import(purrr)
-import(rrBLUP)
 
 export(block_obj_to_df)
 export(block_summary)
