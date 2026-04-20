@@ -24,8 +24,14 @@ solve_marker_effects = function(geno, BLUE){
   #and columns are markers (Z matrix) to connect phenos to marker effects.
   geno_mat = t(geno[, BLUE[,1]])
 
+  #allele frequencies
+  p = colMeans(geno_mat, na.rm = TRUE)
+
+  # center
+  Z = sweep(geno_mat, 2, p, "-")
+
   #solve marker effects
-  marker_solutions = rrBLUP::mixed.solve(y = BLUE[,2], Z = geno_mat)
+  marker_solutions = rrBLUP::mixed.solve(y = BLUE[,2], Z = Z)
 
   return(marker_solutions)
 }

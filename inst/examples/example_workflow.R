@@ -1,5 +1,5 @@
 #####################################
-    ####  load dependencies  ####
+####  load dependencies  ####
 #####################################
 
 # Package functions and required dependencies are provided by FastStack.
@@ -21,7 +21,7 @@ if (length(missing_fns) > 0) {
 
 
 #################################
-    ####  Pairwise LD  ####
+####  Pairwise LD  ####
 #################################
 
 
@@ -72,7 +72,7 @@ data("pairwise_ld", package = "FastStack")
 #map data frame by Name1 and SNP and them Name2 and SNP to get the indices for Locus1 and Locus2.
 
 #########################################
-    #####  Compute Haploblocks  #####
+#####  Compute Haploblocks  #####
 #########################################
 
 #method = c("flanking", "average") indicates whether to compare the LD threshold between the last marker in a block and the new marker ("flanking")
@@ -99,14 +99,14 @@ data("pairwise_ld", package = "FastStack")
 #(i.e., not average LD to the block)
 
 haploblocks = def_blocks(ld = ld_pairs, map = map, method = "flanking",
-                          threshold = 0.2, tolerance = 4, tol_reset = TRUE,
+                         threshold = 0.2, tolerance = 4, tol_reset = TRUE,
                          start = "LD", parallel = FALSE)
 
 #turn the block object into a data frame
 haploblocks = block_obj_to_df(haploblocks, map)
 
 #######################################
-    #### Compute localGEBV  #####
+#### Compute localGEBV  #####
 #######################################
 
 #the marker pecov (prediction error covariance matrix) is only needed if you want to compute
@@ -117,7 +117,6 @@ haploblocks = block_obj_to_df(haploblocks, map)
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-data("marker_pecov", package = "FastStack")
 data("marker_effects", package = "FastStack")
 
 
@@ -138,13 +137,14 @@ data("marker_effects", package = "FastStack")
 #The package will internally center markers if center = TRUE. If the matrix is already centered, centering won't change the values
 #or centering can be set to FALSE.
 
-#If you want genotype/haplotype configurations to match the 0/1/2 format (or -1/0/1 if that was utilized), provide the uncentered genotype matrix and set center = TRUE.
-#Otherwise, the reported genotype/haplotype configurations will reflect centered values. For clarity, I recommend providing 0/1/2 or -1/0/1 format.
+#If you want genotype/haplotype configurations to match the 0/1/2 format, provide the uncentered genotype matrix and set center = TRUE.
+#Otherwise, the reported genotype/haplotype configurations will reflect centered values. For clarity, you must provide dosage format
+# (usually 0/1/2 for diploid, up to 9 for polypoid). We currently support polyploidy up to a ploidy of 9.
 
 haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
-                                    marker_pecov = marker_pecov, set_missing_NA = TRUE, center = TRUE)
+                                    set_missing_NA = TRUE, center = TRUE)
 ##################################
-   ####  Visualizations  #####
+####  Visualizations  #####
 ##################################
 
 #must provide the column of the marker effects as well as the column indicating the chromosome and position on the chromosome
@@ -182,7 +182,7 @@ ld_decay_plot
 
 
 ##############################################
-   #### Parent Selection with the GA ####
+#### Parent Selection with the GA ####
 ##############################################
 
 #select top 15 haploblocks (arbitrary) and perform the GA

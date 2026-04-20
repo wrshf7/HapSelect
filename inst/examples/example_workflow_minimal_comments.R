@@ -70,7 +70,6 @@ haploblocks = block_obj_to_df(haploblocks, map)
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-data("marker_pecov", package = "FastStack")
 data("marker_effects", package = "FastStack")
 
 
@@ -78,7 +77,7 @@ data("marker_effects", package = "FastStack")
 
 #localGEBV calculation
 haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
-                                    marker_pecov = marker_pecov, set_missing_NA = TRUE, center = TRUE)
+                                    set_missing_NA = TRUE, center = TRUE)
 ##################################
    ####  Visualizations  #####
 ##################################
