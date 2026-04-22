@@ -8,6 +8,7 @@ import(GA)
 import(ggplot2)
 import(progressr)
 import(purrr)
+import(rrBLUP)
 
 export(make_blocks_cpp)
 export(block_obj_to_df)

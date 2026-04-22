@@ -19,9 +19,9 @@ Authors@R: c(
       role = c("aut")
     )
   )
-Description: Provides tools to order marker maps, compute pairwise linkage
+Description: Provides tools to process genomic input files, compute pairwise linkage
     disequilibrium, define haplotype blocks (haploblocks), estimate local genomic estimated
-    breeding values (localGEBV), visualize marker and localGEBV patterns,
+    breeding values (localGEBV), visualize marker, haploblock, and localGEBV patterns,
     and optimize parent selection for genomic selection with a genetic algorithm workflow.
 License: GPL-3
 Encoding: UTF-8
