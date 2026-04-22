@@ -68,7 +68,7 @@ cat(
 progressr::handlers("void")
 
 cat("Benchmarking compute_local_GEBV\n")
-r_gebv = time_reps(n_reps, function() {
+benchmark_gebv = time_reps(n_reps, function() {
   compute_local_GEBV(
     geno           = geno,
     marker_effects = marker_effects,
@@ -77,11 +77,11 @@ r_gebv = time_reps(n_reps, function() {
     mean_adjust    = TRUE
   )
 })
-cat("  Elapsed (s): ", paste(round(r_gebv$times, 3), collapse = ", "),
-    "  |  mean: ", round(mean(r_gebv$times), 3), "s\n", sep = "")
+cat("  Elapsed (s): ", paste(round(benchmark_gebv$times, 3), collapse = ", "),
+    "  |  mean: ", round(mean(benchmark_gebv$times), 3), "s\n", sep = "")
 
 # Summary ----------------------------------------------------------------------
-summary_df = make_row("LocalGEBV (Serial)", r_gebv$times, n_blocks)
+summary_df = make_row("LocalGEBV (Serial)", benchmark_gebv$times, n_blocks)
 row.names(summary_df) = NULL
 
 cat("\nBenchmark summary (", n_reps, " reps each)\n", sep = "")
