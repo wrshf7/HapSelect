@@ -39,7 +39,7 @@ haplotype_p_value_calc = function(haplotype_effect, haplotype_PEV){
 # marker_means_block - named numeric vector of per-marker mean dosage across all individuals, used for centering
 # set_missing_NA     - logical; if TRUE any individual with >= 1 missing genotype in the block gets NA effect;
 #                      if FALSE only individuals with all genotypes missing get NA (partial NA imputed to 0)
-#  mean_adjust       - logical; if TRUE subtract marker_means_block from each marker column before the multiply;
+# mean_adjust       - logical; if TRUE subtract marker_means_block from each marker column before the multiply;
 #                      must match how marker effects were originally estimated
 local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pecov,
                                  haplo_test, marker_means_block, set_missing_NA,  mean_adjust){
@@ -185,12 +185,17 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
   snp_index = setNames(seq_len(nrow(geno)), geno[,1])
   marker_index = setNames(seq_len(nrow(marker_effects)), marker_effects[,1])
   
-  
   #set up progress bar
   progressr::handlers("txtprogressbar")
   progressr::with_progress({
     #define number of steps in progress bar
     p = progressr::progressor(steps = nrow(haploblocks_df))
+
+    # Precompute a set of marker ids for each block to speed up the filtering step within the loop
+    block_marker_ids = setNames(
+        strsplit(haploblocks_df$Block, ";"),
+        haploblocks_df$Block_ID
+    )
     
     #spread the CPU love across the different haploblocks
     local_GEBV = purrr::map(haploblocks_df$Block_ID, function(haploblock){
@@ -199,11 +204,11 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
       #markers = strsplit(haploblocks_df[haploblocks_df$Block_ID == haploblock, "Block"], ";")[[1]]
       #markers = marker_effects[marker_effects[,1] %in% markers, ]
       
-      marker_ids = strsplit(haploblocks_df[haploblocks_df$Block_ID == haploblock, "Block"], ";")[[1]]
+      marker_ids = block_marker_ids[[haploblock]]
       markers = marker_effects[marker_index[marker_ids], ]
       
       #extract genotypes of the markers
-      geno_markers = geno[geno[,1] %in% markers[,1], 4:ncol(geno)]
+      geno_markers = geno[snp_index[marker_ids], 4:ncol(geno)]
       marker_means_block = marker_means[marker_ids]
 
       #compute all of the necessary stats and values
