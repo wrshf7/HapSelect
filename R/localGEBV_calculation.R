@@ -1,10 +1,10 @@
 ####load dependencies####
 
 ####Functions to compute the haplotype effect, PEV, and P-Value####
-haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_block, center){
+haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_block, mean_adjust){
   #haplotype estimated effect (linear contract of marker effects)
   
-  if(center){
+  if(mean_adjust){
     haplotype = haplotype - marker_means_block
   }
   
@@ -13,8 +13,8 @@ haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_b
   return(haplotype_effect)
 }
 
-haplotype_PEV_calc = function(haplotype, haplotype_pecov, marker_means_block, center){
-  if(center){
+haplotype_PEV_calc = function(haplotype, haplotype_pecov, marker_means_block, mean_adjust){
+  if(mean_adjust){
     haplotype = haplotype - marker_means_block
   }
   PEV = (t(haplotype) %*% haplotype_pecov %*% haplotype)[1,1]
@@ -39,31 +39,68 @@ haplotype_p_value_calc = function(haplotype_effect, haplotype_PEV){
 # marker_means_block - named numeric vector of per-marker mean dosage across all individuals, used for centering
 # set_missing_NA     - logical; if TRUE any individual with >= 1 missing genotype in the block gets NA effect;
 #                      if FALSE only individuals with all genotypes missing get NA (partial NA imputed to 0)
-# center             - logical; if TRUE subtract marker_means_block from each marker column before the multiply;
+#  mean_adjust       - logical; if TRUE subtract marker_means_block from each marker column before the multiply;
 #                      must match how marker effects were originally estimated
 local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pecov,
-                                 haplo_test, marker_means_block, set_missing_NA, center){
-
+                                 haplo_test, marker_means_block, set_missing_NA,  mean_adjust){
   block_marker_effects = as.matrix(markers[, 2])
-
   geno_matrix    = t(as.matrix(geno_markers))
+
+  # Extract all haplotype keys for the individuals in this block, and the unique haplotypes observed
   haplotype_keys = apply(geno_matrix, 1, paste, collapse = ",")
   unique_keys    = unique(haplotype_keys)
 
+  # Matrices that identify which haplotypes have missing genotypes, and which have all genotypes missing
   has_missing = apply(geno_matrix, 1, anyNA)
   all_missing = apply(geno_matrix, 1, function(x) all(is.na(x)))
 
   filtered_matrix = geno_matrix
-  if (center) filtered_matrix = sweep(geno_matrix, 2, marker_means_block, "-")
+
+  # If mean_adjust is TRUE, center the genotype matrix by subtracting the marker means (per marker) before multiplying by effects.
+  if (mean_adjust) {
+    filtered_matrix = sweep(geno_matrix, 2, marker_means_block, "-")
+  }
+  
+  # For individuals with any missing genotypes, set those genotypes to 0 to prevent calculation issues.
   filtered_matrix[is.na(filtered_matrix)] = 0
 
+  # Calculate the effect of each unique haplotype
   all_effects = drop(filtered_matrix %*% block_marker_effects)
-  if (set_missing_NA) all_effects[has_missing] = NA else all_effects[all_missing] = NA
 
+  # Add NA back to individuals with missing genotypes according to earlier has_missing and all_missing matrices. 
+  # If set_missing_NA is TRUE, any individual with >= 1 missing genotype gets NA
+  if (set_missing_NA) {
+    all_effects[has_missing] = NA
+  # Otherwise, only individuals with all genotypes missing get NA (partial NA imputed to 0)
+  } else {
+    all_effects[all_missing] = NA
+  }
+
+  # The number of unique haplotypes observed in this block
   num_haplo      = length(unique_keys)
-  HaploID        = paste(haploblock_ID, seq_len(num_haplo), sep = ":")
+  # Create a lookup table to match each unique haplotype back to its effect
+  HaploID        = paste(haploblock_ID, seq_len(num_haplo), sep = ",")
   unique_effects = all_effects[match(unique_keys, haplotype_keys)]
-  haplotype_df   = data.frame(
+
+  # Only perform PECOV and p-value calculations if haplo_test is TRUE AND marker_pecov is provided
+  if (haplo_test && !missing(marker_pecov)) {
+    haplotype_pecov = marker_pecov[markers[,1], markers[,1]]
+
+    # Create a raw matrix of haplotype configurations to be used in the PEV calculation.
+    raw_matrix = geno_matrix
+    raw_matrix[is.na(raw_matrix)] = 0
+    unique_raw = raw_matrix[match(unique_keys, haplotype_keys), , drop = FALSE]
+
+    # Calculate PEV for each unique haplotype
+    unique_PEV  = apply(unique_raw, 1, function(h) {
+      haplotype_PEV_calc(h, haplotype_pecov, marker_means_block, mean_adjust)
+    })
+    # Calculate p-significance for each unique haplotype
+    unique_pval = haplotype_p_value_calc(unique_effects, unique_PEV)
+  }
+
+  # Create data frame with common haplotype information to be returned for this block
+  haplotype_df = data.frame(
     Block_ID         = rep(haploblock_ID, num_haplo),
     Haplo_ID         = HaploID,
     Haplotype        = unique_keys,
@@ -71,10 +108,20 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
     stringsAsFactors = FALSE
   )
 
-  haplotype_IDs        = HaploID[match(haplotype_keys, unique_keys)]
-  var_haplo_effects    = mean((all_effects    - mean(all_effects,    na.rm = TRUE))^2, na.rm = TRUE)
+  # If PEV and p-value were calculated, add those to the haplotype_df before returning
+  if (!missing(unique_PEV) && !missing(unique_pval)) {
+    haplotype_df$Haplotype_PEV     = unique_PEV
+    haplotype_df$Haplotype_P_Value = unique_pval
+  }
+  
+  #make a vector of all individuals' haplotype IDs at this block
+  haplotype_IDs = HaploID[match(haplotype_keys, unique_keys)]
+  #var of all haplotyple effects for block var
+  var_haplo_effects = mean((all_effects - mean(all_effects,    na.rm = TRUE))^2, na.rm = TRUE)
+  #haploblock effect variance (population variance)
   unique_var_haplo_effects = mean((unique_effects - mean(unique_effects, na.rm = TRUE))^2, na.rm = TRUE)
 
+  # Return the final constructed list of outputs for this block
   return_list = list(
     haplotype_df          = haplotype_df,
     haplotype_IDs         = haplotype_IDs,
@@ -109,7 +156,7 @@ check_effects = function(marker_effects){
 }
 
 ####Head function to split by block and compute local GEBV per individual####
-compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, center = TRUE){
+compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, mean_adjust = TRUE){
   
   #check marker effects
   marker_effects = check_effects(marker_effects)
@@ -168,7 +215,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
         haplo_test = haplo_test,
         marker_means_block = marker_means_block,
         set_missing_NA = set_missing_NA, 
-        center = center
+        mean_adjust = mean_adjust
       )
       
       #progress the progress bar
