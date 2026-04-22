@@ -94,7 +94,7 @@ funnel_plot
 haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 haploblock_plot
 
-marker_density_plot = plot_marker_density(map_df = map, bin_size_kb = 500)
+marker_density_plot = plot_marker_density(map_df = map, bin_size = 500000)
 marker_density_plot
 
 ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")

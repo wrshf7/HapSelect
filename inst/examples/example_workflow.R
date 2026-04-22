@@ -164,7 +164,7 @@ haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 haploblock_plot
 
 #marker density plot
-marker_density_plot = plot_marker_density(map_df = map, bin_size_kb = 500)
+marker_density_plot = plot_marker_density(map_df = map, bin_size = 500000)
 marker_density_plot
 
 #LD decay plot

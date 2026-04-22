@@ -437,7 +437,7 @@ block_obj_to_df = function(block_obj, map) {
   })
 
   block_df = block_df[, c(1, 8, 2:7)]
-  block_df$Physical_Distance_kb = (block_df$End_Pos - block_df$Start_Pos) / 1000
+  block_df$Block_Size = (block_df$End_Pos - block_df$Start_Pos)
 
   return(block_df)
 }
@@ -451,16 +451,16 @@ block_summary = function(block_df) {
 
   mean_snp        = mean(block_df$Num_SNP, na.rm = TRUE)
   max_snp         = max(block_df$Num_SNP,  na.rm = TRUE)
-  mean_size       = mean(block_df[block_df$Physical_Distance_kb != 0, "Physical_Distance_kb"], na.rm = TRUE)
-  max_size        = max(block_df[block_df$Physical_Distance_kb  != 0, "Physical_Distance_kb"], na.rm = TRUE)
+  mean_size       = mean(block_df[block_df$Block_Size != 0, "Block_Size"], na.rm = TRUE)
+  max_size        = max(block_df[block_df$Block_Size  != 0, "Block_Size"], na.rm = TRUE)
   singletons      = nrow(block_df[block_df$Num_SNP == 1 & !is.na(block_df$Num_SNP), ])
   perc_singletons = singletons / nrow(block_df[!is.na(block_df$Num_SNP), ])
 
   data.frame(
     Mean_SNP_per_Block       = mean_snp,
     Max_SNP_per_Block        = max_snp,
-    Mean_Block_Size_kb       = mean_size,
-    Max_Block_Size_kb        = max_size,
+    Mean_Block_Size          = mean_size,
+    Max_Block_Size           = max_size,
     Singleton_Blocks         = singletons,
     Percent_Singleton_Blocks = perc_singletons * 100
   )
