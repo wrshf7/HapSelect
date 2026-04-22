@@ -1,4 +1,4 @@
-useDynLib(FastStack, .registration = TRUE)
+useDynLib(HapSelect, .registration = TRUE)
 importFrom(Rcpp, sourceCpp)
 import(cowplot)
 import(dplyr)

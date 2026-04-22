@@ -1,4 +1,4 @@
-Package: FastStack
+Package: HapSelect
 Type: Package
 Title: Haplotype Block Discovery and localGEBV Analysis
 Version: 0.1.0
