@@ -2,7 +2,7 @@
 ####  load dependencies  ####
 #####################################
 
-# Package functions and required dependencies are provided by FastStack.
+# Package functions and required dependencies are provided by HapSelect.
 
 required_fns <- c(
   "order_map", "pairwise_ld", "def_blocks", "block_obj_to_df",

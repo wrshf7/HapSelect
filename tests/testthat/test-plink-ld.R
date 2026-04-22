@@ -1,4 +1,4 @@
-test_that("format_plink_ld converts PLINK output to FastStack LD format", {
+test_that("format_plink_ld converts PLINK output to HapSelect LD format", {
   tmp_dir <- tempfile("plink_ld_test_")
   dir.create(tmp_dir)
   prefix <- file.path(tmp_dir, "toy")
@@ -26,7 +26,7 @@ test_that("format_plink_ld converts PLINK output to FastStack LD format", {
     ld_path
   )
 
-  bim <- FastStack:::read_plink_bim(bim_path)
+  bim <- HapSelect:::read_plink_bim(bim_path)
   observed <- format_plink_ld(ld_path, bim_path)
 
   expected <- data.frame(

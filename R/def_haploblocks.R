@@ -1,70 +1,76 @@
-#####function to extend a block in a given direction, either left or right
-# direction must be either -1 for left or +1 for right
-extend_block = function(direction, edge_marker, markers, assigned, ld_pairs, block, method, threshold, tolerance, tol_reset){
+####load dependencies####
 
-  #start counting LD pairs that didn't meet the threshold and track the marker for the next iteration to see if it should be included
+# extend_block -----------------------------------------------------------------
+# NOTE: This is an R implementation and it is much slower than the C++ version in extend_block.cpp. (3.5× to 17.5× depending on method and settings)
+#       It is retained here for clarity and testing purposes.
+# markers one at a time until the LD threshold is no longer met.
+#
+# direction    : -1 to extend left, +1 to extend right
+# edge_marker  : the marker currently at the boundary of the block in the
+#                direction of extension
+# marker_names : ordered list of marker names for the chromosome,
+#                sorted by physical position
+# marker_idx   : named integer lookup of marker name -> position index,
+#                pre-built in chromo_blocking for O(1) position lookups
+# assigned     : lookup table of marker name -> TRUE/FALSE indicating whether
+#                each marker has already been placed in a block
+# ld_lookup    : named numeric lookup of "Name1,Name2" -> LD value,
+#                pre-built in chromo_blocking for O(1) LD lookups
+# block        : marker names currently in the block
+# method       : "flanking" — LD of candidate vs edge marker only;
+#                "average"  — mean LD of candidate vs all markers in the block
+# threshold    : minimum LD value required to extend the block
+# tolerance    : number of consecutive below-threshold markers allowed before
+#                stopping (absorbed into the block if a later marker meets the threshold)
+# tol_reset    : if TRUE, reset the tolerance counter after each accepted marker
+extend_block = function(direction, edge_marker, marker_names, marker_idx,
+                        assigned, ld_lookup, block, method, threshold,
+                        tolerance, tol_reset) {
+
   tolerance_counter = 0
-  failed_markers = c()
+  failed_markers    = c()
 
-  # repeat extension until break point is reached (tolerance and threshold)
   repeat {
 
-    #extract index of the first marker in the block from the SNP pair
-    edge_index = match(edge_marker, markers)
+    edge_index = marker_idx[[edge_marker]]
 
-    #don't extend if it was the first marker
-    # if extending left, the edge marker is the first marker in the block, so we check if it's the first marker in the chromosome
-    if (direction == -1 && edge_index == 1) break
-    # if extending right, the edge marker is the last marker in the block, so we check if it's the last marker in the chromosome
-    if (direction == 1 && edge_index == length(markers)) break
+    if (direction == -1 && edge_index == 1)                  break
+    if (direction ==  1 && edge_index == length(marker_names))  break
 
-    #get index of marker to the left/right of the first SNP in the block - modify for skipped markers from tolerance fail
+    step = length(failed_markers) + 1
     if (direction == -1) {
-      # if extending left, the candidate marker is to the left of the edge marker, so we subtract from the index
-      candidate_marker = markers[edge_index - (length(failed_markers) + 1)]
+      candidate_marker = marker_names[edge_index - step]
     } else {
-      # if extending right, the candidate marker is to the right of the edge marker, so we add to the index
-      candidate_marker = markers[edge_index + (length(failed_markers) + 1)]
+      candidate_marker = marker_names[edge_index + step]
     }
 
-    #added check if tolerance checks for failed_markers was out of bounds
-    if(length(candidate_marker) == 0) break
-    if(is.na(candidate_marker)) break
+    if (length(candidate_marker) == 0 || is.na(candidate_marker)) break
+    if (assigned[candidate_marker])                             break
 
-    #if the candidate marker is already in a block, break
-    if (assigned[candidate_marker]) break
-
-    #if utilizing the flanking method, pull the LD of the SNP to the left/right identified from candidate_marker
     if (method == "flanking") {
       if (direction == -1) {
-        # if extending left, the edge marker is to the right of the candidate marker, so Name1 is candidate and Name2 is edge
-        ld_vals = ld_pairs[ld_pairs$Name1 == candidate_marker & ld_pairs$Name2 == edge_marker, ][["LD"]]
+        # candidate is to the left so Name1 = candidate, Name2 = edge
+        ld_vals = ld_lookup[paste(candidate_marker, edge_marker, sep = ",")]
       } else {
-        # if extending right, the edge marker is to the left of the candidate marker, so Name1 is edge and Name2 is candidate
-        ld_vals = ld_pairs[ld_pairs$Name1 == edge_marker & ld_pairs$Name2 == candidate_marker, ][["LD"]]
+        # candidate is to the right so Name1 = edge, Name2 = candidate
+        ld_vals = ld_lookup[paste(edge_marker, candidate_marker, sep = ",")]
       }
     }
 
-    #if utilizing the average method, then compute the average LD of the new SNP considered with all markers in the block currently
-    if (method=="average") {
+    if (method == "average") {
       if (direction == -1) {
-        # if extending left, the candidate marker is to the left of the block, so Name1 is candidate and Name2 is any marker in the block
-        ld_vals = ld_pairs[ld_pairs$Name1 == candidate_marker & ld_pairs$Name2 %in% block, ][["LD"]]
+        # candidate is to the left so Name1 = candidate, Name2 = any block SNP
+        ld_vals = ld_lookup[paste(candidate_marker, block, sep = ",")]
       } else {
-        # if extending right, the candidate marker is to the right of the block, so Name1 is any marker in the block and Name2 is candidate
-        ld_vals = ld_pairs[ld_pairs$Name1 %in% block & ld_pairs$Name2 == candidate_marker, ][["LD"]]
+        # candidate is to the right so Name1 = any block SNP, Name2 = candidate
+        ld_vals = ld_lookup[paste(block, candidate_marker, sep = ",")]
       }
     }
 
-    #compute the LD of the average (if it's just flanking mean = itself)
     ld_mean = mean(ld_vals, na.rm = TRUE)
 
-    #check to see if it meets threshold criteria and check tolerance counter and threshold like left block extension
-    #handles missing values now as well - iterates the tolerance counter
     if (ld_mean <= threshold || is.nan(ld_mean)) {
-
-      #check to see if the tolerance threshold has been met, if not add one to the counter
-      if(tolerance_counter >= tolerance) {
+      if (tolerance_counter >= tolerance) {
         break
       } else {
         tolerance_counter = tolerance_counter + 1
@@ -73,346 +79,389 @@ extend_block = function(direction, edge_marker, markers, assigned, ld_pairs, blo
       }
     }
 
-    #reset tolerance counter if option is provided
-    if(tol_reset){
-      tolerance_counter = 0
-    }
+    if (tol_reset) tolerance_counter = 0
 
-    #if the threshold is met, add it to the block - check to see if a marker had been skipped as part of the tolerance and threshold check
-    if(length(failed_markers) > 0) {
+    if (length(failed_markers) > 0) {
       if (direction == -1) {
-        # if extending left, the candidate marker and failed markers are added to the left of the block
         block = c(candidate_marker, failed_markers, block)
       } else {
-        # if extending right, the candidate marker and failed markers are added to the right of the block
         block = c(block, failed_markers, candidate_marker)
       }
-
-      #reset to track for further extension
       failed_markers = c()
-    } else{
+    } else {
       if (direction == -1) {
-        # if extending left, the candidate marker is added to the left of the block
         block = c(candidate_marker, block)
       } else {
-        # if extending right, the candidate marker is added to the right of the block
         block = c(block, candidate_marker)
       }
     }
 
-    #update the first marker and repeat the loop
     edge_marker = candidate_marker
   }
 
-  #return relevant objects
   return(block)
 }
 
-#####function to find a SNP pair to start block extension#####
-make_blocks = function(ld.chr, ld.adj.chr, snps.chr, snps.pos.chr, first.mkr.chr, last.mkr.chr,
-                       assigned, method, threshold, tolerance, tol_reset, start){
 
-  chromo_blocks = list()
+# make_blocks ------------------------------------------------------------------
+# NOTE: This is an R implementation and it is much slower than the C++ version in make_blocks.cpp (3.5× to 17.5× depending on method and settings)
+#       It is retained here for clarity and testing purposes.
+# Drives block formation for a single chromosome. Finds seed marker pairs and
+# calls extend_block to grow each block left and right. Any markers not absorbed
+# into a block remain unassigned and are handled by the caller.
+#
+# ld_lookup        : named numeric lookup of "Name1,Name2" -> LD value,
+#                    pre-built in chromo_blocking for O(1) LD lookups
+# ld_adj           : adjacent-only subset of the chromosome LD table
+#                    (Locus2 == Locus1 + 1); used to find seed pairs
+# marker_names     : ordered list of marker names for the chromosome,
+#                    sorted by physical position
+# marker_idx       : named integer lookup of marker name -> position index,
+#                    pre-built in chromo_blocking for O(1) position lookups
+# marker_positions : physical positions of each marker, matching the order of marker_names
+# first_marker     : name of the first (leftmost) marker on the chromosome
+# last_marker      : name of the last (rightmost) marker on the chromosome
+# assigned         : lookup table of marker name -> TRUE/FALSE indicating whether
+#                    each marker is already in a block
+# method           : LD evaluation method passed through to extend_block
+# threshold        : minimum LD value required to seed or extend a block
+# tolerance        : consecutive below-threshold markers allowed during extension
+# tol_reset        : whether to reset the tolerance counter on each accepted marker
+# start            : "LD"        — seed from the highest-LD adjacent pair first;
+#                    "beginning" — sweep left to right from the first marker
+make_blocks = function(ld_lookup, ld_adj, marker_names, marker_idx,
+                       marker_positions, first_marker, last_marker, assigned,
+                       method, threshold, tolerance, tol_reset, start) {
 
-  if(start == "LD"){
-    #keep making blocks until there is no pair with high enough LD
+  chrom_blocks = list()
+
+  if (start == "LD") {
+
     repeat {
 
-      #identify max LD pair and pull its id
-      max.ld.idx = which.max(ld.adj.chr$LD)
+      max_ld_idx = which.max(ld_adj$LD)
+      max_ld     = ld_adj$LD[max_ld_idx]
+      if (max_ld <= threshold) break
 
-      #extract that LD value and check it
-      max.ld = ld.adj.chr$LD[max.ld.idx]
-      if (max.ld <= threshold) break
+      seed_marker_left  = as.character(ld_adj$Name1[max_ld_idx])
+      seed_marker_right = as.character(ld_adj$Name2[max_ld_idx])
 
-      #Pull the two marker names in the LD pair
-      first.mkr.blk = as.character(ld.adj.chr$Name1[max.ld.idx])
-      last.mkr.blk  = as.character(ld.adj.chr$Name2[max.ld.idx])
-
-      #if assigned is true for either marker in the LD pair (assigned to a block already), remove it from consideration - updated at the end of the block formation
-      if (assigned[first.mkr.blk] || assigned[last.mkr.blk]) {
-        ld.adj.chr = ld.adj.chr[-max.ld.idx, ]
+      # if either seed marker is already in a block, drop this pair and move on
+      if (assigned[seed_marker_left] || assigned[seed_marker_right]) {
+        ld_adj = ld_adj[-max_ld_idx, ]
         next
       }
 
-      #extend the block
-      block = c(first.mkr.blk, last.mkr.blk)
+      block = c(seed_marker_left, seed_marker_right)
 
-      #extend the block
-      #extend left
       block = extend_block(
-        direction = -1,
-        edge_marker = first.mkr.blk,
-        markers = snps.chr,
-        assigned = assigned,
-        ld_pairs = ld.chr,
-        block = block,
-        method = method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset
-      )
-      #extend right
-      block = extend_block(
-        direction = 1,
-        edge_marker = last.mkr.blk,
-        markers = snps.chr,
-        assigned = assigned,
-        ld_pairs = ld.chr,
-        block = block,
-        method = method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset
+        direction    = -1,
+        edge_marker  = seed_marker_left,
+        marker_names = marker_names,
+        marker_idx   = marker_idx,
+        assigned     = assigned,
+        ld_lookup    = ld_lookup,
+        block        = block,
+        method       = method,
+        threshold    = threshold,
+        tolerance    = tolerance,
+        tol_reset    = tol_reset
       )
 
-      #update the assigned variable to indicate that SNP have been assigned to a block
+      block = extend_block(
+        direction    = 1,
+        edge_marker  = seed_marker_right,
+        marker_names = marker_names,
+        marker_idx   = marker_idx,
+        assigned     = assigned,
+        ld_lookup    = ld_lookup,
+        block        = block,
+        method       = method,
+        threshold    = threshold,
+        tolerance    = tolerance,
+        tol_reset    = tol_reset
+      )
+
       assigned[block] = TRUE
+      chrom_blocks[[length(chrom_blocks) + 1]] = block
 
+      # remove all adjacent pairs that involve markers now in this block
+      pairs_in_block = with(ld_adj, Name1 %in% block | Name2 %in% block)
+      ld_adj = ld_adj[!pairs_in_block, ]
 
-      chromo_blocks[[length(chromo_blocks) + 1]] = block
-
-
-      #ask victor about this code - we need to figure out whether we can use this or assigned
-      #probable answer - the last snp doesn't have an "adjacent" snp to the right, so ld.adj.chr has 1 less
-      #snp than snp.chr. The used variable is therefore 1 shorter
-      used = with(ld.adj.chr, Name1 %in% block | Name2 %in% block)
-      ld.adj.chr = ld.adj.chr[!used, ]
-
-
-      if (nrow(ld.adj.chr) == 0) break
-
-
+      if (nrow(ld_adj) == 0) break
     }
-  } else if(start == "beginning"){
 
-    position = 1
-    total_SNP = length(snps.chr)
+  } else if (start == "beginning") {
+
+    position   = 1
+    total_snps = length(marker_names)
 
     repeat {
 
-      #Pull the two marker names in the LD pair
-      last.mkr.blk = as.character(snps.chr[position])
+      seed_marker = as.character(marker_names[position])
+      block          = seed_marker
 
-      block = last.mkr.blk
-
-      #extend the block
       block = extend_block(
-        direction = 1,
-        edge_marker = last.mkr.blk,
-        markers = snps.chr,
-        assigned = assigned,
-        ld_pairs = ld.chr,
-        block = block,
-        method = method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset
+        direction    = 1,
+        edge_marker  = seed_marker,
+        marker_names = marker_names,
+        marker_idx   = marker_idx,
+        assigned     = assigned,
+        ld_lookup    = ld_lookup,
+        block        = block,
+        method       = method,
+        threshold    = threshold,
+        tolerance    = tolerance,
+        tol_reset    = tol_reset
       )
 
-      #update the assigned variable to indicate that SNP have been assigned to a block
       assigned[block] = TRUE
+      chrom_blocks[[length(chrom_blocks) + 1]] = block
 
-
-      chromo_blocks[[length(chromo_blocks) + 1]] = block
-
-      #update position
-      position = match(block[length(block)], snps.chr) + 1
-
-      if (position > length(snps.chr)) break
+      position = marker_idx[[block[length(block)]]] + 1
+      if (position > total_snps) break
     }
   }
-  chromo_blocks = list(chromo_blocks, assigned)
-  return(chromo_blocks)
+
+  return(list(chrom_blocks, assigned))
 }
 
+# make_blocks_c ---------------------------------------------------------------
+# Wrapper around the C++ implementation of make_blocks. Accepts the same
+# arguments and returns the same result, but delegates to compiled code.
+# This is much faster than the R implementation, especially on larger chromosomes, and is the default in chromo_blocking.
+make_blocks_c = function(ld_lookup, ld_adj, marker_names, marker_idx,
+                          marker_positions, first_marker, last_marker, assigned,
+                          method, threshold, tolerance, tol_reset, start) {
+  make_blocks_cpp(
+    ld_lookup    = ld_lookup,
+    ld_adj       = ld_adj,
+    marker_names = marker_names,
+    marker_idx   = marker_idx,
+    assigned     = assigned,
+    method       = method,
+    threshold    = threshold,
+    tolerance    = as.integer(tolerance),
+    tol_reset    = tol_reset,
+    start        = start
+  )
+}
 
-#####master blocking function at the chromosome level#####
-chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset, threshold, start){
+# chromo_blocking --------------------------------------------------------------
+# Coordinates haploblock formation for a single chromosome. Prepares the
+# chromosome-level data, builds the O(1) lookup structures, calls make_blocks,
+# then adds any unassigned markers as singleton blocks.
+#
+# chr       : chromosome identifier (matches values in ld$Chrom)
+# ld        : pairwise LD table, pre-filtered to this chromosome
+# map       : marker map table with columns SNP, Chromosome, Position
+# method    : LD evaluation method ("flanking" or "average")
+# tolerance : consecutive below-threshold markers allowed during block extension
+# tol_reset : whether to reset the tolerance counter on each accepted marker
+# threshold : minimum LD value to seed or extend a block
+# start     : seed strategy ("LD" or "beginning")
+chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
+                           threshold, start) {
 
-  #pull the LD information for the chromosome
-  ld.chr = ld[ld$Chrom == chr, ]
+  ld_chrom = ld[ld$Chrom == chr, ]
+  ld_adj   = ld_chrom[ld_chrom$Locus2 == ld_chrom$Locus1 + 1, ]
 
-  #pulling the immediately adjacent SNP to find all SNP pairs
-  ld.adj.chr = ld.chr[ld.chr$Locus2 == ld.chr$Locus1 + 1, ]
+  marker_names     = unique(c(ld_chrom$Name1, ld_chrom$Name2))
+  marker_positions = map$Position[match(marker_names, map$SNP)]
+  marker_names     = marker_names[order(marker_positions)]
 
-  #pull all snp name on the chromosome
-  snps.chr = unique(c(ld.chr$Name1, ld.chr$Name2))
+  first_marker = marker_names[1]
+  last_marker  = marker_names[length(marker_names)]
 
-  #match snp name to the position in the map file
-  snps.pos.chr = map$Position[match(snps.chr, map$SNP)]
+  assigned        = rep(FALSE, length(marker_names))
+  names(assigned) = marker_names
 
-  #order the snp based on position - should already be ordered
-  snps.chr = snps.chr[order(snps.pos.chr)]
+  # build once per chromosome; passed down to avoid rebuilding on every extension step
+  ld_lookup  = setNames(ld_chrom$LD, paste(ld_chrom$Name1, ld_chrom$Name2, sep = ","))
+  marker_idx = setNames(seq_along(marker_names), marker_names)
 
-  #find the first and last SNP on the chromo - utilized to check whether blocks have reached the end of the chromosome
-  first.mkr.chr = snps.chr[1]
-  last.mkr.chr = snps.chr[length(snps.chr)]
+  # call the main blocking function implemented in C++
+  result = make_blocks_c(
+    ld_lookup        = ld_lookup,
+    ld_adj           = ld_adj,
+    marker_names     = marker_names,
+    marker_idx       = marker_idx,
+    marker_positions = marker_positions,
+    first_marker     = first_marker,
+    last_marker      = last_marker,
+    assigned         = assigned,
+    method           = method,
+    threshold        = threshold,
+    tolerance        = tolerance,
+    tol_reset        = tol_reset,
+    start            = start
+  )
 
-  #tracker utilized later to determine whether a SNP has been added to a block
-  assigned = rep(FALSE, length(snps.chr))
-  names(assigned) = snps.chr
+  # Alternatively, to use the R implementation of make_blocks, comment out the above call to make_blocks_c and uncomment the line below to call make_blocks instead.
+  # result = make_blocks(
+  #   ld_lookup        = ld_lookup,
+  #   ld_adj           = ld_adj,
+  #   marker_names     = marker_names,
+  #   marker_idx       = marker_idx,
+  #   marker_positions = marker_positions,
+  #   first_marker     = first_marker,
+  #   last_marker      = last_marker,
+  #   assigned         = assigned,
+  #   method           = method,
+  #   threshold        = threshold,
+  #   tolerance        = tolerance,
+  #   tol_reset        = tol_reset,
+  #   start            = start
+  # )
 
-  #return multiple objects - destructure after
-  chromo_blocks = make_blocks(ld.chr = ld.chr, ld.adj.chr = ld.adj.chr, snps.chr = snps.chr, snps.pos.chr = snps.pos.chr,
-             first.mkr.chr = first.mkr.chr, last.mkr.chr = last.mkr.chr, assigned = assigned, method = method,
-             threshold = threshold, tolerance = tolerance, tol_reset = tol_reset, start = start)
-
-  assigned = chromo_blocks[[2]]
-  chromo_blocks = chromo_blocks[[1]]
+  chrom_blocks = result[[1]]
+  assigned     = result[[2]]
 
   unassigned = names(assigned)[!assigned]
-
-  #add these as blocks
   for (snp in unassigned) {
-    chromo_blocks[[length(chromo_blocks) + 1]] = snp
+    chrom_blocks[[length(chrom_blocks) + 1]] = snp
   }
 
-  return(chromo_blocks)
+  return(chrom_blocks)
 }
 
 
-#####overall function to track progress, take input, and call blocking functions#####
-def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1, tol_reset = TRUE, threshold = 0.7, start = c("LD", "beginning"), parallel = FALSE){
+# def_blocks -------------------------------------------------------------------
+# Top-level function. Splits the LD data by chromosome, optionally parallelises
+# across chromosomes, and returns a named list of blocks per chromosome.
+#
+# ld        : pairwise LD table across all chromosomes
+#             (columns: Chrom, Locus1, Locus2, Name1, Name2, LD)
+# map       : marker map table with columns SNP, Chromosome, Position
+# method    : "flanking" — extend using LD between candidate and edge marker only;
+#             "average"  — extend using mean LD between candidate and all markers in the block
+# tolerance : number of consecutive below-threshold markers tolerated during extension
+# tol_reset : if TRUE, reset tolerance counter each time a marker is accepted
+# threshold : minimum LD (r²) required to seed or extend a block
+# start     : "LD"        — seed blocks from highest-LD adjacent pairs first;
+#             "beginning" — sweep chromosome left to right from the first marker
+# parallel  : if TRUE, process chromosomes in parallel using all available cores minus one
+def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1,
+                      tol_reset = TRUE, threshold = 0.7,
+                      start = c("LD", "beginning"), parallel = FALSE) {
 
-  start = match.arg(start)
+  start  = match.arg(start)
   method = match.arg(method)
 
-
-  #pull the list of chromosomes to parallelize
   chromosomes = sort(unique(ld$Chrom))
+  ld          = split(ld, ld$Chrom)
 
-  ld = split(ld, ld$Chrom)
-
-
-  #setup parallelization if called
-  if(parallel == TRUE){
-    #setup parallelization using futures and parallel package and utilize all but 1 core
+  if (parallel == TRUE) {
     future::plan(multisession, workers = parallel::detectCores() - 1)
-
-    #parallelization function
     map_fun = furrr::future_map
-
   } else {
-
-    #don't parallelize
     map_fun = purrr::map
-
   }
 
-  #track progress across chromosomes and set up progress bar
   handlers("txtprogressbar")
   with_progress({
-
-    #while tracking, set up the progressor for when the progress bar advances
     p = progressor(steps = length(chromosomes))
 
-
-    #form blocks across chromosomes - parallelize each chromosome
-    blocks_list = map_fun(ld, function(chromosome){
-
-      chr = unique(chromosome$Chrom)
-
-      #call chromosome blocking function
-      chromo_blocks = chromo_blocking(chr = chr, ld = chromosome, map = map, method = method, tolerance = tolerance,
-                                      threshold = threshold, start = start, tol_reset = tol_reset)
-
-      #after blocking on the chromosome is finished iterate the progress bar
+    blocks_list = map_fun(ld, function(chromosome) {
+      chr          = unique(chromosome$Chrom)
+      chrom_blocks = chromo_blocking(
+        chr       = chr,
+        ld        = chromosome,
+        map       = map,
+        method    = method,
+        tolerance = tolerance,
+        threshold = threshold,
+        start     = start,
+        tol_reset = tol_reset
+      )
       p()
-
-      return(chromo_blocks)
+      return(chrom_blocks)
     })
   })
 
-  if(parallel == TRUE){
-    plan(sequential)
-  }
+  if (parallel == TRUE) plan(sequential)
 
   names(blocks_list) = as.character(chromosomes)
-
   return(blocks_list)
 }
 
-#####Turn blocks into a dataframe####
-#function to pull SNP locations and chromosome of the block and then order the blocks
 
-#function to condense chromosome blocks into a df
-chromo_blocks_to_df = function(chromo, map){
+# chromo_blocks_to_df ----------------------------------------------------------
+# Converts the list of blocks for one chromosome into a table with one row per
+# block, including first/last marker names and physical positions.
+#
+# chrom_blocks : list of blocks, where each block is an ordered list of marker names
+# map          : marker map table with columns SNP, Chromosome, Position
+chromo_blocks_to_df = function(chrom_blocks, map) {
 
-  #extract first and last snp from a block, concatenate markers from a vector to a string
-  #and return as a df
-  chromo_df = map_dfr(chromo, function(block){
-    first_SNP = block[1]
-    last_SNP = block[length(block)]
+  block_df = map_dfr(chrom_blocks, function(block) {
+    first_marker    = block[1]
+    last_marker     = block[length(block)]
     block_length = length(block)
-    SNPs = paste(block, collapse = ";")
-    chromo_df = data.frame(
-      Block = SNPs,
-      Num_SNP = block_length,
-      First_SNP = first_SNP,
-      Last_SNP = last_SNP
+    marker_string   = paste(block, collapse = ";")
+    data.frame(
+      Block     = marker_string,
+      Num_SNP   = block_length,
+      First_SNP = first_marker,
+      Last_SNP  = last_marker
     )
-    return(chromo_df)
   })
 
-  #use the map file to define start and end locations of the block
-  chromo_df = left_join(chromo_df, map, c("First_SNP" = "SNP"))
+  block_df = left_join(block_df, map, c("First_SNP" = "SNP"))
 
-  map = map[,c("SNP", "Position")]
+  map      = map[, c("SNP", "Position")]
+  block_df = left_join(block_df, map, c("Last_SNP" = "SNP"))
 
-  chromo_df = left_join(chromo_df, map, c("Last_SNP" = "SNP"))
+  colnames(block_df) = c(colnames(block_df)[1:4], "Chrom", "Start_Pos", "End_Pos")
 
-  colnames(chromo_df) = c(colnames(chromo_df)[1:4], "Chrom", "Start_Pos", "End_Pos")
+  block_df          = block_df[order(block_df$Start_Pos), ]
+  block_df$Block_ID = 1:nrow(block_df)
+  block_df$Block_ID = paste(block_df$Chrom, block_df$Block_ID, sep = ":")
 
-  #order the blocks based on the first SNP location
-  chromo_df = chromo_df[order(chromo_df$Start_Pos), ]
-
-  #Give the blocks their ID and show which chromosome they come from
-  chromo_df$Block_ID = 1:nrow(chromo_df)
-  chromo_df$Block_ID = paste(chromo_df$Chrom, chromo_df$Block_ID, sep = ":")
-
-  return(chromo_df)
+  return(block_df)
 }
 
-#overall function to return block object and apply chromosome-level condensing
-block_obj_to_df = function(block_obj, map){
 
-  #only select the needed columns
-  map = map[,1:3]
+# block_obj_to_df --------------------------------------------------------------
+# Converts the full block list across all chromosomes returned by def_blocks
+# into a single flat table with one row per block.
+#
+# block_obj : per-chromosome block lists as returned by def_blocks
+# map       : marker map table with columns SNP, Chromosome, Position
+block_obj_to_df = function(block_obj, map) {
 
-  #Extract first and last SNP and block markers
-  block_df = map_dfr(block_obj, function(chromo){
-    chromo_df = chromo_blocks_to_df(chromo, map)
+  map      = map[, 1:3]
+  block_df = map_dfr(block_obj, function(chrom_blocks) {
+    chromo_blocks_to_df(chrom_blocks, map)
   })
 
-  #give each block an ID
-  #block_df$Block_ID = 1:nrow(block_df)
-
-  #rearrange columns
-  block_df = block_df[,c(1,8,2:7)]
-
+  block_df = block_df[, c(1, 8, 2:7)]
   block_df$Physical_Distance_kb = (block_df$End_Pos - block_df$Start_Pos) / 1000
 
   return(block_df)
 }
 
-######Create summary information of haploblock df########
 
-block_summary = function(block_df){
-  mean_snp = mean(block_df$Num_SNP, na.rm = TRUE)
-  max_snp = max(block_df$Num_SNP, na.rm = TRUE)
-  mean_size = mean(block_df[block_df$Physical_Distance_kb !=0, "Physical_Distance_kb"] , na.rm = TRUE)
-  max_size = max(block_df[block_df$Physical_Distance_kb !=0, "Physical_Distance_kb"] , na.rm = TRUE)
-  singletons = nrow(block_df[block_df$Num_SNP == 1 & !is.na(block_df$Num_SNP), ])
-  perc_singeltons = nrow(block_df[block_df$Num_SNP == 1 & !is.na(block_df$Num_SNP), ]) / nrow(block_df[!is.na(block_df$Num_SNP), ])
-  return_df = data.frame(
-    Mean_SNP_per_Block = mean_snp,
-    Max_SNP_per_Block = max_snp,
-    Mean_Block_Size_kb = mean_size,
-    Max_Block_Size_kb = max_size,
-    Singeton_Blocks = singletons,
-    Percent_Singleton_Blocks = perc_singeltons * 100
+# block_summary ----------------------------------------------------------------
+# Computes summary statistics across all blocks in a haploblock table.
+#
+# block_df : haploblock table as returned by block_obj_to_df
+block_summary = function(block_df) {
+
+  mean_snp        = mean(block_df$Num_SNP, na.rm = TRUE)
+  max_snp         = max(block_df$Num_SNP,  na.rm = TRUE)
+  mean_size       = mean(block_df[block_df$Physical_Distance_kb != 0, "Physical_Distance_kb"], na.rm = TRUE)
+  max_size        = max(block_df[block_df$Physical_Distance_kb  != 0, "Physical_Distance_kb"], na.rm = TRUE)
+  singletons      = nrow(block_df[block_df$Num_SNP == 1 & !is.na(block_df$Num_SNP), ])
+  perc_singletons = singletons / nrow(block_df[!is.na(block_df$Num_SNP), ])
+
+  data.frame(
+    Mean_SNP_per_Block       = mean_snp,
+    Max_SNP_per_Block        = max_snp,
+    Mean_Block_Size_kb       = mean_size,
+    Max_Block_Size_kb        = max_size,
+    Singleton_Blocks         = singletons,
+    Percent_Singleton_Blocks = perc_singletons * 100
   )
-
-  return(return_df)
 }

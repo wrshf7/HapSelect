@@ -1,4 +1,4 @@
-test_that("PLINK and FastStack LD implementations output match reasonably closely", {
+test_that("PLINK and HapSelect LD implementations output match reasonably closely", {
   skip_if(Sys.which("plink") == "", "PLINK is not installed")
 
   genotypes <- data.frame(
@@ -66,12 +66,12 @@ test_that("PLINK and FastStack LD implementations output match reasonably closel
     fail(paste("PLINK --make-bed failed:\n", paste(make_bed_output, collapse = "\n")))
   }
 
-  faststack_ld <- pairwise_ld(genotypes, parallelize = FALSE)
+  HapSelect_ld <- pairwise_ld(genotypes, parallelize = FALSE)
   plink_ld <- plink_pairwise_ld(bed_prefix)
 
   expect_equal(
-    faststack_ld[, c("Chrom", "Locus1", "Locus2", "Name1", "Name2")],
+    HapSelect_ld[, c("Chrom", "Locus1", "Locus2", "Name1", "Name2")],
     plink_ld[, c("Chrom", "Locus1", "Locus2", "Name1", "Name2")]
   )
-  expect_equal(faststack_ld$LD, plink_ld$LD, tolerance = 1e-6)
+  expect_equal(HapSelect_ld$LD, plink_ld$LD, tolerance = 1e-6)
 })

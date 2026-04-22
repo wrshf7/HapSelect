@@ -42,7 +42,7 @@ sudo apt install libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
 
 
 ## PLINK
-The PLINK package is an open source genome analysis tool set which can be used as an alternative to the FastStack implementation for operation like calculating LD, but requires additional installation steps.
+The PLINK package is an open source genome analysis tool set which can be used as an alternative to the HapSelect implementation for operation like calculating LD, but requires additional installation steps.
 
 ### Linux (Ubuntu/Debian)
 ```
@@ -70,8 +70,8 @@ plink --version
 Devtools is used to install dependencies and run tests
 Install devtools using `install.packages("devtools")`
 
-### FastStack Dependencies
-Next install the FastStack package level dependencies using devtools
+### HapSelect Dependencies
+Next install the HapSelect package level dependencies using devtools
 ```
 devtools::install_deps(dependencies = TRUE)
 ```
@@ -90,5 +90,5 @@ Rscript inst/scripts/benchmark_ld.R --n_markers=500 --n_individuals=200 --n_chr=
 ```
 
 This benchmark reports:
-- `FastStack::pairwise_ld()` runtime
-- `FastStack::plink_pairwise_ld()` runtime
+- `HapSelect::pairwise_ld()` runtime
+- `HapSelect::plink_pairwise_ld()` runtime

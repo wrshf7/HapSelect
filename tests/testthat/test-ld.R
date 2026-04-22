@@ -75,7 +75,7 @@ test_that("ld_func computes pairwise LD for an in-memory chromosome set", {
   # ld_func uses row names as marker IDs for Name1/Name2 in the output.
   rownames(genotypes) <- genotypes$marker
 
-  observed <- FastStack:::ld_func(genotypes)
+  observed <- HapSelect:::ld_func(genotypes)
 
   # Enumerate the expected marker pairs for this marker set.
   pair_index <- utils::combn(seq_len(nrow(genotypes)), 2)
