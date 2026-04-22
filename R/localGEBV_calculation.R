@@ -77,9 +77,9 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   }
 
   # The number of unique haplotypes observed in this block
-  num_haplo      = length(unique_keys)
+  num_haplo = length(unique_keys)
   # Create a lookup table to match each unique haplotype back to its effect
-  HaploID        = paste(haploblock_ID, seq_len(num_haplo), sep = ":")
+  HaploID = paste(haploblock_ID, seq_len(num_haplo), sep = ":")
   unique_effects = all_effects[match(unique_keys, haplotype_keys)]
 
   # Only perform PECOV and p-value calculations if haplo_test is TRUE AND marker_pecov is provided
