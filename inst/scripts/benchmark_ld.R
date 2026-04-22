@@ -1,5 +1,5 @@
 if (!requireNamespace("pkgload", quietly = TRUE)) {
-  stop("Install pkgload to run this benchmark from the FastStack source tree.")
+  stop("Install pkgload to run this benchmark from the HapSelect source tree.")
 }
 pkgload::load_all(".", quiet = TRUE)
 
@@ -94,7 +94,7 @@ expected_pairs = sum(vapply(
   numeric(1)
 ))
 
-work_dir = tempfile("faststack_ld_benchmark_")
+work_dir = tempfile("hapselect_ld_benchmark_")
 on.exit(unlink(work_dir, recursive = TRUE, force = TRUE))
 dir.create(work_dir)
 
@@ -117,17 +117,17 @@ write_plink_text_files(geno, text_prefix)
 cat("Converting to PLINK binary fileset\n")
 run_plink(c("--file", text_prefix, "--make-bed", "--out", bed_prefix))
 
-cat("\nBenchmarking FastStack pairwise_ld (parallelize = FALSE)\n")
+cat("\nBenchmarking HapSelect pairwise_ld (parallelize = FALSE)\n")
 r_serial = time_reps(n_reps, function() pairwise_ld(geno, parallelize = FALSE))
 cat("  Elapsed (s): ", paste(round(r_serial$times, 3), collapse = ", "),
     "  |  mean: ", round(mean(r_serial$times), 3), "s\n", sep = "")
 
-cat("Benchmarking FastStack pairwise_ld (parallelize = TRUE)\n")
+cat("Benchmarking HapSelect pairwise_ld (parallelize = TRUE)\n")
 r_parallel = tryCatch(
   time_reps(n_reps, function() pairwise_ld(geno, parallelize = TRUE)),
   error = function(e) {
     cat("  Skipped: parallel workers cannot load an uninstalled package.\n",
-        "  Install FastStack with install.packages('.', repos = NULL) and re-run.\n", sep = "")
+        "  Install HapSelect with install.packages('.', repos = NULL) and re-run.\n", sep = "")
     NULL
   }
 )
@@ -159,9 +159,9 @@ make_row = function(method, times, result) {
   )
 }
 
-rows = list(make_row("FastStack (serial)", r_serial$times, r_serial$result))
+rows = list(make_row("HapSelect (serial)", r_serial$times, r_serial$result))
 if (!is.null(r_parallel)) {
-  rows[[length(rows) + 1]] = make_row("FastStack (parallel)", r_parallel$times, r_parallel$result)
+  rows[[length(rows) + 1]] = make_row("HapSelect (parallel)", r_parallel$times, r_parallel$result)
 }
 rows[[length(rows) + 1]] = make_row("PLINK", r_plink$times, r_plink$result)
 

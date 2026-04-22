@@ -1,5 +1,5 @@
 if (!requireNamespace("pkgload", quietly = TRUE)) {
-  stop("Install pkgload to run this benchmark from the FastStack source tree.")
+  stop("Install pkgload to run this benchmark from the HapSelect source tree.")
 }
 pkgload::load_all(".", quiet = TRUE)
 
