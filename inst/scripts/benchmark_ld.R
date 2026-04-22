@@ -11,6 +11,7 @@ missing_rate = 0.02
 seed         = 1L
 n_reps       = 3L
 
+<<<<<<< Updated upstream
 # Helpers ----------------------------------------------------------------------
 simulate_genotypes = function(n_markers, n_individuals, n_chr, missing_rate, seed) {
   set.seed(seed)
@@ -136,6 +137,58 @@ if (!is.null(r_parallel)) {
       "  |  mean: ", round(mean(r_parallel$times), 3), "s\n", sep = "")
 }
 
+=======
+# Data -------------------------------------------------------------------------
+geno = simulate_genotypes(n_markers, n_individuals, n_chr, missing_rate, seed)
+expected_pairs = sum(vapply(
+  split(geno[[1]], geno[[2]]),
+  function(x) choose(length(x), 2),
+  numeric(1)
+))
+
+work_dir = tempfile("faststack_ld_benchmark_")
+on.exit(unlink(work_dir, recursive = TRUE, force = TRUE))
+dir.create(work_dir)
+
+text_prefix = file.path(work_dir, "synthetic_ld")
+bed_prefix  = file.path(work_dir, "synthetic_ld_bin")
+
+cat(
+  "Markers:      ", n_markers,     "\n",
+  "Individuals:  ", n_individuals, "\n",
+  "Chromosomes:  ", n_chr,         "\n",
+  "Missing rate: ", missing_rate,  "\n",
+  "Reps:         ", n_reps,        "\n\n",
+  sep = ""
+)
+
+# Run --------------------------------------------------------------------------
+cat("Writing PLINK PED/MAP files\n")
+write_plink_text_files(geno, text_prefix)
+
+cat("Converting to PLINK binary fileset\n")
+run_plink(c("--file", text_prefix, "--make-bed", "--out", bed_prefix))
+
+cat("\nBenchmarking FastStack pairwise_ld (parallelize = FALSE)\n")
+r_serial = time_reps(n_reps, function() pairwise_ld(geno, parallelize = FALSE))
+cat("  Elapsed (s): ", paste(round(r_serial$times, 3), collapse = ", "),
+    "  |  mean: ", round(mean(r_serial$times), 3), "s\n", sep = "")
+
+cat("Benchmarking FastStack pairwise_ld (parallelize = TRUE)\n")
+r_parallel = tryCatch(
+  time_reps(n_reps, function() pairwise_ld(geno, parallelize = TRUE)),
+  error = function(e) {
+    cat("  Skipped: parallel workers cannot load an uninstalled package.\n",
+        "  Install FastStack with install.packages('.', repos = NULL) and re-run.\n", sep = "")
+    NULL
+  }
+)
+if (!is.null(r_parallel)) {
+  cat("  Elapsed (s): ", paste(round(r_parallel$times, 3), collapse = ", "),
+      "  |  mean: ", round(mean(r_parallel$times), 3), "s\n", sep = "")
+}
+
+>>>>>>> Stashed changes
 cat("Benchmarking PLINK pairwise_ld\n")
 r_plink = time_reps(n_reps, function() plink_pairwise_ld(
   prefix       = bed_prefix,
@@ -170,4 +223,8 @@ row.names(summary_df) = NULL
 
 cat("\nBenchmark summary (", n_reps, " reps each)\n", sep = "")
 print(summary_df, row.names = FALSE)
+<<<<<<< Updated upstream
 cat("\nExpected pair count: ", expected_pairs, "\n", sep = "")
+=======
+cat("\nExpected pair count: ", expected_pairs, "\n", sep = "")
+>>>>>>> Stashed changes
