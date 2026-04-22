@@ -12,7 +12,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // make_blocks_cpp
 List make_blocks_cpp(NumericVector ld_lookup_r, DataFrame ld_adj_r, CharacterVector marker_names_r, IntegerVector marker_idx_r, LogicalVector assigned_r, std::string method, double threshold, int tolerance, bool tol_reset, std::string start);
-RcppExport SEXP _FastStack_make_blocks_cpp(SEXP ld_lookup_rSEXP, SEXP ld_adj_rSEXP, SEXP marker_names_rSEXP, SEXP marker_idx_rSEXP, SEXP assigned_rSEXP, SEXP methodSEXP, SEXP thresholdSEXP, SEXP toleranceSEXP, SEXP tol_resetSEXP, SEXP startSEXP) {
+RcppExport SEXP _HapSelect_make_blocks_cpp(SEXP ld_lookup_rSEXP, SEXP ld_adj_rSEXP, SEXP marker_names_rSEXP, SEXP marker_idx_rSEXP, SEXP assigned_rSEXP, SEXP methodSEXP, SEXP thresholdSEXP, SEXP toleranceSEXP, SEXP tol_resetSEXP, SEXP startSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -32,11 +32,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_FastStack_make_blocks_cpp", (DL_FUNC) &_FastStack_make_blocks_cpp, 10},
+    {"_HapSelect_make_blocks_cpp", (DL_FUNC) &_HapSelect_make_blocks_cpp, 10},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_FastStack(DllInfo *dll) {
+RcppExport void R_init_HapSelect(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

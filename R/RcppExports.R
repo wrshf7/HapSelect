@@ -7,6 +7,6 @@
 #' once up front, calls make_blocks, then converts the result back to R types.
 #' See make_blocks in R/def_haploblocks.R for full parameter documentation.
 make_blocks_cpp <- function(ld_lookup_r, ld_adj_r, marker_names_r, marker_idx_r, assigned_r, method, threshold, tolerance, tol_reset, start) {
-    .Call(`_FastStack_make_blocks_cpp`, ld_lookup_r, ld_adj_r, marker_names_r, marker_idx_r, assigned_r, method, threshold, tolerance, tol_reset, start)
+    .Call(`_HapSelect_make_blocks_cpp`, ld_lookup_r, ld_adj_r, marker_names_r, marker_idx_r, assigned_r, method, threshold, tolerance, tol_reset, start)
 }
 
