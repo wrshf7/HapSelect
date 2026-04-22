@@ -74,7 +74,7 @@ r_gebv = time_reps(n_reps, function() {
     marker_effects = marker_effects,
     haploblocks_df = haploblocks_df,
     set_missing_NA = TRUE,
-    center         = TRUE
+    mean_adjust    = TRUE
   )
 })
 cat("  Elapsed (s): ", paste(round(r_gebv$times, 3), collapse = ", "),
