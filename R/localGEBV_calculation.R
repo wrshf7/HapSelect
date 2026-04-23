@@ -1,18 +1,5 @@
 ####load dependencies####
 
-####Functions to compute the haplotype effect, PEV, and P-Value####
-haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_block, mean_adjust){
-  #haplotype estimated effect (linear contract of marker effects)
-
-  if(mean_adjust){
-    haplotype = haplotype - marker_means_block
-  }
-
-  haplotype[is.na(haplotype)] = 0
-  haplotype_effect = (t(block_marker_effects) %*% haplotype)[1,1]
-  return(haplotype_effect)
-}
-
 haplotype_PEV_calc = function(haplotype, haplotype_pecov, marker_means_block, mean_adjust){
   if(mean_adjust){
     haplotype = haplotype - marker_means_block
