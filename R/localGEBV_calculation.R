@@ -4,7 +4,7 @@ haplotype_PEV_calc = function(haplotype, haplotype_pecov, marker_means_block, me
   if(mean_adjust){
     haplotype = haplotype - marker_means_block
   }
-  PEV = (t(haplotype) %*% haplotype_pecov %*% haplotype)[1,1]
+  PEV = drop(t(haplotype) %*% haplotype_pecov %*% haplotype)
   return(PEV)
 }
 
