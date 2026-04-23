@@ -1,4 +1,16 @@
-####load dependencies####
+##################################
+###### Computing localGEBV ######
+##################################
+
+center_genotypes = function(geno){
+
+  #code from the localGEBV functions
+  marker_means = rowMeans(geno[,4:ncol(geno)], na.rm = TRUE)
+
+  geno[,4:ncol(geno)] = sweep(geno[,4:ncol(geno)], 1, marker_means, "-")
+
+  return(geno)
+}
 
 haplotype_PEV_calc = function(haplotype, haplotype_pecov, marker_means_block, mean_adjust){
   if(mean_adjust){

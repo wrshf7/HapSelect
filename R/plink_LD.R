@@ -1,4 +1,6 @@
+#######################################
 ##### PLINK-backed LD calculation #####
+#######################################
 
 ##### Read a PLINK .bim file and assign per-chromosome locus indices #####
 read_plink_bim = function(path){
@@ -90,7 +92,7 @@ format_plink_ld = function(ld_path, bim){
     LD = ld$R2,
     stringsAsFactors = FALSE
   )
-  
+
   # Sort by chromosone, then loci
   ld_df = ld_df[order(ld_df$Chrom, ld_df$Locus1, ld_df$Locus2), ]
   row.names(ld_df) = NULL
@@ -113,7 +115,7 @@ run_plink_command = function(args){
       paste(plink_output, collapse = "\n")
     )
   }
-  
+
   invisible(plink_output)
 }
 
@@ -152,7 +154,7 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
     extra_args,
     "--out", out_prefix
   )
-  
+
   # Execute the plink command, this may take time, but is typically much faster than the internal implementation
   run_plink_command(args)
 

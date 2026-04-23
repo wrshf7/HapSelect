@@ -1,3 +1,8 @@
+#####################################
+##### Basic Genomic Prediction ######
+#####################################
+
+
 #function to check that all phenotypes have a corresponding genotype
 #I did not export this function as it is an internal call. But do I need to export it
 #for the package to "see" it?

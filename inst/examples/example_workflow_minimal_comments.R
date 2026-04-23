@@ -1,6 +1,6 @@
-#####################################
-    ####  load dependencies  ####
-#####################################
+##################################################
+####  Example Workflow with Minimal Comments  ####
+##################################################
 
 # Package functions and required dependencies are provided by HapSelect.
 

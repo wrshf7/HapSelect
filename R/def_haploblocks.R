@@ -1,4 +1,7 @@
-####load dependencies####
+##################################
+###### Building Haploblocks ######
+##################################
+
 
 # extend_block -----------------------------------------------------------------
 # NOTE: This is an R implementation and it is much slower than the C++ version in extend_block.cpp. (3.5× to 17.5× depending on method and settings)
