@@ -3,11 +3,11 @@
 ####Functions to compute the haplotype effect, PEV, and P-Value####
 haplotype_effect_calc = function(block_marker_effects, haplotype, marker_means_block, mean_adjust){
   #haplotype estimated effect (linear contract of marker effects)
-  
+
   if(mean_adjust){
     haplotype = haplotype - marker_means_block
   }
-  
+
   haplotype[is.na(haplotype)] = 0
   haplotype_effect = (t(block_marker_effects) %*% haplotype)[1,1]
   return(haplotype_effect)
@@ -60,14 +60,14 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   if (mean_adjust) {
     filtered_matrix = sweep(geno_matrix, 2, marker_means_block, "-")
   }
-  
+
   # For individuals with any missing genotypes, set those genotypes to 0 to prevent calculation issues.
   filtered_matrix[is.na(filtered_matrix)] = 0
 
   # Calculate the effect of each unique haplotype
   all_effects = drop(filtered_matrix %*% block_marker_effects)
 
-  # Add NA back to individuals with missing genotypes according to earlier has_missing and all_missing matrices. 
+  # Add NA back to individuals with missing genotypes according to earlier has_missing and all_missing matrices.
   # If set_missing_NA is TRUE, any individual with >= 1 missing genotype gets NA
   if (set_missing_NA) {
     all_effects[has_missing] = NA
@@ -113,7 +113,7 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
     haplotype_df$Haplotype_PEV     = unique_PEV
     haplotype_df$Haplotype_P_Value = unique_pval
   }
-  
+
   #make a vector of all individuals' haplotype IDs at this block
   haplotype_IDs = HaploID[match(haplotype_keys, unique_keys)]
   #var of all haplotyple effects for block var
@@ -140,7 +140,7 @@ check_effects = function(marker_effects){
     marker_effects[,1] = as.character(marker_effects[,1])
     warning("Coerced SNP names to characters.")
   }
-  
+
   marker_effects = purrr::imap_dfc(marker_effects, function(trait, index){
     if(colnames(marker_effects)[1] != index){
       if(!is.numeric(marker_effects[,index])){
@@ -150,20 +150,20 @@ check_effects = function(marker_effects){
     }
     return(trait)
   }) %>% as.data.frame()
-  
-  
+
+
   return(marker_effects)
 }
 
 ####Head function to split by block and compute local GEBV per individual####
 compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, mean_adjust = TRUE){
-  
+
   #check marker effects
   marker_effects = check_effects(marker_effects)
-  
+
   #ensure markers are in the same order
   geno = geno[match(marker_effects[,1], geno[,1]), ]
-  
+
   marker_means = apply(geno[,4:ncol(geno)], 1, function(x){
     row_mean = sum(x, na.rm = TRUE) / length(x[!is.na(x)])
     return(row_mean)
@@ -173,18 +173,18 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
 
   #set up
   #future::plan(multisession, workers = parallel::detectCores() - 1)
-  
+
   #check if marker_pecov is provided
   if(!missing(marker_pecov) & ncol(marker_effects) == 2){
     haplo_test = TRUE
   } else{
     haplo_test = FALSE
   }
-  
+
   #lookup index
   snp_index = setNames(seq_len(nrow(geno)), geno[,1])
   marker_index = setNames(seq_len(nrow(marker_effects)), marker_effects[,1])
-  
+
   #set up progress bar
   progressr::handlers("txtprogressbar")
   progressr::with_progress({
@@ -196,17 +196,17 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
         strsplit(haploblocks_df$Block, ";"),
         haploblocks_df$Block_ID
     )
-    
+
     #spread the CPU love across the different haploblocks
     local_GEBV = purrr::map(haploblocks_df$Block_ID, function(haploblock){
-      
+
       #extract the markers in the specific block ID
       #markers = strsplit(haploblocks_df[haploblocks_df$Block_ID == haploblock, "Block"], ";")[[1]]
       #markers = marker_effects[marker_effects[,1] %in% markers, ]
-      
+
       marker_ids = block_marker_ids[[haploblock]]
       markers = marker_effects[marker_index[marker_ids], ]
-      
+
       #extract genotypes of the markers
       geno_markers = geno[snp_index[marker_ids], 4:ncol(geno)]
       marker_means_block = marker_means[marker_ids]
@@ -219,66 +219,66 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
         marker_pecov = marker_pecov,
         haplo_test = haplo_test,
         marker_means_block = marker_means_block,
-        set_missing_NA = set_missing_NA, 
+        set_missing_NA = set_missing_NA,
         mean_adjust = mean_adjust
       )
-      
+
       #progress the progress bar
       p()
-      
+
       return(local_GEBV_obj)
-      
+
     })
   })
-    
+
   #extract number of haplotypes per block
   haploblocks_df$Num_Uniq_Hap = purrr::map_int(local_GEBV, function(x){
     x = x[[3]]
     return(x)
   })
-  
-  
+
+
   #extract variance of haplotype effects within a block
   haploblocks_df$Block_Var = purrr::map_dbl(local_GEBV, function(x){
     x = x[[4]]
     return(x)
   })
-  
+
   #extract variance of unique haplotype effects within a block
   haploblocks_df$Unique_Haplo_Block_Var = purrr::map_dbl(local_GEBV, function(x){
     x = x[[5]]
     return(x)
   })
-  
+
   #extract haplotype IDs of all individuals for all blocks
   haploblocks_ind_haplotypes = purrr::map(local_GEBV, function(x){
     x = x[[2]]
     return(x)
-  }) %>% do.call(rbind, .) %>% as.data.frame(.)
-  
+  }) %>% do.call(rbind, .)
+
   colnames(haploblocks_ind_haplotypes) = colnames(geno[,4:ncol(geno)])
   row.names(haploblocks_ind_haplotypes) = haploblocks_df$Block_ID
-  
+
   #extract haplotype IDs, their effects, PEV, and p-values
   haplotype_effects = purrr::map(local_GEBV, function(x){
     x = x[[1]]
     return(x)
   }) %>% do.call(rbind,.)
-  
+
   #extract haplotype effect matrix
   haplotype_effect_mat = purrr::map(local_GEBV, function(x){
     x = x[[6]]
     return(x)
-  }) %>% do.call(rbind, .) %>% as.data.frame(.)
-  
+  }) %>% do.call(rbind, .)
+
 
   row.names(haplotype_effect_mat) = row.names(haploblocks_ind_haplotypes)
   colnames(haplotype_effect_mat) = colnames(haploblocks_ind_haplotypes)
-  
+
   return_obj = list(haploblocks_df, haploblocks_ind_haplotypes, haplotype_effect_mat, haplotype_effects)
-  
+
   names(return_obj) = c("Haploblocks", "Haplotype_ID_Matrix", "Haplotype_Effect_Matrix", "Haplotypes")
-  
+
   return(return_obj)
 }
-  
+
