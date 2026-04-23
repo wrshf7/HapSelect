@@ -2,6 +2,7 @@ if (!requireNamespace("pkgload", quietly = TRUE)) {
   stop("Install pkgload to run this benchmark from the HapSelect source tree.")
 }
 pkgload::load_all(".", quiet = TRUE)
+source(file.path("inst", "scripts", "benchmark_support.R"))
 
 # Data -------------------------------------------------------------------------
 e = new.env(parent = emptyenv())
@@ -38,37 +39,29 @@ results = lapply(configs, function(cfg) {
   label = paste0("method=", cfg$method, "  start=", cfg$start)
   cat("Benchmarking: ", label, "\n", sep = "")
 
-  times    = numeric(n_reps)
-  n_blocks = NA_integer_
+  benchmark = time_reps(n_reps, function() def_blocks(
+    ld        = ld,
+    map       = map,
+    method    = cfg$method,
+    threshold = threshold,
+    tolerance = tolerance,
+    tol_reset = tol_reset,
+    start     = cfg$start,
+    parallel  = FALSE
+  ))
+  n_blocks = sum(lengths(benchmark$result))
 
-  for (i in seq_len(n_reps)) {
-    t = system.time({
-      blocks = def_blocks(
-        ld        = ld,
-        map       = map,
-        method    = cfg$method,
-        threshold = threshold,
-        tolerance = tolerance,
-        tol_reset = tol_reset,
-        start     = cfg$start,
-        parallel  = FALSE
-      )
-    })
-    times[i] = t[["elapsed"]]
-    if (i == 1L) n_blocks = sum(lengths(blocks))
-  }
-
-  cat("  Elapsed (s): ", paste(round(times, 3), collapse = ", "),
-      "  |  mean: ", round(mean(times), 3), "s\n", sep = "")
+  cat("  Elapsed (s): ", paste(round(benchmark$times, 3), collapse = ", "),
+      "  |  mean: ", round(mean(benchmark$times), 3), "s\n", sep = "")
 
   data.frame(
     Method         = cfg$method,
     Start          = cfg$start,
-    Mean_s         = round(mean(times), 3),
-    Min_s          = round(min(times),  3),
-    Max_s          = round(max(times),  3),
+    Mean_s         = round(mean(benchmark$times), 3),
+    Min_s          = round(min(benchmark$times),  3),
+    Max_s          = round(max(benchmark$times),  3),
     Total_Blocks   = n_blocks,
-    Blocks_per_sec = round(n_blocks / mean(times)),
+    Blocks_per_sec = round(n_blocks / mean(benchmark$times)),
     stringsAsFactors = FALSE
   )
 })
