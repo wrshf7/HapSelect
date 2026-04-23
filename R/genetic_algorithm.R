@@ -1,3 +1,7 @@
+##################################
+####### Genetic Algorithm ########
+##################################
+
 #function that selects top blocks and returns the localGEBV for the GA
 select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_of_total_var = NULL){
 

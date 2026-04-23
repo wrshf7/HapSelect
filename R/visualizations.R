@@ -1,4 +1,6 @@
-
+#####################################
+###### Visualization Functions ######
+#####################################
 
 ######Marker Effects#####
 marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "#A7A8AA")){
