@@ -151,10 +151,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
   #ensure markers are in the same order
   geno = geno[match(marker_effects[,1], geno[,1]), ]
 
-  marker_means = apply(geno[,4:ncol(geno)], 1, function(x){
-    row_mean = sum(x, na.rm = TRUE) / length(x[!is.na(x)])
-    return(row_mean)
-  })
+  marker_means = rowMeans(geno[,4:ncol(geno)], na.rm = TRUE)
 
   names(marker_means) = geno[,1]
 
