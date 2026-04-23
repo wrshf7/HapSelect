@@ -2,6 +2,35 @@
 ##### PLINK-backed LD calculation #####
 #######################################
 
+##### Resolve the PLINK executable path #####
+find_plink = function() {
+  if (.Platform$OS.type == "windows") {
+    install_dir = file.path(Sys.getenv("USERPROFILE", unset = ""), "bin")
+    plink_path = file.path(install_dir, "plink.exe")
+
+    if (nzchar(plink_path) && file.exists(plink_path)) {
+      return(plink_path)
+    }
+
+    stop(
+      "PLINK executable not found at the expected Windows location: ", plink_path, "\n",
+      "Run inst/scripts/install/install_windows.ps1, or ensure PLINK is installed in that directory."
+    )
+  }
+
+  plink = Sys.which("plink")
+  if (nzchar(plink)) {
+    return(plink)
+  }
+
+  stop("PLINK executable not found.")
+}
+
+##### Run PLINK with Windows-aware executable resolution #####
+call_plink = function(args, stdout = TRUE, stderr = TRUE) {
+  system2(find_plink(), args = args, stdout = stdout, stderr = stderr)
+}
+
 ##### Read a PLINK .bim file and assign per-chromosome locus indices #####
 read_plink_bim = function(path){
   # Read file
@@ -103,7 +132,7 @@ format_plink_ld = function(ld_path, bim){
 ##### Runs a plink command given a set of arguments #####
 run_plink_command = function(args){
   # Run the plink command
-  plink_output = system2("plink", args = args, stdout = TRUE, stderr = TRUE)
+  plink_output = call_plink(args, stdout = TRUE, stderr = TRUE)
   # Get the output code
   plink_status = attr(plink_output, "status")
 

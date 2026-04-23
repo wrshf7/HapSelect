@@ -1,5 +1,6 @@
 test_that("PLINK and HapSelect LD implementations output match reasonably closely", {
-  skip_if(Sys.which("plink") == "", "PLINK is not installed")
+  # Use internal call_plink to get the path to the PLINK executable, which will throw an error if PLINK is not installed.
+  call_plink <- HapSelect:::call_plink
 
   genotypes <- data.frame(
     marker = paste0("m", 1:8),
@@ -55,9 +56,8 @@ test_that("PLINK and HapSelect LD implementations output match reasonably closel
 
   write_plink_text_files(genotypes, text_prefix)
 
-  make_bed_output <- system2(
-    "plink",
-    args = c("--file", text_prefix, "--make-bed", "--out", bed_prefix),
+  make_bed_output <- call_plink(
+    c("--file", text_prefix, "--make-bed", "--out", bed_prefix),
     stdout = TRUE,
     stderr = TRUE
   )

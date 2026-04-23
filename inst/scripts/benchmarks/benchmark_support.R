@@ -58,7 +58,7 @@ write_plink_text_files = function(geno, prefix) {
 }
 
 run_plink = function(args) {
-  status = attr(system2("plink", args = args, stdout = TRUE, stderr = TRUE), "status")
+  status = attr(call_plink(args, stdout = TRUE, stderr = TRUE), "status")
   if (!is.null(status) && status != 0) stop("PLINK command failed.")
   invisible(NULL)
 }
