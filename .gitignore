@@ -6,3 +6,5 @@
 *.pdf
 .RDataTmp
 *.o
+*.dll
+*.so

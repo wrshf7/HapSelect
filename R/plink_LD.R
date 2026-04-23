@@ -3,10 +3,17 @@
 ##### Resolve the PLINK executable path #####
 find_plink = function() {
   if (.Platform$OS.type == "windows") {
-    user_plink = file.path(path.expand("~"), "bin", "plink.exe")
-    if (file.exists(user_plink)) {
-      return(user_plink)
+    install_dir = file.path(Sys.getenv("USERPROFILE", unset = ""), "bin")
+    plink_path = file.path(install_dir, "plink.exe")
+
+    if (nzchar(plink_path) && file.exists(plink_path)) {
+      return(plink_path)
     }
+
+    stop(
+      "PLINK executable not found at the expected Windows location: ", plink_path, "\n",
+      "Run inst/scripts/install/install_windows.ps1, or ensure PLINK is installed in that directory."
+    )
   }
 
   plink = Sys.which("plink")
