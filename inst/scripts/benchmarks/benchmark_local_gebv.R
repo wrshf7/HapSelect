@@ -154,9 +154,9 @@ cat("  Elapsed (s): ", paste(round(benchmark_serial$times, 3), collapse = ", "),
     "  |  mean: ", round(mean(benchmark_serial$times), 3), "s\n", sep = "")
 
 cat("Benchmarking compute_local_GEBV (parallel = TRUE)\n")
-if (.Platform$OS.type == "windows" && !has_installed_pkg) {
+if (!has_installed_pkg) {
   cat(
-    "  Skipped: Windows parallel workers need an installed HapSelect package.\n",
+    "  Skipped: parallel workers need an installed HapSelect package (multisession spawns fresh R processes).\n",
     "  Run `Rscript -e \"install.packages('.', repos = NULL, type = 'source')\"` from the repo root,\n",
     "  then rerun this benchmark.\n",
     sep = ""
