@@ -317,8 +317,17 @@ prepare_local_gebv_inputs = function(geno, marker_effects, haploblocks_df, marke
     unname(snp_index[ids])
   })
 
+  # Perform input checks
   if(any(vapply(block_marker_idx, anyNA, logical(1)))){
-    stop("Some haploblock markers in the haploblock data frame are missing from the genotype matrix and/or marker effect inputs.")
+    stop("Some haploblock markers in the haploblock data frame are missing from the genotype matrix.")
+  }
+
+  effect_vec_test = lapply(block_marker_ids, function(ids){
+    unname(snp_index[names(effect_vec)])
+  })
+
+  if(any(vapply(effect_vec_test, anyNA, logical(1)))){
+    stop("Some haploblock markers in the haploblock data frame are missing from the marker effects input.")
   }
 
   # Determine if haplotype testing is needed based on the presence of marker_pecov and the number of columns in marker_effects.
