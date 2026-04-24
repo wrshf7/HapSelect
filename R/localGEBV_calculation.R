@@ -330,6 +330,10 @@ prepare_local_gebv_inputs = function(geno, marker_effects, haploblocks_df, marke
     stop("Some haploblock markers in the haploblock data frame are missing from the marker effects input.")
   }
 
+  if(!missing(marker_pecov) && !all(dim(marker_pecov) == length(effect_vec))) {
+    stop("Marker PECOV matrix must have number of rows and columns equal to the number of markers in the effects file.")
+  }
+
   # Determine if haplotype testing is needed based on the presence of marker_pecov and the number of columns in marker_effects.
   haplo_test = !missing(marker_pecov) && ncol(marker_effects) == 2
 
