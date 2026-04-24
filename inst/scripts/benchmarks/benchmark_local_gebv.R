@@ -2,7 +2,7 @@ if (!requireNamespace("pkgload", quietly = TRUE)) {
   stop("Install pkgload to run this benchmark from the FastStack source tree.")
 }
 pkgload::load_all(".", quiet = TRUE)
-source(file.path("inst", "scripts", "benchmark_support.R"))
+source(file.path("inst", "scripts", "benchmarks", "benchmark_support.R"))
 
 # Settings ---------------------------------------------------------------------
 n_markers     = 500L

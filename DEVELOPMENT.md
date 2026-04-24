@@ -6,6 +6,8 @@ Installs PLINK, GenomicSelection and all system dependencies
 
 ### Linux (Ubuntu/Debian)
 `./inst/scripts/install/install_linux.sh`
+### macOS
+`./inst/scripts/install/install_mac.sh`
 ### Windows
 `Powershell -ExecutionPolicy bypass -File inst/scripts/install/install_windows.ps1`
 
