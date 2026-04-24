@@ -58,6 +58,8 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     # Use all cores available except for 1 to avoid overloading the system
     workers = max(1L, as.integer(future::availableCores()) - 1L)
 
+    progressr::handlers("txtprogressbar")
+
     # Build payloads for each chunk of haploblocks based on estimated computational cost, and target chunk size. This will determine how the haploblocks are grouped for parallel processing.
     chunk_payloads = build_gebv_chunk_payloads(
       prep = prep,
@@ -69,33 +71,37 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     # Limit the number of workers to the number of chunks to avoid idle workers for small datasets
     # Unlikely to be an issue, but this is a safeguard against cases where chunk_size is set very high or the dataset is small, resulting in fewer chunks than available cores.
     workers = min(workers, length(chunk_payloads))
+    progressr::with_progress({
+      p = progressr::progressor(steps = nrow(haploblocks_df))
 
-    # If workers is 1 or less, process the chunks sequentially without parallelization to avoid overhead. 
-    if(workers <= 1L){
-      chunk_results = purrr::map(
-        chunk_payloads,
-        process_gebv_chunk,
-        haplo_test = prep$haplo_test,
-        set_missing_NA = set_missing_NA,
-        mean_adjust = mean_adjust,
-        calculate_block_fn = calculate_gebv_block
-      )
-    } else{
-      # Otherwise use future to process the chunks in parallel, with the specified number of workers. 
-      # Each chunk will be processed by the process_gebv_chunk function, which applies the block_mapper to each block in the chunk.
-      future::plan(future::multisession, workers = workers)
-      on.exit(future::plan(future::sequential), add = TRUE)
+      # If workers is 1 or less, process the chunks sequentially without parallelization to avoid overhead.
+      if(workers <= 1L){
+        chunk_results = purrr::map(
+          chunk_payloads,
+          process_gebv_chunk,
+          haplo_test = prep$haplo_test,
+          set_missing_NA = set_missing_NA,
+          mean_adjust = mean_adjust,
+          calculate_block_fn = calculate_gebv_block,
+          p = p
+        )
+      } else{
+        # Otherwise use future to process the chunks in parallel, with the specified number of workers.
+        # furrr forwards progressr signals from workers back to the main session automatically.
+        future::plan(future::multisession, workers = workers)
+        on.exit(future::plan(future::sequential), add = TRUE)
 
-      # Use future_map to process each chunk in parallel, passing the relevant arguments to the processing function.
-      chunk_results = furrr::future_map(
-        chunk_payloads,
-        process_gebv_chunk,
-        haplo_test = prep$haplo_test,
-        set_missing_NA = set_missing_NA,
-        mean_adjust = mean_adjust,
-        calculate_block_fn = calculate_gebv_block
-      )
-    }
+        chunk_results = furrr::future_map(
+          chunk_payloads,
+          process_gebv_chunk,
+          haplo_test = prep$haplo_test,
+          set_missing_NA = set_missing_NA,
+          mean_adjust = mean_adjust,
+          calculate_block_fn = calculate_gebv_block,
+          p = p
+        )
+      }
+    })
 
     # Combine the results from all chunks back into the final local_GEBV list.
     local_GEBV = purrr::flatten(chunk_results)
@@ -468,33 +474,37 @@ build_gebv_chunk_payloads = function(prep, haploblocks_df, workers, chunk_size){
     )
   }) %>% unlist(recursive = FALSE)
 
-  purrr::map(block_chunks, function(chunk_block_ids){
-    # Identify the union of all marker rows needed by this chunk's blocks
-    chunk_marker_idx = sort(unique(unlist(prep$block_marker_idx[chunk_block_ids], use.names = FALSE)))
+  progressr::with_progress({
+    p = progressr::progressor(steps = length(block_chunks), label = "Preparing chunks")
+    purrr::map(block_chunks, function(chunk_block_ids){
+      # Identify the union of all marker rows needed by this chunk's blocks
+      chunk_marker_idx = sort(unique(unlist(prep$block_marker_idx[chunk_block_ids], use.names = FALSE)))
 
-    # Build a local position lookup: maps global row index → position within this chunk's compact matrix
-    local_index = seq_along(chunk_marker_idx)
-    names(local_index) = as.character(chunk_marker_idx)
+      # Build a local position lookup: maps global row index → position within this chunk's compact matrix
+      local_index = seq_along(chunk_marker_idx)
+      names(local_index) = as.character(chunk_marker_idx)
 
-    # Re-express each block's marker positions as local indices into the chunk matrix
-    block_local_idx = lapply(prep$block_marker_idx[chunk_block_ids], function(idx){
-      unname(local_index[as.character(idx)])
+      # Re-express each block's marker positions as local indices into the chunk matrix
+      block_local_idx = lapply(prep$block_marker_idx[chunk_block_ids], function(idx){
+        unname(local_index[as.character(idx)])
+      })
+
+      payload = list(
+        block_ids = chunk_block_ids,
+        block_local_idx = block_local_idx,
+        chunk_marker_ids = prep$marker_ids[chunk_marker_idx],
+        geno_chunk = prep$geno_matrix[chunk_marker_idx, , drop = FALSE],
+        effect_chunk = prep$effect_vec[chunk_marker_idx],
+        mean_chunk = prep$marker_means[chunk_marker_idx]
+      )
+
+      if(prep$haplo_test){
+        payload$pecov_chunk = prep$marker_pecov[chunk_marker_idx, chunk_marker_idx, drop = FALSE]
+      }
+
+      p()
+      payload
     })
-
-    payload = list(
-      block_ids = chunk_block_ids,
-      block_local_idx = block_local_idx,
-      chunk_marker_ids = prep$marker_ids[chunk_marker_idx],
-      geno_chunk = prep$geno_matrix[chunk_marker_idx, , drop = FALSE],
-      effect_chunk = prep$effect_vec[chunk_marker_idx],
-      mean_chunk = prep$marker_means[chunk_marker_idx]
-    )
-
-    if(prep$haplo_test){
-      payload$pecov_chunk = prep$marker_pecov[chunk_marker_idx, chunk_marker_idx, drop = FALSE]
-    }
-
-    payload
   })
 }
 
@@ -508,7 +518,8 @@ build_gebv_chunk_payloads = function(prep, haploblocks_df, workers, chunk_size){
 # set_missing_NA     - logical; passed through to calculate_block_fn
 # mean_adjust        - logical; passed through to calculate_block_fn
 # calculate_block_fn - function used to compute a single block (calculate_gebv_block)
-process_gebv_chunk = function(payload, haplo_test, set_missing_NA, mean_adjust, calculate_block_fn){
+# p                  - optional progressr progressor; called once per block to report progress
+process_gebv_chunk = function(payload, haplo_test, set_missing_NA, mean_adjust, calculate_block_fn, p = NULL){
   chunk_results = purrr::map2(payload$block_ids, payload$block_local_idx, function(block_id, local_idx){
     calculate_block_fn(
       haploblock = block_id,
@@ -520,7 +531,8 @@ process_gebv_chunk = function(payload, haplo_test, set_missing_NA, mean_adjust, 
       marker_pecov = if(haplo_test) payload$pecov_chunk else NULL,
       haplo_test = haplo_test,
       set_missing_NA = set_missing_NA,
-      mean_adjust = mean_adjust
+      mean_adjust = mean_adjust,
+      p = p
     )
   })
 
