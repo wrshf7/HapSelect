@@ -115,7 +115,7 @@ make_row = function(method, times, result) {
     Min_s          = round(min(times),  3),
     Max_s          = round(max(times),  3),
     Blocks         = nrow(result$Haploblocks),
-    Blocks_per_sec = round(nrow(result$Haploblocks) / mean(times)),
+    Blocks_per_sec = round(nrow(result$Haploblocks) / mean(times),   3),
     stringsAsFactors = FALSE
   )
 }
