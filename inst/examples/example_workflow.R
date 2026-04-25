@@ -15,7 +15,7 @@ missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "fu
 if (length(missing_fns) > 0) {
   stop(
     "Package functions are not loaded. Run devtools::load_all('.') ",
-    "or library(FastStack) before sourcing this script."
+    "or library(HapSelect) before sourcing this script."
   )
 }
 
@@ -29,7 +29,7 @@ if (length(missing_fns) > 0) {
 #the map file chromosomes MUST be numeric!
 #First column should be SNP ID, second column should be chromosome, and third
 #column should be the position
-data("map", package = "FastStack")
+data("map", package = "HapSelect")
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
@@ -44,7 +44,7 @@ map2 = order_map(map = map2)
 
 #Non-integers represent imputed values (usually to the mean or based on probability of each allele). These need to be imputed to genotype calls or set to missing.
 
-data("geno", package = "FastStack")
+data("geno", package = "HapSelect")
 
 
 #compute ld
@@ -60,7 +60,7 @@ data("geno", package = "FastStack")
 
 
 #load the example file to see the structure if you do not want to run the function
-data("pairwise_ld", package = "FastStack")
+data("pairwise_ld", package = "HapSelect")
 
 #note: other programs can be utilized to generate the LD file, but make sure the columns c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
 #exist in the data frame. We recommend using PLINK v1.9 for LD calculations.
@@ -117,7 +117,7 @@ haploblocks = block_obj_to_df(haploblocks, map)
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-data("marker_effects", package = "FastStack")
+data("marker_effects", package = "HapSelect")
 
 
 
@@ -142,7 +142,7 @@ data("marker_effects", package = "FastStack")
 # (usually 0/1/2 for diploid, up to 9 for polypoid). We currently support polyploidy up to a ploidy of 9.
 
 haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
-                                    set_missing_NA = TRUE, center = TRUE)
+                                    set_missing_NA = TRUE, mean_adjust = TRUE, parallel = TRUE)
 ##################################
 ####  Visualizations  #####
 ##################################

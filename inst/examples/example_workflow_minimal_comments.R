@@ -26,14 +26,14 @@ if (length(missing_fns) > 0) {
 
 
 #loading map file from an R object
-data("map", package = "FastStack")
+data("map", package = "HapSelect")
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
 map2 = order_map(map = map2)
 
 #loading the genotype file from an R object
-data("geno", package = "FastStack")
+data("geno", package = "HapSelect")
 
 
 #compute ld
@@ -43,7 +43,7 @@ data("geno", package = "FastStack")
 
 
 #load the example file to see the structure if you do not want to run the function
-data("pairwise_ld", package = "FastStack")
+data("pairwise_ld", package = "HapSelect")
 #We recommend using PLINK v1.9 for LD calculations.
 #If you have a PLINK binary fileset (.bed/.bim/.fam), you can also use:
 #ld_pairs = plink_pairwise_ld("path/to/plink_prefix")
@@ -70,7 +70,7 @@ haploblocks = block_obj_to_df(haploblocks, map)
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-data("marker_effects", package = "FastStack")
+data("marker_effects", package = "HapSelect")
 
 
 
