@@ -32,6 +32,11 @@ data("geno", package = "HapSelect")
 #load the example file to see the structure if you do not want to run the function
 data("pairwise_ld", package = "HapSelect")
 
+#We recommend using PLINK v1.9 for LD calculations.
+#If you have a PLINK binary fileset (.bed/.bim/.fam), you can also use:
+#ld_pairs = plink_pairwise_ld("path/to/plink_prefix")
+#see below for more details
+
 
 
 ####################################################
@@ -143,17 +148,6 @@ nrow(haploblock_obj$Haploblocks_GA)
 
 
 #run the GA
-#n_founders  is the number of parents you want to select
-#popSize     is the number of groups of 20 you want - more popSize takes longer per iteration, but leads to faster convergence
-#maxiter     is the maximum number of iterations to reach an optimum solution
-#run         is the maximum number of iterations without improvement before the GA stops
-#selfing     determines whether a parent's localGEBV can be passed down to offspring twice (inbreeding with selfing) in the fitness function
-#pmutation   is the probability a random individual from each population (popSize) of size n_founders will be substituted with a random individual
-#            in the entire population (not including those already in the set of n_founders). Helps reach convergence more quickly, but too large a value may hinder finding the optimum
-#pcrossover  is the probability of two populations (popSize) of n_founders exchanging half of their individuals - if the unique set of individuals after swapping is less than n_founders per population
-#            then a random subset is sampled from the overall population like with pmutation (i.e., not in the unique set of individuals)
-#pelite      when pulling random subsets from the base population after pcrossover, pelite will only consider the pelite proportion individuals with the greatest GEBV (fitness)
-#            set to 1 to consider all individuals
 GA_output = genetic_algorithm(localGEBV = haploblock_obj$Haplotype_Effect_Matrix_GA, n_founders = 20, popSize = 10, maxiter = 300,
                               run = 150, selfing = FALSE, pmutation = 0.2, pcrossover = 0.8, pelite = 0.5)
 

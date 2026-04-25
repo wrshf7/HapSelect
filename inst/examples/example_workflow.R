@@ -50,7 +50,6 @@ data("geno", package = "HapSelect")
 data("pairwise_ld", package = "HapSelect")
 
 
-
 ####################################################
 ####  Pairwise LD with PLINK Call (recommended) ####
 ####################################################
@@ -176,7 +175,8 @@ data("marker_effects", package = "HapSelect")
 # (usually 0/1/2 for diploid, up to 9 for polypoid). We currently support polyploidy up to a ploidy of 9.
 
 haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
-                                    set_missing_NA = TRUE, mean_adjust = TRUE)
+                                    set_missing_NA = TRUE, mean_adjust = TRUE, parallel = TRUE)
+
 ##################################
 ####  Visualizations  #####
 ##################################
