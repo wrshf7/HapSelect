@@ -2,7 +2,7 @@
 ###### Computing localGEBV ######
 ##################################
 
-# Main entry point for localGEBV calculation. This function takes the full genotype matrix, marker effects, and haploblock definitions, and computes local GEBV for each individual at each haploblock. 
+# Main entry point for localGEBV calculation. This function takes the full genotype matrix, marker effects, and haploblock definitions, and computes local GEBV for each individual at each haploblock.
 # The function is designed to handle large datasets efficiently by processing haploblocks in parallel chunks, with optional progress reporting.
 # Inputs:
 # geno - data frame of genotypes, rows = markers, cols = individuals (starting from 4th col), first col = marker ID
@@ -15,7 +15,7 @@
 # chunk_size - integer; maximum number of blocks per chunk in parallel mode; caps the genotype data sent to each worker (default 100)
 compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, mean_adjust = TRUE, parallel = FALSE, chunk_size = 100){
 
-  # Prepare inputs and pre-calculate any necessary intermediate objects for the local GEBV calculation. 
+  # Prepare inputs and pre-calculate any necessary intermediate objects for the local GEBV calculation.
   # This includes aligning marker effects with genotype markers, creating lookup tables for block markers, and determining if haplotype testing is needed based on the presence of marker_pecov.
   prep = prepare_local_gebv_inputs(
     geno = geno,
@@ -24,7 +24,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     marker_pecov = marker_pecov
   )
 
-  # Define the block mapping function that will be applied to each haploblock. 
+  # Define the block mapping function that will be applied to each haploblock.
   # This function calls the core calculation function for a single block, passing the relevant subset of markers and genotypes, as well as the pre-calculated inputs.
   block_mapper = function(haploblock, p = NULL){
     calculate_gebv_block(
@@ -52,7 +52,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
         block_mapper(haploblock, p = p)
       })
     })
-  # Otherwise, if in parallel mode, build payloads for each chunk of haploblocks based on estimated computational cost, and use furrr::future_map to process each chunk in parallel. 
+  # Otherwise, if in parallel mode, build payloads for each chunk of haploblocks based on estimated computational cost, and use furrr::future_map to process each chunk in parallel.
   # The results from all chunks are then combined back into the final local_GEBV list.
   } else {
     # Use all cores available except for 1 to avoid overloading the system
@@ -123,7 +123,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     return(x)
   })
 
-  # Unique haplotype variance 
+  # Unique haplotype variance
   haploblocks_df$Unique_Haplo_Block_Var = purrr::map_dbl(local_GEBV, function(x){
     x = x[[5]]
     return(x)
@@ -135,7 +135,7 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
     return(x)
   }) %>% do.call(rbind, .)
 
-  # Set row and column names for the haplotype ID matrix, which identifies each individual's haplotype configuration at each block. 
+  # Set row and column names for the haplotype ID matrix, which identifies each individual's haplotype configuration at each block.
   # Rows correspond to unique haplotypes (with Block_ID as row names), and columns correspond to individuals (with individual IDs as column names).
   colnames(haploblocks_ind_haplotypes) = prep$individual_ids
   row.names(haploblocks_ind_haplotypes) = haploblocks_df$Block_ID
@@ -289,7 +289,7 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
 prepare_local_gebv_inputs = function(geno, marker_effects, haploblocks_df, marker_pecov){
   # Check marker effects input
   marker_effects = check_effects(marker_effects)
-  # Align marker_effects with geno markers, ensuring that the marker IDs match and are in the same order. 
+  # Align marker_effects with geno markers, ensuring that the marker IDs match and are in the same order.
   geno = geno[match(marker_effects[,1], geno[,1]), ]
 
   # Create a lookup table for block markers, where each block ID maps to the indices of the markers in that block.
@@ -316,7 +316,7 @@ prepare_local_gebv_inputs = function(geno, marker_effects, haploblocks_df, marke
     strsplit(haploblocks_df$Block, ";"),
     haploblocks_df$Block_ID
   )
-  # Block marked index where each block ID maps to the indices of the markers in that block, based on the SNP index lookup. 
+  # Block marked index where each block ID maps to the indices of the markers in that block, based on the SNP index lookup.
   block_marker_idx = lapply(block_marker_ids, function(ids){
     unname(snp_index[ids])
   })
@@ -431,9 +431,6 @@ allocate_chunk_counts = function(group_costs, group_sizes, target_n_chunks){
       }
       chunk_counts[group_id] = chunk_counts[group_id] + 1L
       spare = spare - 1L
-      if(chunk_counts[group_id] >= group_sizes[group_id]){
-        next
-      }
     }
   }
 
@@ -573,7 +570,7 @@ process_gebv_chunk = function(payload, haplo_test, set_missing_NA, mean_adjust, 
 calculate_gebv_block = function(haploblock, marker_idx, marker_ids, effect_vec,
                                 geno_matrix, marker_means, marker_pecov, haplo_test,
                                 set_missing_NA, mean_adjust, p = NULL){
-  
+
   # Get the marker IDs for this block based on the provided marker indices, and construct a data frame of markers and their effects for this block.
   block_marker_ids = marker_ids[marker_idx]
   markers = data.frame(

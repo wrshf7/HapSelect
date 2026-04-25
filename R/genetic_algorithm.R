@@ -32,7 +32,7 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
 
   #at least a certain percentage of blocks (ceiling)
   } else if(!is.null(perc_total)){
-    haploblocks_df = haploblocks_df[ceiling(nrow(haploblocks_df) * perc_total), ]
+    haploblocks_df = haploblocks_df[1:ceiling(nrow(haploblocks_df) * perc_total), ]
     block_id = haploblocks_df$Block_ID
     haploblock_obj$Haploblocks_GA = haploblocks_df
     haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
