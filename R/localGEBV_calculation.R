@@ -199,10 +199,14 @@ local_GEBV_haploblock = function(haploblock_ID, markers, geno_markers, marker_pe
   # If mean_adjust is TRUE, center the genotype matrix by subtracting the marker means (per marker) before multiplying by effects.
   if (mean_adjust) {
     filtered_matrix = sweep(geno_matrix, 2, marker_means_block, "-")
+    # For individuals with any missing genotypes, set those genotypes to 0 to prevent calculation issues.
+    filtered_matrix[is.na(filtered_matrix)] = 0
+  } else {
+    # Replace NAs with the corresponding column means
+    col_indices = which(is.na(filtered_matrix), arr.ind = TRUE)
+    filtered_matrix[col_indices] = marker_means_block[col_indices[, 2]]
   }
 
-  # For individuals with any missing genotypes, set those genotypes to 0 to prevent calculation issues.
-  filtered_matrix[is.na(filtered_matrix)] = 0
 
   # Calculate the effect of each unique haplotype
   all_effects = drop(filtered_matrix %*% block_marker_effects)
