@@ -40,4 +40,5 @@ Imports:
 LinkingTo:
     Rcpp
 Suggests:
+    jsonlite,
     testthat (>= 3.0.0)

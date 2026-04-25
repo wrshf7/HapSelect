@@ -1,0 +1,35 @@
+[
+  {
+    "benchmark": "ld",
+    "params": {
+      "n_markers": 100,
+      "n_individuals": 50,
+      "n_chr": 2,
+      "missing_rate": 0.02,
+      "seed": 1,
+      "n_reps": 1
+    }
+  },
+  {
+    "benchmark": "haploblocks",
+    "params": {
+      "threshold": 0.2,
+      "tolerance": 4,
+      "tol_reset": true,
+      "n_reps": 1
+    }
+  },
+  {
+    "benchmark": "local_gebv",
+    "params": {
+      "n_markers": 100,
+      "n_individuals": 50,
+      "n_chr": 2,
+      "n_blocks": 10,
+      "missing_rate": 0.02,
+      "seed": 1,
+      "n_reps": 1,
+      "chunk_size": 50
+    }
+  }
+]

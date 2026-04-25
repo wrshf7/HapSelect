@@ -1,4 +1,3 @@
-# Helpers ----------------------------------------------------------------------
 simulate_genotypes = function(n_markers, n_individuals, n_chr, missing_rate, seed) {
   set.seed(seed)
 
@@ -71,4 +70,95 @@ time_reps = function(n_reps, expr_fn) {
     times[i] = t[["elapsed"]]
   }
   list(times = times, result = result)
+}
+
+# Parse --name=value command-line arguments, coercing to match types in defaults.
+parse_args = function(defaults) {
+  args   = commandArgs(trailingOnly = TRUE)
+  values = defaults
+
+  for (arg in args) {
+    if (!startsWith(arg, "--") || !grepl("=", arg, fixed = TRUE)) {
+      stop("Arguments must be provided as --name=value")
+    }
+
+    key   = sub("^--([^=]+)=.*$", "\\1", arg)
+    value = sub("^--[^=]+=(.*)$", "\\1", arg)
+
+    if (!key %in% names(values)) {
+      stop("Unknown argument: ", key)
+    }
+
+    if (is.integer(values[[key]])) {
+      values[[key]] = as.integer(value)
+    } else if (is.numeric(values[[key]])) {
+      values[[key]] = as.numeric(value)
+    } else if (is.logical(values[[key]])) {
+      values[[key]] = as.logical(value)
+    } else {
+      values[[key]] = value
+    }
+  }
+
+  values
+}
+
+# Merge params over defaults and coerce each value to match the default's type.
+coerce_params = function(params, defaults) {
+  params = modifyList(defaults, params)
+  for (nm in names(defaults)) {
+    if (is.integer(defaults[[nm]])) {
+      params[[nm]] = as.integer(params[[nm]])
+    } else if (is.numeric(defaults[[nm]])) {
+      params[[nm]] = as.numeric(params[[nm]])
+    } else if (is.logical(defaults[[nm]])) {
+      params[[nm]] = as.logical(params[[nm]])
+    }
+  }
+  params
+}
+
+simulate_marker_effects = function(geno, seed) {
+  set.seed(seed)
+  data.frame(
+    SNP    = geno[, 1],
+    Effect = rnorm(nrow(geno), mean = 0, sd = 0.1),
+    stringsAsFactors = FALSE
+  )
+}
+
+simulate_haploblocks = function(geno, n_blocks, seed) {
+  set.seed(seed)
+
+  chrom_markers = split(geno[, 1], geno[, 2])
+  chrom_names   = names(chrom_markers)
+  chrom_sizes   = lengths(chrom_markers)
+
+  base_blocks = rep(floor(n_blocks / length(chrom_markers)), length(chrom_markers))
+  if (sum(base_blocks) == 0L) {
+    base_blocks[] = 1L
+  }
+
+  remainder = n_blocks - sum(base_blocks)
+  if (remainder > 0L) {
+    order_idx = order(chrom_sizes, decreasing = TRUE)
+    base_blocks[order_idx[seq_len(remainder)]] = base_blocks[order_idx[seq_len(remainder)]] + 1L
+  }
+  base_blocks = pmax(base_blocks, 1L)
+  names(base_blocks) = chrom_names
+
+  block_rows = purrr::imap_dfr(chrom_markers, function(markers, chrom_name) {
+    n_chr_blocks = min(length(markers), base_blocks[[chrom_name]])
+    block_assign = sample(rep(seq_len(n_chr_blocks), length.out = length(markers)))
+    block_strings = tapply(markers, block_assign, function(m) paste(m, collapse = ";"))
+
+    data.frame(
+      Chrom    = geno[match(markers[1], geno[, 1]), 2],
+      Block_ID = paste0("Chr", chrom_name, ":B", seq_along(block_strings)),
+      Block    = as.character(block_strings),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  block_rows
 }
