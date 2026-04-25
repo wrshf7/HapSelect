@@ -288,3 +288,39 @@ test_that("set_missing_NA = FALSE imputes missing genotypes rather than returnin
   expect_false(is.na(result$Haplotype_Effect_Matrix["B1", "ind1"]))
   expect_equal(result$Haplotype_Effect_Matrix["B1", "ind1"], -0.5, tolerance = 1e-10)
 })
+
+
+test_that("parallel local GEBV matches serial results", {
+  progressr::handlers("void")
+  old_options <- options(
+    future.availableCores.custom = 1L,
+    future.availableCores.methods = "custom"
+  )
+  on.exit(options(old_options), add = TRUE)
+
+  serial_result <- compute_local_GEBV(
+    geno           = make_gebv_geno(),
+    marker_effects = make_gebv_marker_effects(),
+    haploblocks_df = make_gebv_haploblocks(),
+    marker_pecov   = make_gebv_pecov(),
+    set_missing_NA = TRUE,
+    mean_adjust    = TRUE,
+    parallel       = FALSE
+  )
+
+  parallel_result <- compute_local_GEBV(
+    geno           = make_gebv_geno(),
+    marker_effects = make_gebv_marker_effects(),
+    haploblocks_df = make_gebv_haploblocks(),
+    marker_pecov   = make_gebv_pecov(),
+    set_missing_NA = TRUE,
+    mean_adjust    = TRUE,
+    parallel       = TRUE,
+    chunk_size     = 1
+  )
+
+  expect_equal(parallel_result$Haploblocks, serial_result$Haploblocks, tolerance = 1e-10)
+  expect_equal(parallel_result$Haplotype_ID_Matrix, serial_result$Haplotype_ID_Matrix)
+  expect_equal(parallel_result$Haplotype_Effect_Matrix, serial_result$Haplotype_Effect_Matrix, tolerance = 1e-10)
+  expect_equal(parallel_result$Haplotypes, serial_result$Haplotypes, tolerance = 1e-10)
+})
