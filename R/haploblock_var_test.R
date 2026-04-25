@@ -6,9 +6,24 @@
 
 #head function to export
 haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
+  if (
+    missing(gen_var) ||
+    !is.numeric(gen_var) ||
+    length(gen_var) != 1 ||
+    is.na(gen_var) ||
+    gen_var <= 0
+  ) {
+    stop("Please provide a valid value for the additive genetic variance (single positive numeric). This should be the estimate from GBLUP or computed as a function of the additive marker variance from a marker model.")
+  }
 
-  if(!is.numeric(gen_var) || is.null(gen_var) || is.na(gen_var)){
-    stop("Please provide a valid value for the additive genetic variance. This should be the estimate from GBLUP or computed from the additive marker variance from a marker model.")
+  if (
+    missing(threshold) ||
+    !is.numeric(threshold) ||
+    length(threshold) != 1 ||
+    is.na(threshold) ||
+    threshold < 0 || threshold > 1
+  ) {
+    stop("Please provide a valid threshold (single numeric between 0 and 1).")
   }
 
   null_block_var = gen_var / nrow(haploblock_obj$Haploblocks)
