@@ -15,6 +15,9 @@
 # chunk_size - integer; maximum number of blocks per chunk in parallel mode; caps the genotype data sent to each worker (default 100)
 compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, mean_adjust = TRUE, parallel = FALSE, chunk_size = 100){
 
+  # If users submit a custom haploblocks_df file, ensure it was properly formatted
+  check_haploblocks_df(haploblocks_df)
+
   # Prepare inputs and pre-calculate any necessary intermediate objects for the local GEBV calculation.
   # This includes aligning marker effects with genotype markers, creating lookup tables for block markers, and determining if haplotype testing is needed based on the presence of marker_pecov.
   prep = prepare_local_gebv_inputs(
@@ -662,3 +665,24 @@ haplotype_p_value_calc = function(haplotype_effect, haplotype_PEV){
   p_value = 2 * (1 - pnorm(abs(haplotype_effect / sqrt(haplotype_PEV))))
 }
 
+# Check that the haploblock data frame contains all necessary information. Sometimes users may compute their own.
+check_haploblocks_df = function(haploblocks_df){
+  if(!all(c("Block", "Block_ID", "Chrom") %in% colnames(haploblocks_df))){
+    stop("Please ensure the haploblock data frame contains the 'Block', 'Block_ID', and 'Chrom' Columns")
+  }
+
+  if(!is.character(haploblocks_df$Block) || anyNA(haploblocks_df$Block) ){
+    stop("Please ensure each row of the \"Block\" column contains the markers corresponding to a given block ID and are separated by a ';'. Please also ensure that the column is not a factor.")
+  }
+
+  if(!any(grepl(";", haploblocks_df$Block))){
+    warning("Did not detect the ';' seperator in any blocks. Are all blocks single marker blocks? If not, please ensure you use the exact separator, otherwise extracting marker IDs for blocks will fail!")
+  }
+
+  split_blocks = strsplit(haploblocks_df$Block, ";")
+
+  if(any(vapply(split_blocks, function(x) any(x == ""), logical(1)))){
+    stop("Block strings contain empty marker IDs (e.g., trailing ';', leading ';', or double ';;')")
+  }
+
+}
