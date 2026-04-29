@@ -57,7 +57,7 @@ read_plink_bim = function(path){
   return(bim)
 }
 
-##### Convert a PLINK .ld output file into the FastStack LD format #####
+##### Convert a PLINK .ld output file into the HapSelect LD format #####
 # bim can be either a path to a .bim file or the parsed data frame from read_plink_bim().
 # If you wish to run PLINK manually, this function is needed to convert the PLINK LD output into fast stack ld format #
 format_plink_ld = function(ld_path, bim){
@@ -72,7 +72,7 @@ format_plink_ld = function(ld_path, bim){
   }
 
   if(file.info(ld_path)$size == 0) {
-    # No LD pairs were reported, so return an empty FastStack table.
+    # No LD pairs were reported, so return an empty HapSelect table.
     return(data.frame(
       Chrom = bim$Chrom[FALSE],
       Locus1 = integer(),
@@ -111,7 +111,7 @@ format_plink_ld = function(ld_path, bim){
     stop("PLINK .ld output contained cross-chromosome marker pairs.")
   }
 
-  # Rebuild the same long-form LD structure used by FastStack's internal LD path.
+  # Rebuild the same long-form LD structure used by HapSelect's internal LD path.
   ld_df = data.frame(
     Chrom = chrom1,
     Locus1 = bim$Locus[idx1],
@@ -149,7 +149,7 @@ run_plink_command = function(args){
 }
 
 
-##### Run PLINK pairwise LD and return the result in FastStack format #####
+##### Run PLINK pairwise LD and return the result in HapSelect format #####
 # prefix should point to a PLINK binary fileset without extension (.bed/.bim/.fam)
 plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
                              ld_window_r2 = 0, extra_args = character()){
@@ -167,7 +167,7 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
 
   # Since we are running plink internally, theres no need to keep output files
   # Remove them on exit
-  out_prefix = tempfile("faststack_plink_ld_")
+  out_prefix = tempfile("hapselect_plink_ld_")
   on.exit(
     unlink(paste0(out_prefix, c(".ld", ".log", ".nosex")), force = TRUE),
     add = TRUE
