@@ -14,7 +14,7 @@ test_that("PLINK and HapSelect LD implementations output match reasonably closel
   )
 
   HapSelect_ld <- pairwise_ld(genotypes, parallelize = FALSE)
-  plink_ld <- plink_pairwise_ld(genotypes)
+  plink_ld <- plink_pairwise_ld_geno(genotypes)
 
   expect_equal(
     HapSelect_ld[, c("Chrom", "Locus1", "Locus2", "Name1", "Name2")],

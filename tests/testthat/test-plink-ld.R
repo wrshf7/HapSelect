@@ -44,13 +44,20 @@ test_that("format_plink_ld converts PLINK output to HapSelect LD format", {
 })
 
 
-test_that("plink_pairwise_ld errors when geno is not a valid data frame", {
+test_that("plink_pairwise_ld errors when the PLINK fileset is incomplete", {
   expect_error(
-    plink_pairwise_ld("not_a_data_frame"),
+    plink_pairwise_ld("missing_prefix"),
+    "Missing required PLINK input files"
+  )
+})
+
+test_that("plink_pairwise_ld_geno errors when geno is not a valid data frame", {
+  expect_error(
+    plink_pairwise_ld_geno("not_a_data_frame"),
     "geno must be a data frame"
   )
   expect_error(
-    plink_pairwise_ld(data.frame(a = 1, b = 2, c = 3)),
+    plink_pairwise_ld_geno(data.frame(a = 1, b = 2, c = 3)),
     "geno must be a data frame"
   )
 })

@@ -191,25 +191,27 @@ write_plink_ped_map = function(geno, prefix) {
 }
 
 ##### Run PLINK pairwise LD and return the result in HapSelect format #####
-# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
-#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
-plink_pairwise_ld = function(geno, ld_window = 999999, ld_window_kb = 1000000,
+# prefix should point to a PLINK binary fileset without extension (.bed/.bim/.fam)
+plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
                              ld_window_r2 = 0, extra_args = character()){
-  if(!is.data.frame(geno) || ncol(geno) < 4){
-    stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
+  required_files = paste0(prefix, c(".bed", ".bim", ".fam"))
+  missing_files  = required_files[!file.exists(required_files)]
+
+  if(length(missing_files) > 0){
+    stop(
+      "Missing required PLINK input files: ",
+      paste(basename(missing_files), collapse = ", ")
+    )
   }
 
-  in_prefix  = tempfile("hapselect_plink_in_")
   out_prefix = tempfile("hapselect_plink_out_")
-
-  on.exit(unlink(paste0(in_prefix,  c(".ped", ".map")),          force = TRUE), add = TRUE)
-  on.exit(unlink(paste0(out_prefix, c(".ld", ".log", ".nosex")), force = TRUE), add = TRUE)
-
-  write_plink_ped_map(geno, in_prefix)
+  on.exit(
+    unlink(paste0(out_prefix, c(".ld", ".log", ".nosex")), force = TRUE),
+    add = TRUE
+  )
 
   args = c(
-    "--ped", paste0(in_prefix, ".ped"),
-    "--map", paste0(in_prefix, ".map"),
+    "--bfile", prefix,
     "--r2",
     "--ld-window",    as.character(ld_window),
     "--ld-window-kb", as.character(ld_window_kb),
@@ -220,14 +222,28 @@ plink_pairwise_ld = function(geno, ld_window = 999999, ld_window_kb = 1000000,
 
   run_plink_command(args)
 
-  # Build the bim-equivalent directly from the genotype data frame
-  bim = data.frame(
-    Chrom    = type.convert(geno[[2]], as.is = TRUE),
-    SNP      = geno[[1]],
-    Position = as.numeric(geno[[3]]),
-    stringsAsFactors = FALSE
-  )
-  bim$Locus = ave(seq_len(nrow(bim)), bim$Chrom, FUN = seq_along)
+  format_plink_ld(paste0(out_prefix, ".ld"), paste0(prefix, ".bim"))
+}
 
-  format_plink_ld(paste0(out_prefix, ".ld"), bim)
+##### Run PLINK pairwise LD from a genotype data frame #####
+# Writes temporary PLINK text files, delegates to plink_pairwise_ld, then cleans up.
+# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 1000000,
+                                  ld_window_r2 = 0, extra_args = character()){
+  if(!is.data.frame(geno) || ncol(geno) < 4){
+    stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
+  }
+
+  in_prefix = tempfile("hapselect_plink_in_")
+  on.exit(unlink(paste0(in_prefix, c(".ped", ".map", ".bed", ".bim", ".fam", ".log", ".nosex")),
+                 force = TRUE), add = TRUE)
+
+  write_plink_ped_map(geno, in_prefix)
+
+  # Convert text files to binary so plink_pairwise_ld can consume them
+  run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix))
+
+  plink_pairwise_ld(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
+                    ld_window_r2 = ld_window_r2, extra_args = extra_args)
 }
