@@ -106,9 +106,14 @@ format_plink_ld = function(ld_path, bim){
   chrom1 = bim$Chrom[idx1]
   chrom2 = bim$Chrom[idx2]
 
-  # Check each item from the pair is from the same chromosone
+  # Filter cross-chromosome pairs, which PLINK should not produce but occasionally does
   if(any(chrom1 != chrom2)){
-    stop("PLINK .ld output contained cross-chromosome marker pairs.")
+    warning("PLINK .ld output contained cross-chromosome marker pairs; they will be dropped.")
+    keep   = chrom1 == chrom2
+    ld     = ld[keep, ]
+    idx1   = idx1[keep]
+    idx2   = idx2[keep]
+    chrom1 = chrom1[keep]
   }
 
   # Rebuild the same long-form LD structure used by HapSelect's internal LD path.
@@ -149,50 +154,80 @@ run_plink_command = function(args){
 }
 
 
-##### Run PLINK pairwise LD and return the result in HapSelect format #####
-# prefix should point to a PLINK binary fileset without extension (.bed/.bim/.fam)
-plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
-                             ld_window_r2 = 0, extra_args = character()){
-  # Gather required files
-  required_files = paste0(prefix, c(".bed", ".bim", ".fam"))
-  missing_files = required_files[!file.exists(required_files)]
-
-  # Ensure all plink files are available
-  if(length(missing_files) > 0){
-    stop(
-      "Missing required PLINK input files: ",
-      paste(basename(missing_files), collapse = ", ")
-    )
-  }
-
-  # Since we are running plink internally, theres no need to keep output files
-  # Remove them on exit
-  out_prefix = tempfile("hapselect_plink_ld_")
-  on.exit(
-    unlink(paste0(out_prefix, c(".ld", ".log", ".nosex")), force = TRUE),
-    add = TRUE
+##### Write PLINK text input files (.ped / .map) from a genotype data frame #####
+# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+write_plink_ped_map = function(geno, prefix) {
+  utils::write.table(
+    data.frame(CHR = geno[[2]], SNP = geno[[1]], CM = 0, BP = geno[[3]],
+               stringsAsFactors = FALSE),
+    file      = paste0(prefix, ".map"),
+    quote     = FALSE,
+    sep       = "\t",
+    row.names = FALSE,
+    col.names = FALSE
   )
 
-  # Create arguments structure
+  dosage_to_calls = function(x) {
+    a1 = ifelse(is.na(x), "0", ifelse(x == 2L, "G", "A"))
+    a2 = ifelse(is.na(x), "0", ifelse(x == 0L, "A", "G"))
+    c(rbind(a1, a2))
+  }
+
+  geno_matrix = as.matrix(geno[, -(1:3)])
+  ped = do.call(rbind, lapply(seq_len(ncol(geno_matrix)), function(i) {
+    c(paste0("F", i), paste0("I", i), "0", "0", "0", "-9",
+      dosage_to_calls(geno_matrix[, i]))
+  }))
+
+  utils::write.table(
+    ped,
+    file      = paste0(prefix, ".ped"),
+    quote     = FALSE,
+    sep       = "\t",
+    row.names = FALSE,
+    col.names = FALSE
+  )
+}
+
+##### Run PLINK pairwise LD and return the result in HapSelect format #####
+# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+plink_pairwise_ld = function(geno, ld_window = 999999, ld_window_kb = 1000000,
+                             ld_window_r2 = 0, extra_args = character()){
+  if(!is.data.frame(geno) || ncol(geno) < 4){
+    stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
+  }
+
+  in_prefix  = tempfile("hapselect_plink_in_")
+  out_prefix = tempfile("hapselect_plink_out_")
+
+  on.exit(unlink(paste0(in_prefix,  c(".ped", ".map")),          force = TRUE), add = TRUE)
+  on.exit(unlink(paste0(out_prefix, c(".ld", ".log", ".nosex")), force = TRUE), add = TRUE)
+
+  write_plink_ped_map(geno, in_prefix)
+
   args = c(
-    "--bfile", prefix,
+    "--ped", paste0(in_prefix, ".ped"),
+    "--map", paste0(in_prefix, ".map"),
     "--r2",
-    "--ld-window", as.character(ld_window),
+    "--ld-window",    as.character(ld_window),
     "--ld-window-kb", as.character(ld_window_kb),
     "--ld-window-r2", as.character(ld_window_r2),
     extra_args,
     "--out", out_prefix
   )
 
-  # Execute the plink command, this may take time, but is typically much faster than the internal implementation
   run_plink_command(args)
 
-  # Collect the results, bim and the outputted ld
-  bim_path = paste0(prefix, ".bim")
-  ld_path = paste0(out_prefix, ".ld")
+  # Build the bim-equivalent directly from the genotype data frame
+  bim = data.frame(
+    Chrom    = type.convert(geno[[2]], as.is = TRUE),
+    SNP      = geno[[1]],
+    Position = as.numeric(geno[[3]]),
+    stringsAsFactors = FALSE
+  )
+  bim$Locus = ave(seq_len(nrow(bim)), bim$Chrom, FUN = seq_along)
 
-  # Finally, convert to the fast stack format
-  ld_df = format_plink_ld(ld_path, bim_path)
-
-  return(ld_df)
+  format_plink_ld(paste0(out_prefix, ".ld"), bim)
 }
