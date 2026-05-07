@@ -50,6 +50,7 @@ make_gebv_haploblocks <- function() {
   data.frame(
     Block_ID = c("B1", "B2"),
     Block    = c("m1;m2", "m3"),
+    Chrom    = 1L,
     stringsAsFactors = FALSE
   )
 }
@@ -71,7 +72,7 @@ test_that("compute_local_GEBV returns a named list with correct structure", {
   expect_named(result, c("Haploblocks", "Haplotype_ID_Matrix", "Haplotype_Effect_Matrix", "Haplotypes"))
 
   # Haploblocks data frame
-  expect_named(result$Haploblocks, c("Block_ID", "Block", "Num_Uniq_Hap", "Block_Var", "Unique_Haplo_Block_Var"))
+  expect_named(result$Haploblocks, c("Block_ID", "Block", "Chrom", "Num_Uniq_Hap", "Block_Var", "Unique_Haplo_Block_Var"))
   expect_equal(nrow(result$Haploblocks), 2L)
   expect_equal(result$Haploblocks$Num_Uniq_Hap[result$Haploblocks$Block_ID == "B1"], 4L)
   expect_equal(result$Haploblocks$Num_Uniq_Hap[result$Haploblocks$Block_ID == "B2"], 3L)

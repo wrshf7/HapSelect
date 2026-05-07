@@ -50,3 +50,14 @@ test_that("plink_pairwise_ld errors when the PLINK fileset is incomplete", {
     "Missing required PLINK input files"
   )
 })
+
+test_that("plink_pairwise_ld_geno errors when geno is not a valid data frame", {
+  expect_error(
+    plink_pairwise_ld_geno("not_a_data_frame"),
+    "geno must be a data frame"
+  )
+  expect_error(
+    plink_pairwise_ld_geno(data.frame(a = 1, b = 2, c = 3)),
+    "geno must be a data frame"
+  )
+})
