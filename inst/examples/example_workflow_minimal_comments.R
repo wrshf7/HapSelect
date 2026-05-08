@@ -119,28 +119,36 @@ haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects
 
 #must provide the column of the marker effects as well as the column indicating the chromosome and position on the chromosome
 #if the map and marker effects plot are in the same order, you can do it as it is done here, else merge the two data frames together
-marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position)
+marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position, colors = c("#A01FF0", "#A7A8AA"))
 marker_plot
 
 #all of these plots utilize the haploblock_obj created
-haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
+#plots the unique haplotype (localGEBV) effects, similar to the marker effect plot
+haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = "midpoint")
 haplo_eff_plot
 
-#mean_line = TRUE adds a line to the block variance (scaled)
-funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE)
+#funnel plot scales the block variance to be between the value of 0 and 1, otherwise a quadratic term could scale exponentially
+funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE, scale_colors = c("blue", "purple", "red"))
 funnel_plot
 
-haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
+#plots the location of the haploblocks on the chromosome
+haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks, block_fill = "#A01FF0", chrom_fill = NA,
+                                   height = 0.30,
+                                   single_width_bp = NULL)
 haploblock_plot
 
 #marker density plot
-marker_density_plot = plot_marker_density(map_df = map, bin_size = 500e3)
+marker_density_plot = plot_marker_density(map = map, bin_size = 500e3, height = 0.3,
+                                          chrom_fill = NA,
+                                          col_low = "white", col_mid = "purple", col_high = "red")
 marker_density_plot
 
 #LD decay plot
 #plot the LD decay utilizing the map and LD objects
-ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
+ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10L, method = "gam_cr", point_color = "#A7A8AA",
+                              curve_color = "#A01FF0", alpha = 0.2)
 ld_decay_plot
+
 
 
 ###########################################################

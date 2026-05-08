@@ -2,6 +2,32 @@
 ###### Visualization Functions ######
 #####################################
 
+#helper function for color checking
+.check_color = function(x, n = NULL, allow_na = FALSE){
+
+  if(!is.null(n) && length(x) != n){
+    return(FALSE)
+  }
+
+  valid = sapply(x, function(col){
+
+    if(is.na(col)){
+      return(allow_na)
+    }
+
+    if(!is.character(col)){
+      return(FALSE)
+    }
+
+    tryCatch({
+      grDevices::col2rgb(col)
+      TRUE
+    }, error = function(e) FALSE)
+  })
+
+  all(valid)
+}
+
 ######Marker Effects#####
 marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "#A7A8AA")){
   # effects: numeric vector of marker effects
@@ -19,6 +45,18 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
   # ensure input lengths match
   if(length(marker_effects) != length(chr) | length(marker_effects) != length(pos) | length(chr) != length(pos)){
     stop("Ensure the length of the marker effects, marker position, and chromosome vectors are the same.")
+  }
+
+  if(!is.numeric(marker_effects)){
+    stop("'marker_effects' must be numeric.")
+  }
+
+  if(!is.numeric(pos)){
+    stop("'pos' must be numeric.")
+  }
+
+  if(!.check_color(colors, n = 2)){
+    stop("'colors' must contain exactly 2 valid R/hex colors.")
   }
 
   #group data into a df
@@ -57,6 +95,18 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
 
 #####Haplotype effects plot######
 unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
+
+  if(!is.list(haplo_obj)){
+    stop("'haplo_obj' must be a haploblock object.")
+  }
+
+  if(!all(c("Haploblocks", "Haplotypes") %in% names(haplo_obj))){
+    stop("'haplo_obj' must contain 'Haploblocks' and 'Haplotypes'.")
+  }
+
+  if(!.check_color(colors, n = 2)){
+    stop("'colors' must contain exactly 2 valid R/hex colors.")
+  }
 
   #plotting strategy - midpoint or start of haplotype
   pos_type = match.arg(pos_type)
@@ -105,6 +155,19 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
 ######Funnel Plot Creation######
 
 block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("blue", "purple", "red")){
+
+  if(!is.list(haplo_obj)){
+    stop("'haplo_obj' must be a haploblock object.")
+  }
+
+  if(!is.logical(mean_line) || length(mean_line) != 1){
+    stop("'mean_line' must be TRUE or FALSE.")
+  }
+
+  if(!.check_color(scale_colors, n = 3)){
+    stop("'scale_colors' must contain exactly 3 valid R/hex colors.")
+  }
+
   haploblocks = haplo_obj$Haploblocks
   haplotypes = haplo_obj$Haplotypes
 
@@ -135,6 +198,32 @@ block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("
 plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = NA,
                             height = 0.30,
                             single_width_bp = NULL){
+
+  required_cols = c("Chrom", "Start_Pos", "End_Pos")
+
+  if(!all(required_cols %in% names(haploblock_df))){
+    stop("'haploblock_df' must contain: Chrom, Start_Pos, End_Pos")
+  }
+
+  if(!is.numeric(height) || length(height) != 1 || height <= 0){
+    stop("'height' must be a positive numeric value.")
+  }
+
+  if(!.check_color(block_fill, n = 1)){
+    stop("'block_fill' must be a valid R/hex color.")
+  }
+
+  if(!.check_color(chrom_fill, n = 1, allow_na = TRUE)){
+    stop("'chrom_fill' must be a valid R/hex color or NA.")
+  }
+
+  if(!is.null(single_width_bp)){
+    if(!is.numeric(single_width_bp) ||
+       length(single_width_bp) != 1 ||
+       single_width_bp <= 0){
+      stop("'single_width_bp' must be NULL or a positive numeric value.")
+    }
+  }
 
   #convert to a factor
   haploblock_df$Chrom = as.factor(haploblock_df$Chrom)
@@ -252,6 +341,28 @@ plot_marker_density = function(map, bin_size = 500000, height = 0.3,
                                chrom_fill = NA,
                                col_low = "white", col_mid = "purple", col_high = "red") {
 
+  required_cols = c("Chromosome", "Position")
+
+  if(!all(required_cols %in% names(map))){
+    stop("'map' must contain: Chrom, Position")
+  }
+
+  if(!is.numeric(bin_size) || length(bin_size) != 1 || bin_size <= 0){
+    stop("'bin_size' must be a positive numeric value.")
+  }
+
+  if(!is.numeric(height) || length(height) != 1 || height <= 0){
+    stop("'height' must be a positive numeric value.")
+  }
+
+  if(!.check_color(chrom_fill, n = 1, allow_na = TRUE)){
+    stop("'chrom_fill' must be a valid R/hex color or NA.")
+  }
+
+  if(!.check_color(c(col_low, col_mid, col_high), n = 3)){
+    stop("'col_low', 'col_mid', and 'col_high' must be valid R/hex colors.")
+  }
+
   map$Chrom = as.factor(map$Chrom)
   map = map %>% arrange(as.numeric(as.character(Chrom)), Position)
 
@@ -332,15 +443,45 @@ plot_ld_decay = function(
     alpha = 0.2,
     span = 0.3,
     method = c("gam_tp", "gam_cr", "exp", "loess"),
-    k = 50
+    k = 50L
 ) {
 
   # Expect these columns from your objects
   if (!all(c("SNP", "Chromosome", "Position") %in% names(map))) {
     stop("Map must contain: SNP, Chromosome, Position")
   }
+
   if (!all(c("Name1", "Name2", "LD") %in% names(ld))) {
     stop("LD file must contain: Name1, Name2, LD")
+  }
+
+
+  if(!is.numeric(max_kb) || length(max_kb) != 1 || max_kb <= 0){
+    stop("'max_kb' must be a positive numeric value.")
+  }
+
+  if(!is.numeric(alpha) || length(alpha) != 1 ||
+     alpha < 0 || alpha > 1){
+    stop("'alpha' must be a numeric between 0 and 1.")
+  }
+
+  if(!is.numeric(span) || length(span) != 1 ||
+     span <= 0 || span > 1){
+    stop("'span' must be a numeric between 0 and 1.")
+  }
+
+  if(!is.numeric(k) || length(k) != 1 || k < 10 || k > 100){
+    stop("'k' must be a positive integer between 10 and 100.")
+  }
+
+  k = as.integer(k)
+
+  if(!.check_color(point_color, n = 1)){
+    stop("'point_color' must be a valid R/hex color.")
+  }
+
+  if(!.check_color(curve_color, n = 1)){
+    stop("'curve_color' must be a valid R/hex color.")
   }
 
   method = match.arg(method)
