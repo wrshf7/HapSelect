@@ -13,8 +13,8 @@ library(HapSelect)
 #the map file chromosomes MUST be numeric!
 #First column should be SNP ID, second column should be chromosome, and third
 #column should be the position
+map = HapSelect::map
 
-data("map", package = "HapSelect")
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
@@ -30,8 +30,7 @@ map2 = order_map(map = map2)
 #loading the genotype file from an R object
 #Non-integers represent imputed values (usually to the mean or based on probability of each allele). It is recommended these be imputed to genotype calls
 #or set to missing, otherwise haplotype configurations will be weird values. NOTE: This will not affect localGEBV values.
-data("geno", package = "HapSelect")
-
+geno = HapSelect::geno
 
 #compute ld
 
@@ -47,7 +46,7 @@ data("geno", package = "HapSelect")
 
 
 #load the example file to see the structure if you do not want to run the function
-data("pairwise_ld", package = "HapSelect")
+ld_pairs = HapSelect::ld_pairs
 
 
 ####################################################
@@ -60,7 +59,7 @@ data("pairwise_ld", package = "HapSelect")
 #First column should be SNP ID, second column should be chromosome, and third
 #column should be the position
 
-data("map", package = "HapSelect")
+map = HapSelect::map
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
@@ -79,8 +78,7 @@ map2 = order_map(map = map2)
 #being the genotypes at each locus for each individual
 #column names of the map information (first 3 columns) will not matter in this case, but the order of map info columns
 #should be the same as the map file columns (SNP ID, Chromosome, Position)
-data("geno", package = "HapSelect")
-
+geno = HapSelect::geno
 
 #compute ld with PLINK
 
@@ -95,7 +93,7 @@ ld_pairs = plink_pairwise_ld(prefix = "example_plink", ld_window = 999999, ld_wi
 ###########################################
 
 #load the example file to see the structure if you do not want to run the function
-data("pairwise_ld", package = "HapSelect")
+ld_pairs = HapSelect::ld_pairs
 
 
 #note: other programs can be utilized to generate the LD file, but make sure the columns c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
@@ -145,12 +143,61 @@ haploblocks = block_obj_to_df(haploblocks, map)
 block_summary(block_df = haploblocks)
 
 #######################################
+#### Compute Marker Effects  #####
+#######################################
+
+#Basic genomic prediction to obtain marker effects - This assumes one phenotype/BLUE/BLUP per individual.
+#No other effects in the model allowed. For more advanced modeling, use other modeling software to obtain marker effects.
+
+#The BLUE file should be structured such that the first column is comprised of individuals and the second column is comprised of a singular phenotype, BLUE, or de-regressed BLUP for each individual
+BLUE = HapSelect::BLUE
+
+#Basic genomic prediction using rrBLUP to solve for marker effects
+# geno:      the genotype matrix previously utilized above
+# BLUE:      the data frame containing the singular phenotype/BLUE/de-regressed BLUP for each individual as described above
+# h2_method: scaling method to convert marker variance to additive genetic variance to compute narrow-sense heritability.
+#              For most users, the default "VanRaden" method should be utilized for agricultural species. This is equivalent to GBLUP in VanRaden's method 1.
+#              "VanRaden" uses 2 * sum(p*(1-p)) as a multiplier to scale the marker variance, whereas "marker_num" simply scales the marker variance by multiplying by the number of markers.
+#              Using "marker_num" is generally only appropriate if the genotype matrix provided is already scaled.
+# ploidy:    the integer value specifying the ploidy of the species. This must be an integer, which has the format of #L in R. If no L follows the number, R will not treat it as an integer and the internal check will fail!
+
+
+marker_effects = create_marker_effects_file(geno = geno, BLUE = BLUE, h2_method = "VanRaden", ploidy = 2L)
+
+#Basic functions to assess model performance:
+
+#Basic n fold cross-validation
+# geno:      the genotype matrix previously utilized above
+# BLUE:      the data frame containing the singular phenotype/BLUE/de-regressed BLUP for each individual as described above
+# h2_method: scaling method to convert marker variance to additive genetic variance to compute narrow-sense heritability.
+#              For most users, the default "VanRaden" method should be utilized for agricultural species. This is equivalent to GBLUP in VanRaden's method 1.
+#              "VanRaden" uses 2 * sum(p*(1-p)) as a multiplier to scale the marker variance, whereas "marker_num" simply scales the marker variance by multiplying by the number of markers.
+#              Using "marker_num" is generally only appropriate if the genotype matrix provided is already scaled.
+# ploidy:    the integer value specifying the ploidy of the species. This must be an integer, which has the format of #L in R. If no L follows the number, R will not treat it as an integer and the internal check will fail!
+# nfold:     the number of folds in the cross-validation (e.g., how many groups the data is split into with all but one group used for training and each group used for validation once)
+
+CV = n_fold_cross_validation(geno = geno, BLUE = BLUE, nfold = 5L, h2_method = "VanRaden", ploidy = 2L)
+
+#Basic cross-validation
+# geno:       the genotype matrix previously utilized above
+# BLUE:       the data frame containing the singular phenotype/BLUE/de-regressed BLUP for each individual as described above
+# h2_method:  scaling method to convert marker variance to additive genetic variance to compute narrow-sense heritability.
+#               For most users, the default "VanRaden" method should be utilized for agricultural species. This is equivalent to GBLUP in VanRaden's method 1.
+#               "VanRaden" uses 2 * sum(p*(1-p)) as a multiplier to scale the marker variance, whereas "marker_num" simply scales the marker variance by multiplying by the number of markers.
+#               Using "marker_num" is generally only appropriate if the genotype matrix provided is already scaled.
+# ploidy:     the integer value specifying the ploidy of the species. This must be an integer, which has the format of #L in R. If no L follows the number, R will not treat it as an integer and the internal check will fail!
+# train_prop: the random proportion of individuals used for training (between 0 and 1) with the remainder utilized for validation
+# fold:       the number of iterations to randomly sample train_prop proportion of individuals and compute prediction accuracy on the remainder validation set
+
+CV = cross_validation(geno = geno, BLUE = BLUE, train_prop = 0.9, fold = 5L, h2_method = "VanRaden", ploidy = 2L)
+
+#######################################
 #### Compute localGEBV  #####
 #######################################
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-data("marker_effects", package = "HapSelect")
+marker_effects = HapSelect::marker_effects
 
 
 
@@ -215,9 +262,9 @@ ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3
 ld_decay_plot
 
 
-##############################################
-#### Parent Selection with the GA ####
-##############################################
+###########################################################
+#### Parent Selection with the GA and Basic Simulation ####
+###########################################################
 
 #There are three methods we have implemented to select haploblocks:
 #1: select the top n blocks based on Block_Var
@@ -260,3 +307,32 @@ GA_output = genetic_algorithm(localGEBV = haploblock_obj$Haplotype_Effect_Matrix
 
 #one unique set of parents - other solutions may exist, see the GA_output$GA@solution object for other potential sets of parents with the same fitness
 GA_output$One_Solution
+
+
+#basic simulation of GA vs TS selected parents and PCA plot
+
+#The output provides a simuation plot showing potential genetic plateaus of GA vs TS selected parents,
+# a dataframe containing PCA information (if PCA = TRUE), and a PCA plot showing where the GS and TS selected parents (and their overlap) sit in the overall diversity (if PCA = TRUE).
+
+# The primary inputs are the same as previous steps or are generated by previous steps, including the genotype dataframe object, marker effects data frame, map data frame, and GA object just generated
+# genetic_map_position: an optional argument if the genetic map of the markers is known. The genetic map should be a vector (singular column of a data frame) of equal length to the map and in the same order. Values should be in centiMorgans (cM).
+#                       If left as NULL, each chromosome is assumed to be of size max_cM_chr (default 100 cM). A value of 100 cM corresponds to an average of 1 recombination event per chromosome.
+#                       If left as NULL, the first marker in a chromosome is assumed 0 cM and the last marker is assumed max_cM_chr (default 100 cM) and cM values for other markers are proportional to their physical distance between the first and last marker.
+# max_cM_chr:           The maximum genetic map distance per chromosome if a genetic map is not provided (default is 100 centiMorgans; cM). A value of 100 cM corresponds to an average of 1 crossover (recombination) event per chromosome.
+# num_gen:              The number of generations of recurrent truncation selection (TS) to simulate using both the GA selected and TS selected parents - default is 50.
+# num_sim_reps:         The number of simulation replicates to conduct to quantify the +/- 2 standard deviations of genetic progress. Differences arise from recombination differences, which chromosome is passed to offspring, and alternative assignments of heterozygotes (see genomicSimulation documents for more detail).
+# num_cross_per_gen:    The number of offspring generated from random mating between parents each generation. The default is 1000 progeny.
+# num_TS_parents:       The number of truncation selected (TS) parents to utilize (based on whole-genome GEBV) and compare to the specified number of GA parents.
+#                       If left as NULL, the value is assumed to be the same as the number of GA selected parents provided.
+# mean_adjust:          Default is TRUE - centers the genotype matrix (see Van Raden, 2008) to prevent a mean shift (bias) in GEBV. This will not influence rankings or the rate of genetic progress, but will inflate/deflate average GEBV by a constant.
+# PCA:                  If TRUE (default), conducts a PCA on the genotype matrix and highlights the parents selected from the GA, TS, and the overlap using colors specified in colors.
+# colors:               Vector of length 4 of colors or hexidecimal color values recognized by R.
+#                       The four values highlight GA selected parents, TS selected parents, the parents selected by both methods, and individuals not selected as parents, respectively.
+# alpha:                Vector of length 4 with values between 0 and 1 to set the transparency of the four parent categories in colors. Default is no transparency for any selected parent and 50% transparency for individuals not selected by any method.
+parent_sln_obj = GA_vs_TS_simulation(GA_output = GA_output, geno = geno, marker_effects = marker_effects, map = map, genetic_map_position = NULL, num_gen = 50, num_sim_reps = 30,
+                                     num_cross_per_gen = 1000, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE,
+                                     colors = c("green", "#d95f02", "#A01FF0", "gray80"), alpha = c(1,1,1,0.5))
+
+#display plots
+parent_sln_obj$Simulation_Plot
+parent_sln_obj$PCA_Plot
