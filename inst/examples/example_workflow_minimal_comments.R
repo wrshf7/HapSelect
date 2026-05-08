@@ -8,7 +8,7 @@ library(HapSelect)
 ####  Pairwise LD with Native Function (not recommended) ####
 #############################################################
 
-data("map", package = "HapSelect")
+map = HapSelect::map
 
 #simulate unordered map file - original file is already ordered, so this is just an example
 map2 = map[sample(1:nrow(map), nrow(map)), ]
@@ -19,7 +19,8 @@ map2 = order_map(map = map2)
 #loading the genotype file from an R object
 #first 3 columns of the genotype file should be the map file and the rest of the columns represent accessions/individuals with cells
 #being the genotypes at each locus for each individual
-data("geno", package = "HapSelect")
+
+geno = HapSelect::geno
 
 
 #compute ld (painfully slow)
@@ -30,7 +31,7 @@ data("geno", package = "HapSelect")
 
 
 #load the example file to see the structure if you do not want to run the function
-data("pairwise_ld", package = "HapSelect")
+ld_pairs = HapSelect::ld_pairs
 
 #We recommend using PLINK v1.9 for LD calculations.
 #If you have a PLINK binary fileset (.bed/.bim/.fam), you can also use:
@@ -43,22 +44,21 @@ data("pairwise_ld", package = "HapSelect")
 ####  Pairwise LD with PLINK Call (recommended) ####
 ####################################################
 
-data("map", package = "HapSelect")
-data("geno", package = "HapSelect")
+map = HapSelect::map
+geno = HapSelect::geno
 
 
 #compute ld with PLINK
 
 #once LD File Script is updated run this
-ld_pairs = plink_pairwise_ld(prefix = "example_plink", ld_window = 999999, ld_window_kb = 1000000,
-                             ld_window_r2 = 0, extra_args = character())
+ld_pairs = plink_pairwise_ld_geno(geno = geno, ld_window = 999999, ld_window_kb = 1e6, ld_window_r2 = 0)
 
 ###########################################
 ##### Load LD File (Skip Computation) #####
 ###########################################
 
 #load the example file to see the structure if you do not want to run the function
-data("pairwise_ld", package = "HapSelect")
+ld_pairs = HapSelect::ld_pairs
 
 #########################################
 ########  Compute Haploblocks  ##########
@@ -80,13 +80,35 @@ haploblocks = block_obj_to_df(haploblocks, map)
 block_summary(block_df = haploblocks)
 
 #######################################
+#### Compute Marker Effects  #####
+#######################################
+
+#Basic genomic prediction to obtain marker effects - This assumes one phenotype/BLUE/BLUP per individual.
+#No other effects in the model allowed. For more advanced modeling, use other modeling software to obtain marker effects.
+
+#The BLUE file should be structured such that the first column is comprised of individuals and the second column is comprised of a singular phenotype, BLUE, or de-regressed BLUP for each individual
+BLUE = HapSelect::BLUE
+
+#Basic genomic prediction using rrBLUP to solve for marker effects
+marker_effects = create_marker_effects_file(geno = geno, BLUE = BLUE, h2_method = "VanRaden", ploidy = 2L)
+
+#Basic functions to assess model performance:
+
+#Basic n fold cross-validation
+CV = n_fold_cross_validation(geno = geno, BLUE = BLUE, nfold = 5L, h2_method = "VanRaden", ploidy = 2L)
+
+#Basic cross-validation
+CV = cross_validation(geno = geno, BLUE = BLUE, train_prop = 0.9, fold = 5L, h2_method = "VanRaden", ploidy = 2L)
+
+
+#######################################
 #### Compute localGEBV  #####
 #######################################
 
 
 #the first column in the marker effects file should be the SNP ID (same as the map file) and the second
 #column should be the marker effect estimated from a model.
-data("marker_effects", package = "HapSelect")
+marker_effects = HapSelect::marker_effects
 
 #compute localGEBV
 haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
@@ -112,7 +134,7 @@ haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
 haploblock_plot
 
 #marker density plot
-marker_density_plot = plot_marker_density(map_df = map, bin_size = 500000)
+marker_density_plot = plot_marker_density(map_df = map, bin_size = 500e3)
 marker_density_plot
 
 #LD decay plot
@@ -121,9 +143,9 @@ ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3
 ld_decay_plot
 
 
-##############################################
-#### Parent Selection with the GA ####
-##############################################
+###########################################################
+#### Parent Selection with the GA and Basic Simulation ####
+###########################################################
 
 #There are three methods we have implemented to select haploblocks:
 #1: select the top n blocks based on Block_Var
@@ -153,3 +175,12 @@ GA_output = genetic_algorithm(localGEBV = haploblock_obj$Haplotype_Effect_Matrix
 
 #one unique set of parents - other solutions may exist, see the GA_output$GA@solution object for other potential sets of parents with the same fitness
 GA_output$One_Solution
+
+#basic simulation of GA vs TS selected parents and PCA plot
+
+parent_sln_obj = GA_vs_TS_simulation(GA_output = GA_output, geno = geno, marker_effects = marker_effects, map = map, genetic_map_position = NULL, num_gen = 50, num_sim_reps = 30,
+                               num_cross_per_gen = 1000, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE,
+                               colors = c("green", "#d95f02", "#A01FF0", "gray80"), alpha = c(1,1,1,0.5))
+
+parent_sln_obj$Simulation_Plot
+parent_sln_obj$PCA_Plot

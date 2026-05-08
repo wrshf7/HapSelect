@@ -14,11 +14,11 @@
 #   note: the default, NULL, uses the same number as the GA parents supplied
 # mean_adjust: the same parameter as the localGEBV step. It should be kept as TRUE in almost all circumstances.
 # max_cM_chr: default value of 100 used per chromosome. This argument is only used if genetic_map_position is not supplied.
-
+# colors: the colors of the GA selected, TS selected, GA/TS selected overlapping parents, and all other individuals
 
 GA_vs_TS_simulation = function(GA_output, geno, marker_effects, map, genetic_map_position = NULL, num_gen = 50, num_sim_reps = 30,
-                               num_cross_per_gen = 1000, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100,
-                               colors = c("#A01FF0", "#A7A8AA")){
+                               num_cross_per_gen = 1000, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE,
+                               colors = c("green", "#d95f02", "#A01FF0", "gray80"), alpha = c(1,1,1,0.5)){
 
   #check compatability
   check_geno_marker_compatibility(geno = geno, marker_effects = marker_effects, map = map)
@@ -38,7 +38,30 @@ GA_vs_TS_simulation = function(GA_output, geno, marker_effects, map, genetic_map
   #check the number of crosses per generation
   if(length(num_gen) >1  || anyNA(as.numeric(num_gen))) stop("The num_gen value must either be NULL or a single numeric and cannot be NA!")
 
+  #check number of colors
+  if(
+    length(colors) != 4 ||
+    anyNA(colors) ||
+    !is.character(colors) ||
+    any(!vapply(colors, function(x){
+      tryCatch({
+        grDevices::col2rgb(x)
+        TRUE
+      }, error = function(e) FALSE)
+    }, logical(1)))
+  ){
+    stop("Please provide 4 valid R colors for plotting purposes. The first two are for GA and TS selected parents, respectively, and the latter two are for the overlap and non-selected parents on the PCA plot.")
+  }
 
+  #check alphas
+  if(
+    length(alpha) != 4 ||
+    anyNA(alpha) ||
+    !is.numeric(alpha) ||
+    any(alpha < 0 | alpha > 1)
+  ){
+    stop("alpha must contain 4 numeric values between 0 and 1.")
+  }
 
   #extract the genotype matrix and center it using centering function from localGEBV_calculation.R
   genotype_matrix = t(geno[,4:ncol(geno)])
@@ -119,10 +142,30 @@ GA_vs_TS_simulation = function(GA_output, geno, marker_effects, map, genetic_map
   #delete temp files
   delete_sim_files(temp_files)
 
-  #make plot
-  sim_plot = generate_sim_traject_plot(summary_df = summary_df, colors = colors)
+  #make plots
+  sim_plot = generate_sim_traject_plot(summary_df = summary_df, colors = colors[1:2])
 
-  return(sim_plot)
+  if(PCA == TRUE){
+    PCA_list = generate_selection_pca_plot(genotype_matrix_centered = genotype_matrix_centered, GA_parents_indices = GA_parents_indices,
+                                           TS_indices = TS_indices , colors = colors, alpha = alpha)
+  }
+
+  #clear unused memory usage
+  cat("\nClearing unused memory:\n")
+  gc()
+
+  #return object
+  if(PCA == TRUE){
+    return_list = list(
+      Simulation_Plot = sim_plot,
+      PCA_Plot = PCA_list$PCA_plot,
+      PCA_df = PCA_list$PCA_df
+    )
+  } else{
+    return_list = sim_plot
+  }
+
+  return(return_list)
 }
 
 # function to check compatability
@@ -213,6 +256,8 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps, num_cross_per
 
 
   #run it for the GA parents
+  cat("\nRunning simulation for GA selected parents:\n\n")
+
   #initiate populations
   init = genomicSimulation::load.data(allele.file = temp_files[[2]],
                    map.file = temp_files[[1]],
@@ -228,6 +273,8 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps, num_cross_per
   }
 
   #run it for the TS parents
+  cat("\nRunning simulation for TS selected parents:\n\n")
+
   #initiate populations
   init = genomicSimulation::load.data(allele.file = temp_files[[3]],
                                       map.file = temp_files[[1]],
@@ -298,15 +345,105 @@ sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop){
   return(mean_BV)
 }
 
-# plotting function
+# Simulation plotting function
 generate_sim_traject_plot = function(summary_df, colors){
   traject_plot = ggplot2::ggplot(summary_df, aes(x = gen, y = mean, color = method, fill = method)) +
     geom_line(linewidth = 1) +
     geom_ribbon(aes(ymin = mean - se, ymax = mean + se, group = method), alpha = 0.2, show.legend = FALSE) +
-    labs(x = "Generation", y = "Mean Breeding Value") +
+    labs(x = "Generation", y = "Mean Breeding Value") + theme_cowplot() +
     scale_color_manual(values = colors) +
     scale_fill_manual(values = colors, guide = "none")
 
   return(traject_plot)
 }
 
+
+# PCA parent selection plot
+generate_selection_pca_plot = function(genotype_matrix_centered,
+                                       GA_parents_indices,
+                                       TS_indices,
+                                       colors, alpha){
+
+  # PCA
+  pca = stats::prcomp(
+    genotype_matrix_centered,
+    center = FALSE,
+    scale. = TRUE
+  )
+
+  # Extract first 10 PCs
+  pc_df = as.data.frame(pca$x[, 1:10])
+
+  # Rename columns explicitly
+  colnames(pc_df) = paste0("PC", 1:10)
+
+  # Combine with accession names and grouping
+  pca_df = data.frame(
+    accession = rownames(genotype_matrix_centered),
+    pc_df,
+    group = "Not Selected"
+  )
+
+  # Assign groups
+  pca_df$group[GA_parents_indices] = "GA"
+  pca_df$group[TS_indices] = "TS"
+
+  # Overlap
+  overlap = dplyr::intersect(GA_parents_indices, TS_indices)
+
+  if(length(overlap) > 0){
+    pca_df$group[overlap] = "Both"
+  }
+
+  # Factor ordering
+  pca_df$group = factor(
+    pca_df$group,
+    levels = c("Not Selected", "TS", "GA", "Both")
+  )
+
+  # Colors
+  plot_colors = c(
+    `Not Selected` = colors[4],
+    TS = colors[2],
+    GA = colors[1],
+    Both = colors[3]
+  )
+
+  # Alpha
+  plot_alphas = c(
+    `Not Selected` = alpha[4],
+    TS = alpha[2],
+    GA = alpha[1],
+    Both = alpha[3]
+  )
+
+  # Size
+  plot_sizes = c(
+    `Not Selected` = 1,
+    TS = 2.5,
+    GA = 2.5,
+    Both = 3
+  )
+
+  # Variance explained
+  var_exp = summary(pca)$importance[2,1:2] * 100
+
+  # Plot
+  pca_plot = ggplot2::ggplot(
+    pca_df,
+    ggplot2::aes(x = PC1, y = PC2, color = group, alpha = group, size = group)
+  ) + theme_cowplot() +
+    ggplot2::geom_point() +
+    ggplot2::labs(
+      x = paste0("PC1 (", round(var_exp[1], 1), "%)"),
+      y = paste0("PC2 (", round(var_exp[2], 1), "%)"),
+      color = "Selection", alpha = "Selection", size = "Selection"
+    ) +
+    ggplot2::scale_color_manual(values = plot_colors) +
+    ggplot2::scale_alpha_manual(values = plot_alphas) +
+    ggplot2::scale_size_manual( values = plot_sizes)
+
+  return_list = list(PCA_df = pca_df, PCA_plot = pca_plot)
+
+  return(return_list)
+}
