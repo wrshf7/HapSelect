@@ -9,6 +9,13 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
   # pos: marker positions (numeric)
   # colors: vector of colors to alternate by chromosome
 
+  #quick check
+  if(any(is.na(marker_effects)) |
+     any(is.na(chr)) |
+     any(is.na(pos))){
+    warning("Rows with NA values were removed for plotting.")
+  }
+
   # ensure input lengths match
   if(length(marker_effects) != length(chr) | length(marker_effects) != length(pos) | length(chr) != length(pos)){
     stop("Ensure the length of the marker effects, marker position, and chromosome vectors are the same.")
@@ -24,7 +31,7 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
   #compute cumulative distance and other chromosome info for the plot
   chr_info = effects_df %>%
     group_by(Chr) %>%
-    summarise(chr_len = max(Pos)) %>%
+    summarise(chr_len = max(Pos, na.rm = TRUE)) %>%
     mutate(chr_start = lag(cumsum(chr_len), default = 0),
            chr_center = chr_start + chr_len / 2)
 
@@ -125,7 +132,7 @@ block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("
 
 
 ######Visualize blocks on chromosomes######
-plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = "grey90",
+plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = NA,
                             height = 0.30,
                             single_width_bp = NULL){
 
@@ -228,7 +235,7 @@ plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = 
     geom_rect(data = chrom_sizes, aes(xmin = 0, xmax = Chr_len,
                                       ymin = ymin, #- 0.015,
                                       ymax = ymax),# + 0.015),
-              fill = NA, color = "black"
+              fill = chrom_fill, color = "black"
     ) +
 
     scale_x_continuous("Position", expand = c(0,0)) +
@@ -241,15 +248,15 @@ plot_haploblocks = function(haploblock_df, block_fill = "#A01FF0", chrom_fill = 
 ###### Function to plot marker density ######
 
 
-plot_marker_density = function(map_df, bin_size = 500000, height = 0.3,
-                               chrom_fill = "grey95",
+plot_marker_density = function(map, bin_size = 500000, height = 0.3,
+                               chrom_fill = NA,
                                col_low = "white", col_mid = "purple", col_high = "red") {
 
-  map_df$Chrom = as.factor(map_df$Chrom)
-  map_df = map_df %>% arrange(as.numeric(as.character(Chrom)), Position)
+  map$Chrom = as.factor(map$Chrom)
+  map = map %>% arrange(as.numeric(as.character(Chrom)), Position)
 
   # Compute chromosome sizes
-  chrom_sizes = map_df %>%
+  chrom_sizes = map %>%
     group_by(Chrom) %>%
     summarise(chr_len = max(Position, na.rm = TRUE), .groups = "drop") %>%
     mutate(y = row_number(),
@@ -257,8 +264,8 @@ plot_marker_density = function(map_df, bin_size = 500000, height = 0.3,
            ymax = y + height)
 
   # Compute bins
-  density_df = map_df %>%
-    mutate(Pos = Position ) %>%
+  density_df = map %>%
+    mutate(Pos = Position) %>%
     group_by(Chrom) %>%
     mutate(bin = floor(Pos / bin_size)) %>%
     group_by(Chrom, bin) %>%
@@ -268,7 +275,14 @@ plot_marker_density = function(map_df, bin_size = 500000, height = 0.3,
       Count = n(),
       .groups = "drop"
     ) %>%
-    left_join(chrom_sizes %>% dplyr::select(Chrom, y, ymin, ymax), by = "Chrom")
+    left_join(
+      chrom_sizes %>% dplyr::select(Chrom, chr_len, y, ymin, ymax),
+      by = "Chrom"
+    ) %>%
+    mutate(
+      End = pmin(End, chr_len)
+    ) %>%
+    filter(Start < End)
 
   # Compute color scaling limits
   max_count = max(density_df$Count, na.rm = TRUE)
@@ -289,7 +303,7 @@ plot_marker_density = function(map_df, bin_size = 500000, height = 0.3,
     geom_rect(
       data = chrom_sizes,
       aes(xmin = 0, xmax = chr_len, ymin = ymin, ymax = ymax),
-      fill = NA, color = "black", linewidth = 0.3
+      fill = chrom_fill, color = "black", linewidth = 0.3
     ) +
 
     scale_fill_gradient2(
