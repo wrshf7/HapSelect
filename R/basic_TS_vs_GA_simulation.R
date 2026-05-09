@@ -272,6 +272,9 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps, num_cross_per
                                  current_pop = current_pop)
   }
 
+  genomicSimulation::delete.group(current_pop)
+
+
   #run it for the TS parents
   cat("\nRunning simulation for TS selected parents:\n\n")
 
@@ -287,6 +290,8 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps, num_cross_per
                                  num_parents = num_TS_parents, num_cross_per_gen = num_cross_per_gen,
                                  current_pop = current_pop)
   }
+
+  genomicSimulation::delete.group(current_pop)
 
   # GA
   df_GA = do.call(rbind, lapply(seq_along(mean_BV_GA), function(i) {
@@ -341,6 +346,8 @@ sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop){
       name.prefix = paste0("F", gen + 1, ".")
     )
   }
+
+  invisible(utils::capture.output(genomicSimulation::delete.group(current_pop)))
 
   return(mean_BV)
 }
