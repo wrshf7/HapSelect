@@ -230,35 +230,65 @@ haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects
 
 #must provide the column of the marker effects as well as the column indicating the chromosome and position on the chromosome
 #if the map and marker effects plot are in the same order, you can do it as it is done here, else merge the two data frames together
-marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position)
+# marker_effects: the vector of marker effects to plot
+# chr:            the vector of chromosomal values for the marker effects
+# pos:            the vector of positional values for the marker effects
+# colors:         alternating chromosomal colors - only 2 valid R colors or hexidecimal colors should be provided
+marker_plot = marker_effects_plot(marker_effects = marker_effects$Effect, chr = map$Chromosome, pos = map$Position, colors = c("#A01FF0", "#A7A8AA"))
 marker_plot
 
 #all of these plots utilize the haploblock_obj created
-haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj)
+#plots the unique haplotype (localGEBV) effects, similar to the marker effect plot
+# colors:   similar to the marker effects - alternating chromosomal colors. Two valid colors must be provided.
+# pos_type: valid values are "midpoint" or "start" - specifies whether the haploblock's haplotype effects are positioned at the midpoint or at the start of the haploblock
+haplo_eff_plot = unique_haplo_effects_plot(haplo_obj = haploblock_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = "midpoint")
 haplo_eff_plot
 
-#mean_line = TRUE adds a line to the block variance (scaled)
-funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE)
+#funnel plot scales the block variance to be between the value of 0 and 1, otherwise a quadratic term could scale exponentially
+#x-axis contains haplotype effects and lets the user compare haplotype effects to variance
+# mean_line:     if TRUE adds a line to the block variance (scaled)
+# scale_colors:  the color scale dictating the coloring of haplotype effects from low to high (x-axis). Must be three valid R/hexidecimal colors.
+funnel_plot = block_var_funnel_plot(haplo_obj = haploblock_obj, mean_line = FALSE, scale_colors = c("blue", "purple", "red"))
 funnel_plot
 
-haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks)
+#plots the location of the haploblocks on the chromosome
+# block_fill:      the color of the haploblocks
+# height:          controls the thickness of the chromosomes - lower to make skinnier chromosomes and increase to make thicker chromosomes.
+# chrom_fill:      the color of the chromosome background: leave as NA to make it transparent.
+# single_width_bp: a mostly defunct option, leave as NULL (does not affect single marker segments currently)
+haploblock_plot = plot_haploblocks(haploblock_df = haploblock_obj$Haploblocks, block_fill = "#A01FF0", chrom_fill = NA,
+                                   height = 0.30,
+                                   single_width_bp = NULL)
 haploblock_plot
 
 #marker density plot
-marker_density_plot = plot_marker_density(map_df = map, bin_size = 500000)
+# map_df:     the map file utilized throughout as described above
+# bin_size:   the size of chromosome segments to count markers and graph: default is 500 kb
+# height:     the thickness of the chromosomes - lower to make skinnier chromosomes and increase to make thicker chromosomes.
+# chrom_fill: the color of the chromosome background: leave as NA to make it transparent.
+# col_*:      color range from the lowest value to the highest value used to make a sliding color scale.
+marker_density_plot = plot_marker_density(map = map, bin_size = 500e3, height = 0.3,
+                                          chrom_fill = NA,
+                                          col_low = "white", col_mid = "purple", col_high = "red")
 marker_density_plot
 
 #LD decay plot
 #plot the LD decay utilizing the map and LD objects
-#max_kb specified how far out to compute LD decay and filters the LD structure, which helps to reduce computation time
-#method specifies whether to fit a GAM thin-plate regression (gam_tp), GAM cubic spline regression (gam_cr), exponential decay (exp), or LOESS (loess) curve
-#span controls the level of smoothing for the LOESS method - specify between 0 and 1
-#closer to 0 = little to no smoothing, closer to 1 = very smoothed and likely monotonic
-#k is the number of basis functions/knots in the gam options - experiment with values between 10 and 100
-#the lower the number of k, the more smoothed it is
-#exponential does not use either of the smoothing values and is guaranteed to be monotonic
-
-ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10, method = "gam_cr")
+#map:         map dataframe object utilized throghout
+#ld:          the ld dataframe object utilized to construct haploblocks
+#max_kb:      specified how far out to compute LD decay (in kb) and filters the LD structure, which helps to reduce computation time
+#method:      specifies whether to fit a GAM thin-plate regression ("gam_tp"), GAM cubic spline regression ("gam_cr"),
+#               exponential decay ("exp"), or LOESS ("loess") curve
+#span:        controls the level of smoothing for the LOESS method - specify between 0 and 1
+#               closer to 0 = little to no smoothing, closer to 1 = very smoothed and likely monotonic
+#k:           is the number of basis functions/knots in the gam options - experiment with values between 10 and 100 (default 50)
+#               the lower the number of k, the more smoothed it is
+#               Note: exponential does not use either of the smoothing values and is guaranteed to be monotonic
+#point_color: color of the individual LD data points, must provide a singular, valid R/hexidecimal color
+#curve_color: color of the computed LD curve - must be a singular, valid color similar to point_color
+#alpha:       the transparency of the individual LD data points - must be between 0 and 1 (default 0.2)
+ld_decay_plot = plot_ld_decay(map = map, ld = ld_pairs, max_kb = 500, span = 0.3, k = 10L, method = "gam_cr", point_color = "#A7A8AA",
+                              curve_color = "#A01FF0", alpha = 0.2)
 ld_decay_plot
 
 
