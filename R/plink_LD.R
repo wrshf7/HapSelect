@@ -33,6 +33,14 @@ call_plink = function(args, stdout = TRUE, stderr = TRUE) {
 
 ##### Read a PLINK .bim file and assign per-chromosome locus indices #####
 read_plink_bim = function(path){
+  # Check the bim file exists and is not empty
+  if(!file.exists(path)){
+    stop("PLINK .bim file not found: ", path, "\nExpected format: tab-delimited, no header, columns: chromosome, SNP ID, cM position, base-pair position (and optionally allele columns).")
+  }
+  if(file.info(path)$size == 0){
+    stop("PLINK .bim file is empty: ", path)
+  }
+
   # Read file
   bim = utils::read.table(path, header = FALSE, stringsAsFactors = FALSE)
 
