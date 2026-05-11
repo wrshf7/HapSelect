@@ -33,7 +33,7 @@ solve_marker_effects = function(geno, BLUE, h2_method, ploidy){
   #checking to ensure the first column are snp marker names
   #I don't check all columns, but it's easy to update it if we should.
   if(!is.numeric(geno[,4]) | max(geno[,4], na.rm = TRUE) > 20 | min(geno[,4], na.rm = TRUE) < 0 | !is.character(geno[,1])){
-    stop("Ensure that columns 1:3 of the genotype file correspond to the map (rs, chrom, pos), the SNP are characters, and columns 4:ncol(geno) are numeric values (only ploidy dosage values between 0 and 20 are accepted.")
+    stop("Ensure that columns 1:3 of the genotype file correspond to the map (SNP, Chromosome, Position), the SNP are characters, and columns 4:ncol(geno) are numeric values (only ploidy dosage values between 0 and 20 are accepted.")
   }
 
   #only select columns that appear in the phenotype file and tranpose the matrix. Rows are individuals

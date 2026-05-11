@@ -80,13 +80,8 @@ map2 = order_map(map = map2)
 #should be the same as the map file columns (SNP ID, Chromosome, Position)
 geno = HapSelect::geno
 
-#compute ld with PLINK
-
-
-
-#once LD File Script is updated run this
-ld_pairs = plink_pairwise_ld(prefix = "example_plink", ld_window = 999999, ld_window_kb = 1000000,
-                             ld_window_r2 = 0, extra_args = character())
+#compute ld with PLINK - requires installation of PLINK v1.9 and PATH availability
+ld_pairs = plink_pairwise_ld_geno(geno = geno, ld_window = 999999, ld_window_kb = 1e6, ld_window_r2 = 0)
 
 ###########################################
 ##### Load LD File (Skip Computation) #####
@@ -214,12 +209,12 @@ marker_effects = HapSelect::marker_effects
 #If the reconstructed GEBV mean is meaningfully away from 0, it indicates the wrong marker matrix (i.e., needs to be centered)
 #is being used or the marker matrix was not centered when estimating marker effects.
 
-#The package will internally center markers if center = TRUE. If the matrix is already centered, centering won't change the values
+#The package will internally center markers if mean_adjust = TRUE. If the matrix is already centered, centering won't change the values
 #or centering can be set to FALSE.
 
-#If you want genotype/haplotype configurations to match the 0/1/2 format, provide the uncentered genotype matrix and set center = TRUE.
+#If you want genotype/haplotype configurations to match the 0/1/2 format, provide the uncentered genotype matrix and set mean_adjust = TRUE.
 #Otherwise, the reported genotype/haplotype configurations will reflect centered values. For clarity, you must provide dosage format
-# (usually 0/1/2 for diploid, up to 9 for polypoid). We currently support polyploidy up to a ploidy of 9.
+# (usually 0/1/2 for diploid, up to any integer for polypoid).
 
 haploblock_obj = compute_local_GEBV(geno = geno, marker_effects = marker_effects, haploblocks_df = haploblocks,
                                     set_missing_NA = TRUE, mean_adjust = TRUE, parallel = TRUE)

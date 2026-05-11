@@ -20,6 +20,9 @@ GA_vs_TS_simulation = function(GA_output, geno, marker_effects, map, genetic_map
                                num_cross_per_gen = 1000, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE,
                                colors = c("green", "#d95f02", "#A01FF0", "gray80"), alpha = c(1,1,1,0.5)){
 
+  #set SNP names for later
+  individual_names = geno[,1]
+
   #check compatability
   check_geno_marker_compatibility(geno = geno, marker_effects = marker_effects, map = map)
 
@@ -65,12 +68,15 @@ GA_vs_TS_simulation = function(GA_output, geno, marker_effects, map, genetic_map
 
   #extract the genotype matrix and center it using centering function from localGEBV_calculation.R
   genotype_matrix = t(geno[,4:ncol(geno)])
+  colnames(genotype_matrix) = individual_names
+
 
   #mean adjust and fill in missing values with the mean to compute GEBV
   if(mean_adjust){
     genotype_matrix_centered   = center_genotypes(geno)
     genotype_matrix_centered   = t(genotype_matrix_centered[,4:ncol(genotype_matrix_centered)])
     genotype_matrix_centered[is.na(genotype_matrix_centered)] = 0
+    colnames(genotype_matrix_centered) = individual_names
 
   } else{
     genotype_matrix_centered              = genotype_matrix
@@ -80,15 +86,15 @@ GA_vs_TS_simulation = function(GA_output, geno, marker_effects, map, genetic_map
   }
 
 
-  marker_effects = marker_effects[match(marker_effects$SNP, colnames(genotype_matrix_centered)), ]
+  marker_effects = marker_effects[match(colnames(genotype_matrix_centered), marker_effects$SNP), ]
 
   #compute GEBV, order them, and extract indices of num_TS_parents
-  GEBV       = genotype_matrix_centered %*% marker_effects$Effect
+  GEBV       = genotype_matrix_centered %*% marker_effects[,2]
   GEBV       = cbind(GEBV, 1:nrow(GEBV))
   GEBV       = GEBV[order(GEBV[,1], decreasing = TRUE), ]
   TS_indices = GEBV[1:num_TS_parents, 2]
 
-  #unfortunately GenomicSimulation doesn't handle missing values well right now, so we set it to heterozygous (must take hard dosage calls)
+  #unfortunately genomicSimulation doesn't handle missing values well right now, so we set it to heterozygous (must take hard dosage calls)
   #for true haplotypes there may be another option from what I recall in GenomicSimulation
   genotype_matrix[is.na(genotype_matrix)] = 1
 

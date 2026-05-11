@@ -1,0 +1,381 @@
+---
+title: "Example Workflow with Minimal Comments"
+author: "Will Shaffer"
+date: "2026-05-11"
+output: html_document
+---
+
+# HapSelect Workflow with Minimal Comments
+
+Minimal workflow demonstrating:
+
+1. LD calculation
+2. Haploblock construction
+3. Marker effect estimation
+4. localGEBV computation
+5. Visualization
+6. GA parent selection
+7. Recurrent truncation selection simulation on GA selected parents and TS selected parents
+
+---
+
+# Load Package and Example Data
+
+```r
+library(HapSelect)
+
+map  = HapSelect::map
+geno = HapSelect::geno
+```
+
+---
+
+# Order Map File
+
+```r
+# simulate unordered map
+map2 = map[sample(1:nrow(map), nrow(map)), ]
+
+# reorder
+map2 = order_map(map = map2)
+```
+
+---
+
+# Pairwise LD (Native Function)
+
+```r
+# very slow; demonstration only
+# ld_pairs = pairwise_ld(geno, parallelize = FALSE)
+```
+
+---
+
+# Load Example LD Data
+
+```r
+ld_pairs = HapSelect::ld_pairs
+```
+
+---
+
+# Pairwise LD with PLINK (Recommended)
+
+```r
+ld_pairs = plink_pairwise_ld_geno(
+  geno = geno,
+  ld_window = 999999,
+  ld_window_kb = 1e6,
+  ld_window_r2 = 0
+)
+```
+
+Requires PLINK v1.9 installed and available in the system `PATH`.
+
+---
+
+# Construct Haploblocks
+
+```r
+haploblocks = def_blocks(
+  ld = ld_pairs,
+  map = map,
+  method = "flanking",
+  threshold = 0.2,
+  tolerance = 4,
+  tol_reset = TRUE,
+  start = "LD",
+  parallel = FALSE
+)
+```
+
+---
+
+# Convert to Dataframe
+
+```r
+haploblocks = block_obj_to_df(haploblocks, map)
+```
+
+---
+
+# Summarize Haploblocks
+
+```r
+block_summary(block_df = haploblocks)
+```
+
+---
+
+# Marker Effect Estimation
+
+## Estimate marker effects if not provided
+### Important Note:
+- One BLUE, deregressed BLUP, or adjusted phenotype per individual only
+- rrBLUP implementation
+- no other effects in the model, see [Documentation Overview](https://wrshf7.github.io/HapSelect-Docs/overview/) for more details and alternative R packages for independent modeling.
+
+```r
+BLUE = HapSelect::BLUE
+
+marker_effects = create_marker_effects_file(
+  geno = geno,
+  BLUE = BLUE,
+  h2_method = "VanRaden",
+  ploidy = 2L
+)
+```
+
+---
+
+# Cross Validation
+
+## N-fold
+
+```r
+CV = n_fold_cross_validation(
+  geno = geno,
+  BLUE = BLUE,
+  nfold = 5L,
+  h2_method = "VanRaden",
+  ploidy = 2L
+)
+```
+
+## Random Train/Test
+
+```r
+CV = cross_validation(
+  geno = geno,
+  BLUE = BLUE,
+  train_prop = 0.9,
+  fold = 5L,
+  h2_method = "VanRaden",
+  ploidy = 2L
+)
+```
+
+---
+
+# Compute localGEBV
+
+```r
+marker_effects = HapSelect::marker_effects
+
+haploblock_obj = compute_local_GEBV(
+  geno = geno,
+  marker_effects = marker_effects,
+  haploblocks_df = haploblocks,
+  set_missing_NA = TRUE,
+  mean_adjust = TRUE
+)
+```
+
+---
+
+# Marker Effects Plot
+
+```r
+marker_plot = marker_effects_plot(
+  marker_effects = marker_effects$Effect,
+  chr = map$Chromosome,
+  pos = map$Position,
+  colors = c("#A01FF0", "#A7A8AA")
+)
+
+marker_plot
+```
+
+---
+
+# Unique Haplotype Effects Plot
+
+```r
+haplo_eff_plot = unique_haplo_effects_plot(
+  haplo_obj = haploblock_obj,
+  colors = c("#A01FF0", "#A7A8AA"),
+  pos_type = "midpoint"
+)
+
+haplo_eff_plot
+```
+
+---
+
+# Funnel Plot
+
+```r
+funnel_plot = block_var_funnel_plot(
+  haplo_obj = haploblock_obj,
+  mean_line = FALSE,
+  scale_colors = c("blue", "purple", "red")
+)
+
+funnel_plot
+```
+
+---
+
+# Haploblock Position Plot
+
+```r
+haploblock_plot = plot_haploblocks(
+  haploblock_df = haploblock_obj$Haploblocks,
+  block_fill = "#A01FF0",
+  chrom_fill = NA,
+  height = 0.30,
+  single_width_bp = NULL
+)
+
+haploblock_plot
+```
+
+---
+
+# Marker Density Plot
+
+```r
+marker_density_plot = plot_marker_density(
+  map = map,
+  bin_size = 500e3,
+  height = 0.3,
+  chrom_fill = NA,
+  col_low = "white",
+  col_mid = "purple",
+  col_high = "red"
+)
+
+marker_density_plot
+```
+
+---
+
+# LD Decay Plot
+
+```r
+ld_decay_plot = plot_ld_decay(
+  map = map,
+  ld = ld_pairs,
+  max_kb = 500,
+  span = 0.3,
+  k = 10L,
+  method = "gam_cr",
+  point_color = "#A7A8AA",
+  curve_color = "#A01FF0",
+  alpha = 0.2
+)
+
+ld_decay_plot
+```
+
+---
+
+# Select Haploblocks for the GA
+
+## Top N Blocks
+
+```r
+haploblock_obj = select_top_blocks(
+  haploblock_obj = haploblock_obj,
+  n = 15
+)
+
+nrow(haploblock_obj$Haploblocks_GA)
+```
+
+## Top Percentage of Blocks
+
+```r
+haploblock_obj = select_top_blocks(
+  haploblock_obj = haploblock_obj,
+  perc_total = 0.5
+)
+
+nrow(haploblock_obj$Haploblocks_GA)
+```
+
+## Variance Explained Threshold
+
+```r
+haploblock_obj = select_top_blocks(
+  haploblock_obj = haploblock_obj,
+  perc_of_total_var = 0.9
+)
+
+nrow(haploblock_obj$Haploblocks_GA)
+```
+
+---
+
+# Genetic Algorithm
+
+```r
+GA_output = genetic_algorithm(
+  localGEBV = haploblock_obj$Haplotype_Effect_Matrix_GA,
+  n_founders = 20,
+  popSize = 10,
+  maxiter = 300,
+  run = 150,
+  selfing = FALSE,
+  pmutation = 0.2,
+  pcrossover = 0.8,
+  pelite = 0.5
+)
+```
+
+---
+
+# Inspect One Solution
+
+```r
+GA_output$One_Solution
+```
+
+---
+
+# Simulate Recurrent Selection
+
+```r
+parent_sln_obj = GA_vs_TS_simulation(
+  GA_output = GA_output,
+  geno = geno,
+  marker_effects = marker_effects,
+  map = map,
+  genetic_map_position = NULL,
+  num_gen = 50,
+  num_sim_reps = 30,
+  num_cross_per_gen = 1000,
+  num_TS_parents = NULL,
+  mean_adjust = TRUE,
+  max_cM_chr = 100,
+  PCA = TRUE,
+  colors = c("green", "#d95f02", "#A01FF0", "gray80"),
+  alpha = c(1,1,1,0.5)
+)
+```
+
+---
+
+# Display Simulation Results
+
+```r
+parent_sln_obj$Simulation_Plot
+
+parent_sln_obj$PCA_Plot
+```
+
+---
+
+# References
+
+**localGEBV Method and Haploblock Formation:**  
+[Shaffer et al. 2025. Local genomic estimates provide a powerful framework for haplotype discovery. bioRxiv](https://doi.org/10.1101/2025.08.28.672830)
+
+**Origin of the localGEBV Method and Parent Optimization with a Genetic Algorithm:**  
+[Kemper et al. 2012. Long-term selection strategies for complex traits using high-density genetic markers. J Dairy Sci](https://doi.org/10.3168/jds.2011-5289)
+
+**The First Implementation of Haploblocking with localGEBV:**  
+[Voss-Fels et al. 2019. Breeding improves wheat productivity under contrasting agrochemical input levels. Nat Plants](https://doi.org/10.1038/s41477-019-0445-5)
+
+**The Concept of the Ultimate Genotype:**  
+[Hays et al. 2024. Potential approaches to create ultimate genotypes in crops and livestock. Nat Genet](https://doi.org/10.1038/s41588-024-01942-0)
