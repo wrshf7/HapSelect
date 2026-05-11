@@ -18,7 +18,7 @@ HapSelect is an R package for haplotype-based genomic selection. It partitions t
 | Parent selection | Optimise founder set using a genetic algorithm | `genetic_algorithm()` |
 | Basic Simulation | Compare GA and TS parent performance over time | `GA_vs_TS_simulation()` |
 
-For full documentation, workflow guides, and parameter details, see the **[HapSelect documentation site](https://wrshf7.github.io/HapSelect-Docs)**.
+For full documentation, workflow guides, an in-depth installation guide, and parameter details, see the **[HapSelect documentation site](https://wrshf7.github.io/HapSelect-Docs)**.
 
 ## Install
 
