@@ -2,7 +2,9 @@
 
 HapSelect is an R package for haplotype-based genomic selection. It partitions the genome into linkage disequilibrium blocks (haploblocks), estimates per-block breeding value contributions (localGEBV), uses a genetic algorithm to select parents that maximise coverage of high-value haplotype alleles, and runs a basic simulation comparing genetic algorithm parents to truncation selection over time.
 
+
 ![HapSelect process overview](man/figures/overview_diagram.png)
+
 
 ## Workflow at a glance
 
