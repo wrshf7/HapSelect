@@ -471,8 +471,8 @@ build_gebv_chunk_payloads = function(prep, haploblocks_df, workers, chunk_size){
   target_n_chunks = min(length(block_ids), target_n_chunks)
 
   # Group blocks by chromosome so related blocks stay together; fall back to a single group if no Chrom column
-  if("Chrom" %in% names(haploblocks_df)){
-    block_groups = split(haploblocks_df$Block_ID, haploblocks_df$Chrom)
+  if("Chromosome" %in% names(haploblocks_df)){
+    block_groups = split(haploblocks_df$Block_ID, haploblocks_df$Chromosome)
   } else{
     block_groups = list(all = haploblocks_df$Block_ID)
   }

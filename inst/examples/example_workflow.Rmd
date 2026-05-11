@@ -1,0 +1,1126 @@
+---
+title: "Example Workflow"
+author: "Will Shaffer"
+date: "2026-05-11"
+output: html_document
+---
+
+# HapSelect Workflow Tutorial
+
+This tutorial demonstrates a complete HapSelect workflow, including:
+
+1. Preparing genotype and map files
+2. Computing linkage disequilibrium (LD)
+3. Constructing haploblocks
+4. Estimating marker effects
+5. Computing localGEBV
+6. Visualizing haploblocks, marker effects, localGEBV, haploblock variance, LD decay, and more
+7. Parent selection with the genetic algorithm (GA)
+8. Simulating recurrent truncation selection (TS) with GA selected parents vs TS selected parents
+
+---
+
+# Loading Example Data
+
+HapSelect ships with several small example datasets:
+
+- `map`
+- `geno`
+- `ld_pairs`
+- `BLUE`
+- `marker_effects`
+
+```r
+library(HapSelect)
+```
+
+---
+
+# Input File Structure
+
+## Map File
+
+The map file must contain:
+
+| Column | Description |
+|:---|:---|
+| SNP | Character marker/SNP identifier |
+| Chromosome | Numeric chromosome identifier |
+| Position | Numeric physical position or genetic map position |
+
+Example:
+
+```r
+head(HapSelect::map)
+```
+
+---
+
+## Genotype File
+
+The genotype file should contain:
+
+| Columns | Description |
+|:---|:---|
+| First 3 columns | Map information (SNP, Chromosome, Position) in the same order and format |
+| Remaining columns | Individuals/accessions genotypes with the column name denoting the individual |
+
+Genotypes are expected to be numeric dosage coded:
+
+- Diploid: usually `0/1/2`
+- Polyploid: supported up to any integer ploidy
+
+Or, when performing a true haplotype analysis, `0/1` only with `k` columns per individual representing a ploidy of `k`
+
+Missing values should ideally be:
+
+```r
+NA
+```
+
+Example:
+
+```r
+head(HapSelect::geno[,1:10])
+```
+
+---
+
+# Ordering the Map File
+
+Map files must be ordered by:
+
+1. Chromosome
+2. Position
+
+Example:
+
+```r
+map = HapSelect::map
+
+# simulate unordered map
+map2 = map[sample(1:nrow(map), nrow(map)), ]
+
+# reorder map
+map2 = order_map(map = map2)
+```
+
+The `order_map()` function:
+
+- checks some formatting
+- ensures proper ordering
+- standardizes column names (assumes columns are in the right order)
+
+---
+
+# Computing Pairwise LD
+
+## Native LD Computation
+
+The package contains a native LD calculator (not recommended for use).
+
+```r
+ld_pairs = pairwise_ld(geno, parallelize = FALSE)
+```
+
+### Important Notes
+
+- This is primarily for demonstration purposes
+- It will be very slow for moderate to large datasets
+- PLINK v1.9 is strongly recommended for real analyses
+
+---
+
+# Computing Pairwise LD with PLINK (**Recommended**)
+
+### Important Notes
+- PLINK 1.9 **MUST** be installed and available in the `PATH` to use this function!
+- See the [Installation Guide](https://wrshf7.github.io/HapSelect-Docs/installation/) for more details
+- LD can be calculated externally, but must be provided in the same format as utilized in this package
+
+```r
+ld_pairs = plink_pairwise_ld_geno(geno = geno, ld_window = 999999, 
+                                ld_window_kb = 1e6, ld_window_r2 = 0)
+
+```
+
+## Parameters
+
+| Parameter | Description |
+|:---|:---|
+| `prefix` | PLINK binary prefix |
+| `ld_window` | Maximum number of SNP pairs ahead to compute LD |
+| `ld_window_kb` | LD window size in kb |
+| `ld_window_r2` | Minimum LD threshold before termination of LD calculation |
+| `extra_args` | Additional PLINK arguments |
+
+---
+
+# Loading Example LD Data
+
+```r
+ld_pairs = HapSelect::ld_pairs
+```
+
+The LD dataframe must contain the following columns:
+
+```r
+c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
+```
+
+### Other Information
+    - Pairs not present (i.e., missing) in the data frame object are allowed and are handled in the haploblocking function.
+    - Columns:
+        - `Chrom`: the chromosome each SNP pair belongs to (numeric).
+        - `Locus1`: numerical integer for the first marker in the marker pair. This should correspond to the order of the marker in the **ordered map file** above.
+        - `Locus2`: similar to `Locus1`, this is the numerical integer of the second marker in the marker pair.
+        - `Name1`: Character name of the first marker in the pair as seen in the genotype, map, and marker effects file.
+        - `Name2`: Similar to `Name1`, this corresponds to the name of the second marker in the pair as seen in the genotype, map, and marker effects file.
+        - `LD`: The numerical LD value computed. This is typically an $r^{2}$ value.
+
+
+---
+
+# Constructing Haploblocks
+
+```r
+haploblocks = def_blocks(
+  ld = ld_pairs,
+  map = map,
+  method = "flanking",
+  threshold = 0.2,
+  tolerance = 4,
+  tol_reset = TRUE,
+  start = "LD",
+  parallel = FALSE
+)
+```
+
+---
+
+## Haploblocking Parameters
+
+### `method`
+
+Controls how LD is evaluated when extending blocks.
+
+Options:
+
+- `"flanking"` → compares the LD of the adjacent marker only (i.e., compares current first/last marker in the block to the next marker)
+- `"average"` → compares average LD across block (i.e., averages the next marker's LD to all markers currently in the block)
+
+---
+
+### `threshold`
+
+LD cutoff (`r²`) used to terminate blocks.
+
+Typical values:
+
+```r
+0.3 - 0.7
+```
+
+- Higher values create smaller haploblocks (great for greater resolution in QTL discovery applications)
+- Lower values are less aggressive, but may extend blocks past biological or statistical inference. Lower values may more fully capture QTL effects if heavily dispersed
+- In diverse datasets, lower values are generally needed, but in breeding lines (crops), higher values are likely better
+- Users should experiment with different LD thresholds to find which meets their needs
+
+---
+
+### `tolerance`
+
+Allows temporary LD drops within a block. This may be caused by reference alignment error, genotyping error, or other issues.
+This value should be specified as a positive integer.
+
+Example:
+
+```r
+tolerance = 2
+```
+
+allows two low-LD markers before terminating the block. If the third marker meets the threshold, the block will not be terminated and all three markers will be included in the block.
+
+---
+
+### `tol_reset`
+
+If `TRUE`, tolerance resets after successful marker addition (i.e., sets the counter back to 0). If `FALSE`, the counter keeps iterating even after a successful marker addition and will terminate upon exceeding the integer specified and not include the marker(s).
+
+---
+
+### `start`
+
+Controls how blocks initiate.
+
+Options:
+
+- `"LD"` → start from strongest LD pairs and build to the left and to the right. The `tolerance` is unique to each side.
+- `"beginning"` → sequential chromosome scan starting from the first marker and only extending "right" (i.e., to the next marker based on position).
+
+---
+
+# Convert Haploblocks to a Dataframe
+
+The former function returns a list object which may be useful in some applications. This function will turn it into a more easily digestible format and report some information.
+
+```r
+haploblocks = block_obj_to_df(haploblocks, map)
+```
+
+---
+
+# Summarize Haploblocks
+
+Reports various summary statistics about blocks including average number of SNP per block, average size per block (not including single marker blocks), proportion of blocks comprised of a single marker, etc.
+
+```r
+block_summary(block_df = haploblocks)
+```
+
+---
+
+# Estimating Marker Effects
+
+## Loading Example Phenotypes
+
+```r
+BLUE = HapSelect::BLUE
+```
+
+The BLUE dataframe should contain:
+
+| Column | Description |
+|:---|:---|
+| Column 1 | Individual IDs matching the genotype file |
+| Column 2 | A singular adjusted phenotype / BLUE / de-regressed BLUP |
+
+### Important Note
+We do not currently support other effects in the model or multiple observations per individual. If more advanced modeling is needed, please utilize other software.
+See the [Documentation Overview](https://wrshf7.github.io/HapSelect-Docs/overview/) for more details and alternative R packages for independent modeling.
+
+---
+
+# Compute Marker Effects
+
+```r
+marker_effects = create_marker_effects_file(
+  geno = geno,
+  BLUE = BLUE,
+  h2_method = "VanRaden",
+  ploidy = 2L
+)
+```
+
+---
+
+## Marker Effect Parameters
+
+### `h2_method`
+
+Controls scaling of marker variance to compute narrow-sense heritability.
+
+Options:
+
+- `"VanRaden"` (recommended)
+- `"marker_num"` (only generally used if the genotype matrix was scaled; not applicable 99% of the time)
+
+---
+
+### `ploidy`
+
+Integer ploidy level.
+
+Must be provided as an integer. Example:
+
+```r
+2L
+```
+
+NOT:
+
+```r
+2
+```
+
+---
+
+# Cross Validation
+
+## N-fold Cross Validation
+
+```r
+CV = n_fold_cross_validation(
+  geno = geno,
+  BLUE = BLUE,
+  nfold = 5L,
+  h2_method = "VanRaden",
+  ploidy = 2L
+)
+```
+
+This splits the data up into `5L` groups in this example and utilizes 4 for training and 1 for validation. Each group is utilized once for valdiation.
+
+New Options:
+- `nfold` the number of groups to split the data into as an integer
+
+Note:
+Small datasets will yield unruly results if the training set is too small!
+
+---
+
+## Random Train/Test Cross Validation
+
+```r
+CV = cross_validation(
+  geno = geno,
+  BLUE = BLUE,
+  train_prop = 0.9,
+  fold = 5L,
+  h2_method = "VanRaden",
+  ploidy = 2L
+)
+```
+
+New Options:
+- `train_prop` the proportion of data utilized to train (rounded down) with the rest utilized for validation
+- `fold` the numb of times to randomly sample a training and validation set with replacement
+
+---
+
+# Computing localGEBV
+
+```r
+#load example data
+marker_effects = HapSelect::marker_effects
+
+haploblock_obj = compute_local_GEBV(
+  geno = geno,
+  marker_effects = marker_effects,
+  haploblocks_df = haploblocks,
+  set_missing_NA = TRUE,
+  mean_adjust = TRUE,
+  parallel = TRUE
+)
+```
+
+---
+
+# localGEBV Parameters
+
+## `set_missing_NA`
+
+If `TRUE`:
+
+- any haploblock with ≥1 missing genotype becomes `NA`
+
+If `FALSE`:
+
+- localGEBV is computed using the non-missing markers
+
+---
+
+## `mean_adjust`
+
+Centers markers internally.
+
+This is usually required because marker effects are typically estimated from centered genotype matrices.
+Only set to `FALSE` if you are highly confident in what you are doing!
+
+Recommended for 99% of cases, otherwise GEBV and localGEBV will be biased (will not affect the haploblock variance):
+
+```r
+mean_adjust = TRUE
+```
+
+### Important Information
+A good confirmation things are working properly is to reconstruct GEBV from Zu, where Z is the centered marker matrix and u are the marker effects.
+The mean should be 0 (or very close to it) and reflect GBLUP GEBV if using rrBLUP, BayesC, or GBLUP back solve methods.
+If the reconstructed GEBV mean is meaningfully away from 0, it indicates the wrong marker matrix (i.e., needs to be centered) is being used or the marker matrix was not centered when estimating marker effects.
+
+The package will internally center markers if `mean_adjust = TRUE`. If the matrix is already centered, centering won't change the values
+or centering can be set to `FALSE`.
+
+If you want genotype/haplotype configurations to match the 0/1/2/# dosage format, provide the uncentered genotype matrix and set `mean_adjust = TRUE`. Otherwise, the reported genotype/haplotype configurations will reflect centered values. For clarity, you must provide dosage format (usually 0/1/2 for diploid, any integer for polypoid).
+
+---
+
+# Visualization Functions
+
+# Marker Effects Plot
+
+```r
+marker_plot = marker_effects_plot(
+  marker_effects = marker_effects$Effect,
+  chr = map$Chromosome,
+  pos = map$Position,
+  colors = c("#A01FF0", "#A7A8AA")
+)
+
+marker_plot
+```
+
+| Parameter | Description |
+|:---|:---|
+| `marker_effects` | Numeric vector of marker effects |
+| `chr` | Numeric chromosome vector corresponding to each marker |
+| `pos` | Numeric marker positions vector (genetic map or physical position) |
+| `colors` | Vector of length 2 of alternating chromosome colors |
+
+#### Notes
+
+- Chromosomes alternate between the two provided colors
+- Missing values (`NA`) are automatically removed before plotting
+- Chromosomes should generally be numeric for proper ordering
+
+---
+
+# Unique Haplotype Effects Plot
+
+```r
+haplo_eff_plot = unique_haplo_effects_plot(
+  haplo_obj = haploblock_obj,
+  colors = c("#A01FF0", "#A7A8AA"),
+  pos_type = "midpoint"
+)
+
+haplo_eff_plot
+```
+
+| Parameter | Description |
+|:---|:---|
+| `haplo_obj` | Object returned from `compute_local_GEBV()` |
+| `colors` | Alternating chromosome colors |
+| `pos_type` | `"midpoint"` or `"start"` positioning of haploblocks |
+
+#### `pos_type`
+
+| Option | Description |
+|:---|:---|
+| `"midpoint"` | Plot effects at the midpoint of the haploblock |
+| `"start"` | Plot effects at the first marker in the haploblock |
+
+---
+
+# Funnel Plot
+
+```r
+funnel_plot = block_var_funnel_plot(
+  haplo_obj = haploblock_obj,
+  mean_line = FALSE,
+  scale_colors = c("blue", "purple", "red")
+)
+
+funnel_plot
+```
+
+| Parameter | Description |
+|:---|:---|
+| `haplo_obj` | Object returned from `compute_local_GEBV()` |
+| `mean_line` | Adds dashed mean variance line |
+| `scale_colors` | Vector of length 3 defining low/mid/high effect colors |
+
+#### Notes
+
+- Haploblock variance is log-scaled and normalized between 0 and 1 for display
+- Useful for identifying high-effect haplotypes with large variance
+
+
+---
+
+# Haploblock Position Plot
+
+```r
+haploblock_plot = plot_haploblocks(
+  haploblock_df = haploblock_obj$Haploblocks,
+  block_fill = "#A01FF0",
+  chrom_fill = NA,
+  height = 0.30,
+  single_width_bp = NULL
+)
+
+haploblock_plot
+```
+
+| Parameter | Description |
+|:---|:---|
+| `haploblock_df` | Haploblock dataframe |
+| `block_fill` | Color of haploblocks |
+| `chrom_fill` | Chromosome background color |
+| `height` | Chromosome thickness |
+| `single_width_bp` | Width of single-marker blocks (mostly deprecated) |
+
+#### Notes
+
+- `chrom_fill = NA` produces transparent chromosomes
+- Smaller `height` values create thinner chromosomes
+- Larger values create thicker chromosome tracks
+- `single_width_bp` does not control width of single marker blocks anymore: it is a mostly deprecated option
+
+---
+
+# Marker Density Plot
+
+```r
+marker_density_plot = plot_marker_density(
+  map = map,
+  bin_size = 500e3,
+  height = 0.3,
+  chrom_fill = NA,
+  col_low = "white",
+  col_mid = "purple",
+  col_high = "red"
+)
+
+marker_density_plot
+```
+
+| Parameter | Description |
+|:---|:---|
+| `map` | Ordered map dataframe |
+| `bin_size` | Window size (based on position) used to count markers |
+| `height` | Chromosome thickness |
+| `chrom_fill` | Chromosome background color |
+| `col_low` | Low-density color |
+| `col_mid` | Mid-density color |
+| `col_high` | High-density color |
+
+#### Notes
+
+- Smaller `bin_size` values increase resolution but also increase noise
+- Larger bins produce smoother chromosome-wide density patterns
+- Final bins are automatically capped at chromosome ends
+
+---
+
+# LD Decay Plot
+
+```r
+ld_decay_plot = plot_ld_decay(
+  map = map,
+  ld = ld_pairs,
+  max_kb = 500,
+  span = 0.3,
+  k = 10L,
+  method = "gam_cr",
+  point_color = "#A7A8AA",
+  curve_color = "#A01FF0",
+  alpha = 0.2
+)
+
+ld_decay_plot
+```
+
+| Parameter | Description |
+|:---|:---|
+| `map` | Ordered map dataframe |
+| `ld` | LD dataframe |
+| `max_kb` | Maximum pairwise distance in kb to consider |
+| `method` | Curve fitting method |
+| `span` | LOESS smoothing parameter between 0 and 1 |
+| `k` | Integer number of GAM basis functions |
+| `point_color` | LD point color |
+| `curve_color` | Fitted curve color |
+| `alpha` | Point transparency between 0 and 1 |
+
+#### `method`
+
+| Option | Description |
+|:---|:---|
+| `"gam_tp"` | Thin-plate regression spline GAM |
+| `"gam_cr"` | Cubic regression spline GAM |
+| `"exp"` | Exponential decay model |
+| `"loess"` | LOESS smoothing |
+
+#### Notes
+
+- `"exp"` guarantees monotonic decay
+- Smaller `span` values follow local structure more closely, but may over fit
+- Larger `span` values produce smoother curves, but may over smooth
+- Lower `k` values smooth GAM curves more aggressively
+
+---
+
+# Selecting Haploblocks for the GA
+
+Before running the genetic algorithm (GA), haploblocks can be filtered to reduce dimensionality and focus on the most important genomic regions.
+
+The `select_top_blocks()` function supports three different selection strategies.
+
+---
+
+## 1. Select the Top `n` Haploblocks
+
+Selects the highest variance haploblocks directly.
+
+```r
+haploblock_obj = select_top_blocks(
+  haploblock_obj = haploblock_obj,
+  n = 15
+)
+```
+
+### Parameters
+
+| Parameter | Description |
+| :--- | :--- |
+| `n` | Integer number of top haploblocks to retain based on block variance |
+
+### Notes
+
+- Very interpretable and simple.
+- Useful when a fixed number of blocks is desired.
+
+---
+
+## 2. Select the Top Percentage of Haploblocks
+
+Selects the top proportion of haploblocks ranked by variance.
+
+```r
+haploblock_obj = select_top_blocks(
+  haploblock_obj = haploblock_obj,
+  perc_total = 0.5
+)
+```
+
+### Parameters
+
+| Parameter | Description |
+| :--- | :--- |
+| `perc_total` | Proportion of haploblocks to retain (between 0 and 1) |
+
+Example:
+
+```r
+perc_total = 0.5
+```
+
+Retains the top 50% of haploblocks ranked by variance (rounded up).
+
+### Notes
+
+- Scales automatically with dataset size.
+- Less arbitrary than selecting a fixed number of blocks.
+- Still ignores cumulative variance explained.
+- May retain many low-information blocks in large datasets.
+
+---
+
+## 3. Select Haploblocks Explaining a Percentage of Total Variance
+
+Retains the minimum number of haploblocks required to explain a specified proportion of the total haploblock variance.
+
+```r
+haploblock_obj = select_top_blocks(
+  haploblock_obj = haploblock_obj,
+  perc_of_total_var = 0.9
+)
+```
+
+### Parameters
+
+| Parameter | Description |
+| :--- | :--- |
+| `perc_of_total_var` | Minimum proportion of cumulative block variance to explain between 0 and 1 (0 means none, 1 means all) |
+
+Example:
+
+```r
+perc_of_total_var = 0.9
+```
+
+Retains enough haploblocks to explain at least 90% of the total block variance.
+
+### Notes
+
+- Usually the most biologically meaningful approach.
+- Dynamically adapts to the architecture of the trait.
+- Retains more blocks for highly polygenic traits.
+- Retains fewer blocks when major-effect haploblocks dominate.
+
+# Comparison of Selection Strategies
+
+| Method | Strengths | Weaknesses |
+| :--- | :--- | :--- |
+| Top `n` blocks | Simple and interpretable | Arbitrary cutoff |
+| Top percentage | Scales with dataset size | May retain weak blocks |
+| Variance explained | Biologically adaptive | Number of retained blocks varies between traits |
+
+---
+
+# Computational Considerations
+
+Increasing the number of retained haploblocks:
+
+- increases optimization dimensionality
+- increases GA runtime
+- increases memory usage
+- may slow convergence substantially
+
+However, retaining too few blocks may:
+
+- miss favorable rare haplotypes
+- oversimplify trait architecture
+- reduce long-term genetic gain potential
+
+Users are encouraged to experiment with multiple selection thresholds depending on breeding goals and computational resources.
+
+
+---
+
+# Genetic Algorithm Parent Selection
+
+```r
+GA_output = genetic_algorithm(
+  localGEBV = haploblock_obj$Haplotype_Effect_Matrix_GA,
+  n_founders = 20,
+  popSize = 10,
+  maxiter = 300,
+  run = 150,
+  selfing = FALSE,
+  pmutation = 0.2,
+  pcrossover = 0.8,
+  pelite = 0.5
+)
+```
+
+---
+
+# GA Parameters
+
+| Parameter | Description |
+|---|---|
+| `n_founders` | Integer number of parents to choose |
+| `popSize` | Integer number of parental sets per simulation iteration |
+| `maxiter` | Maximum iterations before termination |
+| `run` | Iterations without improvement before stopping |
+| `selfing` | Allow selfing (i.e., for the fitness function allow the same parent at a block). If `FALSE` requires two different parents per chosen block |
+| `pmutation` | Mutation probability - swaps out one random individual for another from the total population |
+| `pcrossover` | Crossover probability - swaps half of each population; if there is overlap, non-overlapping parents are chosen randomly from the total population |
+| `pelite` | Elite proportion - constrains choosing individuals from the total population to the highest `pelite` proportion based on GEBV when needed to find non-overlapping parents for `pcrossover` |
+
+The genetic algorithm (GA) balances:
+
+1. **Exploration**  
+   Searching broadly across possible parental combinations
+
+2. **Exploitation**  
+   Refining highly fit parental combinations already discovered
+
+Improper parameter tuning can lead to:
+
+- premature convergence
+- failure to converge
+- excessive runtime
+- oscillation around suboptimal solutions
+
+---
+
+## `popSize`
+
+Controls the number of candidate parental sets evaluated per iteration.
+
+### Trade-offs
+
+| Smaller `popSize` | Larger `popSize` |
+|:---|:---|
+| Faster individual iterations | Slower individual iterations |
+| Less memory usage | Higher memory usage |
+| Late convergence | Better exploration and earlier convergence |
+| Higher risk of local optima | Lower risk of local optima |
+
+
+Increasing `popSize` generally reduces the number of iterations needed for convergence, but each iteration becomes more computationally expensive.
+
+---
+
+## `maxiter`
+
+Maximum number of iterations allowed.
+
+### Notes
+
+- Too small → GA may terminate before convergence
+- Too large → unnecessary runtime after convergence
+
+Generally:
+
+- small problems converge quickly
+- highly polygenic architectures with many parents may require many iterations
+
+---
+
+## `run`
+
+Number of iterations allowed without improvement before stopping.
+
+### Trade-offs
+
+| Smaller `run` | Larger `run` |
+|:---|:---|
+| Faster termination | More exhaustive search |
+| May stop too early | Longer runtime |
+| Risk missing optimum | Better convergence stability |
+
+
+---
+
+## `pmutation`
+
+Mutation probability.
+
+Mutation randomly substitutes one individual within populations from the total population.
+
+### Effects
+
+| Low mutation | High mutation |
+|:---|:---|
+| Stable convergence | More exploration |
+| Risk local optima | Risk instability and "overshooting" |
+
+#### Important Notes
+
+Overly large mutation probabilities can prevent convergence entirely because high-performing parental sets are continuously disrupted.
+
+---
+
+## `pcrossover`
+
+Probability populations exchange parental subsets (half of each pair swapped). If there are overlapping individuals after swapping, then the duplicates are dropped and non-duplicate individuals are randomly sampled from the total population.
+
+### Effects
+
+| Low crossover | High crossover |
+|:---|:---|
+| Less swapping | Greater swapping |
+| Slower exploration | Faster exploration |
+| More stable solutions | Greater instability |
+
+Very high crossover rates may cause the GA to overshoot promising solutions and continuously disrupt near-optimal parental combinations.
+
+
+---
+
+## `pelite`
+
+Restricts replacement individuals to the proportion of the population ranked by GEBV.
+
+### Trade-offs
+
+| Smaller `pelite` | Larger `pelite` |
+|:---|:---|
+| Faster convergence | Greater diversity |
+| Stronger selection pressure | Better exploration |
+| Risk premature convergence | Slower convergence |
+
+Very aggressive elite selection may reduce genetic diversity within the GA search process and increase the likelihood of local optima.
+
+---
+
+### If convergence is unstable
+
+- decrease `pmutation`
+- decrease `pcrossover`
+- increase `pelite`
+- increase `run`
+
+### If convergence is too slow
+
+- increase `popSize`
+- slightly increase `pmutation`
+- slightly increase `pcrossover`
+
+### If solutions appear trapped in local optima
+
+- increase `popSize`
+- increase `pmutation`
+- increase `pelite`
+- increase `run`
+
+---
+
+# Inspecting Solutions
+
+```r
+GA_output$One_Solution
+```
+
+---
+
+# Simulating Recurrent Selection
+
+```r
+parent_sln_obj = GA_vs_TS_simulation(
+  GA_output = GA_output,
+  geno = geno,
+  marker_effects = marker_effects,
+  map = map,
+  genetic_map_position = NULL,
+  num_gen = 50,
+  num_sim_reps = 30,
+  num_cross_per_gen = 1000,
+  num_TS_parents = NULL,
+  mean_adjust = TRUE,
+  max_cM_chr = 100,
+  PCA = TRUE,
+  colors = c("green", "#d95f02", "#A01FF0", "gray80"),
+  alpha = c(1,1,1,0.5)
+)
+```
+
+---
+
+# Display Simulation Results
+
+```r
+parent_sln_obj$Simulation_Plot
+
+parent_sln_obj$PCA_Plot
+```
+
+# Simulation Parameters
+
+| Parameter | Description |
+| :--- | :--- |
+| `GA_output` | Output object from the GA |
+| `geno` | Genotype dataframe from before |
+| `marker_effects` | Marker effects dataframe |
+| `map` | Ordered map dataframe |
+| `genetic_map_position` | Optional genetic map positions vector in centiMorgans in the same order as the map |
+| `num_gen` | Integer number of recurrent truncation selection generations |
+| `num_sim_reps` | Integer number of independent simulation replicates |
+| `num_cross_per_gen` | Integer number of progeny generated per generation via random mating |
+| `num_TS_parents` | Number of truncation-selected parents. If `NULL`, same as number of GA parents |
+| `mean_adjust` | Whether to internally center genotypes (almost always `TRUE`) |
+| `max_cM_chr` | Assumed chromosome genetic map length if no genetic map provided |
+| `PCA` | Whether to compute PCA visualization (`TRUE` or `FALSE`) |
+| `colors` | Colors for PCA categories and simulation plot, must provide 4 |
+| `alpha` | Transparency levels for PCA categories, must provide 4 |
+
+---
+
+# Understanding Simulation Parameters
+
+## `num_gen`
+
+Controls how many generations of recurrent selection are simulated.
+
+### Larger Values
+
+- better evaluation of long-term gain
+- reveals genetic plateaus
+- better assesses diversity preservation
+
+### Smaller Values
+
+- faster simulation
+- focuses on short-term gain
+
+---
+
+## `num_sim_reps`
+
+Controls the number of replicate simulations.
+
+Replicates differ because of:
+
+- recombination randomness
+- parental chromosome sampling
+- stochastic inheritance
+
+### Larger Values
+
+Advantages:
+
+- smoother estimates
+- more reliable confidence intervals
+- reduced stochastic noise
+
+Disadvantages:
+
+- increased runtime and memory
+
+---
+
+## `num_cross_per_gen`
+
+Number of progeny generated each generation.
+
+### Larger Values
+
+Advantages:
+
+- stronger selection intensity
+- improved ability to identify elite progeny
+- smoother trajectories
+
+Disadvantages:
+
+- slower simulations
+- increased memory usage
+
+---
+
+## `genetic_map_position`
+
+Optional vector of marker positions in centiMorgans (cM).
+
+If omitted:
+
+- chromosomes are assumed to span `max_cM_chr`
+- genetic map positions are inferred proportionally from physical distance
+
+Providing a true genetic map is recommended whenever available.
+
+---
+
+## `PCA`
+
+If `TRUE`, performs PCA on the genotype matrix and highlights:
+
+- GA-selected parents
+- TS-selected parents
+- overlapping parents
+- non-selected individuals
+
+This helps visualize:
+
+- diversity retention
+- population structure
+- overlap between strategies
+
+---
+
+# Displaying Simulation Results
+
+```r
+parent_sln_obj$Simulation_Plot
+```
+
+Displays simulated long-term genetic gain trajectories.
+
+---
+
+```r
+parent_sln_obj$PCA_Plot
+```
+
+Displays PCA visualization of selected parents.
+
+
+---
+
+# References
+
+**localGEBV Method and Haploblock Formation:**  
+[Shaffer et al. 2025. Local genomic estimates provide a powerful framework for haplotype discovery. bioRxiv](https://doi.org/10.1101/2025.08.28.672830)
+
+**Origin of the localGEBV Method and Parent Optimization with a Genetic Algorithm:**  
+[Kemper et al. 2012. Long-term selection strategies for complex traits using high-density genetic markers. J Dairy Sci](https://doi.org/10.3168/jds.2011-5289)
+
+**The First Implementation of Haploblocking with localGEBV:**  
+[Voss-Fels et al. 2019. Breeding improves wheat productivity under contrasting agrochemical input levels. Nat Plants](https://doi.org/10.1038/s41477-019-0445-5)
+
+**The Concept of the Ultimate Genotype:**  
+[Hays et al. 2024. Potential approaches to create ultimate genotypes in crops and livestock. Nat Genet](https://doi.org/10.1038/s41588-024-01942-0)

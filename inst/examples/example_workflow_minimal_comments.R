@@ -48,9 +48,7 @@ map = HapSelect::map
 geno = HapSelect::geno
 
 
-#compute ld with PLINK
-
-#once LD File Script is updated run this
+#compute ld with PLINK - requires installation of PLINK v1.9 and PATH availability
 ld_pairs = plink_pairwise_ld_geno(geno = geno, ld_window = 999999, ld_window_kb = 1e6, ld_window_r2 = 0)
 
 ###########################################
