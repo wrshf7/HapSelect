@@ -34,8 +34,12 @@ library(HapSelect)
 source(system.file("examples", "example_workflow_minimal_comments.R", package = "HapSelect"))
 ```
 
+## Contributing
+
+For details on contributing to this package, see [the development guide](DEVELOPMENT.md).
+
 ## Authors
 
-Will Shaffer, Zane Carter, Victor Papin
+Will Shaffer, Victor Papin, Zane Carter
 
 The University of Queensland
