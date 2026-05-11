@@ -12,6 +12,11 @@ order_chromo = function(chromo){
 
 #####check file structure######
 check_file = function(map){
+  # Check file structure - make sure it's a data frame with at least 3 columns (SNP, chrom, pos)
+  if(!is.data.frame(map) || ncol(map) < 3){
+    stop("map must be a data frame with at least 3 columns: SNP ID (column 1), chromosome (column 2, numeric), and position (column 3, numeric).")
+  }
+  
   #make sure SNP ID are characters - if not make them characters and give a warning
   if(is.numeric(map[,1])){
     map[,1] = as.character(map[,1])

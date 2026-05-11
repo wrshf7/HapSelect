@@ -14,6 +14,13 @@ check_BLUE = function(BLUE, geno){
 #solve the marker effects
 solve_marker_effects = function(geno, BLUE, h2_method, ploidy){
 
+  if(!is.data.frame(BLUE) || ncol(BLUE) < 2){
+    stop("BLUE must be a data frame with at least 2 columns: individual ID (column 1, character) and a single adjusted phenotype, BLUE, or de-regressed BLUP (column 2, numeric).")
+  }
+  if(!is.numeric(BLUE[,2])){
+    stop("Column 2 of BLUE must be numeric (phenotype, BLUE, or de-regressed BLUP values).")
+  }
+
   if(length(ploidy) != 1 || is.na(ploidy) || is.null(ploidy) || !is.integer(ploidy)){
     stop("Please provide a singular integer value for the ploidy. This can be specified using the #L format, where # is the ploidy number (2L is the default).")
   }

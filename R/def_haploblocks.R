@@ -349,6 +349,15 @@ def_blocks = function(ld, map, method = c("flanking", "average"), tolerance = 1,
                       tol_reset = TRUE, threshold = 0.7,
                       start = c("LD", "beginning"), parallel = FALSE) {
 
+  required_ld_cols = c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
+  if(!is.data.frame(ld) || !all(required_ld_cols %in% colnames(ld))){
+    stop("ld must be a data frame with columns: Chrom, Locus1, Locus2, Name1, Name2, LD. ",
+         "Use plink_pairwise_ld(), plink_pairwise_ld_geno(), or pairwise_ld() to generate this object.")
+  }
+  if(!is.numeric(ld$LD) || any(ld$LD < 0 | ld$LD > 1, na.rm = TRUE)){
+    stop("The LD column must contain numeric r² values between 0 and 1.")
+  }
+
   start  = match.arg(start)
   method = match.arg(method)
 
