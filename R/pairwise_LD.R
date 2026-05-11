@@ -120,7 +120,7 @@ pairwise_ld = function(genotype_matrix, parallelize = TRUE){
 check_ld_matrix = function(genotype_matrix) {
   # Check column structure and types of the genotype matrix
   if(!is.data.frame(genotype_matrix) || ncol(genotype_matrix) < 4){
-    stop("genotype_matrix must be a data frame with at least 4 columns: SNP ID (character), chromosome (numeric), position (numeric), and one or more individual dosage columns (numeric, values 0/1/2/NA).")
+    stop("genotype_matrix must be a data frame with at least 4 columns: SNP ID (character), Chromosome (numeric), Position (numeric), and one or more individual dosage columns (numeric integer, values 0/1/2/3+/NA).")
   }
   if(!is.character(genotype_matrix[,1])){
     stop("Column 1 of genotype_matrix must be character SNP IDs.")
@@ -129,9 +129,9 @@ check_ld_matrix = function(genotype_matrix) {
     stop("Column 2 of genotype_matrix must be numeric chromosome identifiers.")
   }
   if(!is.numeric(genotype_matrix[,3])){
-    stop("Column 3 of genotype_matrix must be numeric marker positions.")
+    stop("Column 3 of genotype_matrix must be numeric marker positions (physical or genetic map position).")
   }
   if(!is.numeric(genotype_matrix[,4])){
-    stop("Columns 4 and onward of genotype_matrix must be numeric dosage values (0, 1, 2, or NA).")
+    stop("Columns 4 and onward of genotype_matrix must be numeric dosage values (0, 1, 2, 3+, or NA).")
   }
 }
