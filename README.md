@@ -66,6 +66,6 @@ For details on contributing to this package, see [the development guide](DEVELOP
 
 ## Authors
 
-Will Shaffer, Victor Papin, Zane Carter
+Will Shaffer, Zane Carter, Victor Papin, 
 
 The University of Queensland
