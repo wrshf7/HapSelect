@@ -32,11 +32,11 @@ jobs:
         run: |
           cov <- covr::package_coverage()
           pct <- covr::percent_coverage(cov)
-          df <- as.data.frame(cov)
-          file_summary <- tapply(df$value, df$filename, mean) * 100
+          file_pcts <- covr::file_coverage(cov)
+          file_pcts <- file_pcts[!grepl("\\.cpp$", names(file_pcts))]
           lines <- c("## HapSelect Coverage", "", sprintf("**Total: %.1f%%**", pct), "", "| File | Coverage |", "| --- | --- |")
-          for (f in names(file_summary)) {
-            lines <- c(lines, sprintf("| %s | %.1f%% |", basename(f), file_summary[[f]]))
+          for (f in names(file_pcts)) {
+            lines <- c(lines, sprintf("| %s | %.1f%% |", basename(f), file_pcts[[f]]))
           }
           writeLines(lines, Sys.getenv("GITHUB_STEP_SUMMARY"))
         shell: Rscript {0}
