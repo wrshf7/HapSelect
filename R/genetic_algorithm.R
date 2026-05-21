@@ -55,17 +55,18 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
 # Retained for backward compatibility. Prefer ohs_parent_selection() or local_gebv_parent_selection().
 genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
                              run = 50, allow_selfing = FALSE, pmutation = 0.1,
-                             pcrossover = 0.8, pelite = 0.5){
+                             pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
   .genetic_algorithm(
-    localGEBV  = localGEBV,
-    n_founders = n_founders,
-    popSize    = popSize,
-    maxiter    = maxiter,
-    run        = run,
-    allow_selfing    = allow_selfing,
-    pmutation  = pmutation,
-    pcrossover = pcrossover,
-    pelite     = pelite
+    localGEBV     = localGEBV,
+    n_founders    = n_founders,
+    popSize       = popSize,
+    maxiter       = maxiter,
+    run           = run,
+    allow_selfing = allow_selfing,
+    pmutation     = pmutation,
+    pcrossover    = pcrossover,
+    pelite        = pelite,
+    monitor       = monitor
   )
 }
 
@@ -88,17 +89,18 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
 # pelite       - numeric (0-1); fraction of the population treated as elite during crossover
 ohs_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
                                 run = 50, allow_selfing = FALSE, pmutation = 0.1,
-                                pcrossover = 0.8, pelite = 0.5){
+                                pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
   .genetic_algorithm(
-    localGEBV  = localGEBV,
-    n_founders = n_founders,
-    popSize    = popSize,
-    maxiter    = maxiter,
-    run        = run,
-    allow_selfing    = allow_selfing,
-    pmutation  = pmutation,
-    pcrossover = pcrossover,
-    pelite     = pelite
+    localGEBV     = localGEBV,
+    n_founders    = n_founders,
+    popSize       = popSize,
+    maxiter       = maxiter,
+    run           = run,
+    allow_selfing = allow_selfing,
+    pmutation     = pmutation,
+    pcrossover    = pcrossover,
+    pelite        = pelite,
+    monitor       = monitor
   )
 }
 
@@ -121,23 +123,24 @@ ohs_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxit
 # pelite       - numeric (0-1); fraction of the population treated as elite during crossover
 local_gebv_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
                                        run = 50, allow_selfing = FALSE, pmutation = 0.1,
-                                       pcrossover = 0.8, pelite = 0.5){
+                                       pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
   .genetic_algorithm(
-    localGEBV  = localGEBV,
-    n_founders = n_founders,
-    popSize    = popSize,
-    maxiter    = maxiter,
-    run        = run,
-    allow_selfing    = allow_selfing,
-    pmutation  = pmutation,
-    pcrossover = pcrossover,
-    pelite     = pelite
+    localGEBV     = localGEBV,
+    n_founders    = n_founders,
+    popSize       = popSize,
+    maxiter       = maxiter,
+    run           = run,
+    allow_selfing = allow_selfing,
+    pmutation     = pmutation,
+    pcrossover    = pcrossover,
+    pelite        = pelite,
+    monitor       = monitor
   )
 }
 
 # Internal computation engine. See ohs_parent_selection() or local_gebv_parent_selection()
 # for full parameter documentation.
-.genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500, run = 50, allow_selfing = FALSE, pmutation = 0.1, pcrossover = 0.8, pelite = 0.5){
+.genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500, run = 50, allow_selfing = FALSE, pmutation = 0.1, pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
   # Define number of individuals and number of haplotype blocks based on input matrix
   n_individuals = nrow(localGEBV)   # <-- total number of individuals to choose from
   n_blocks = ncol(localGEBV)        # <-- number of genomic regions (haploblocks)
@@ -302,7 +305,7 @@ local_gebv_parent_selection = function(localGEBV, n_founders = 20, popSize = 100
     popSize = popSize,                               # Number of founder sets/solutions
     maxiter = maxiter,                               # Max number of iterations to run the GA
     run = run,                                       # Stop if best solution doesn't improve for this many generations
-    monitor = TRUE                                   # Show progress
+    monitor = monitor                                # Show progress
   )
 
   # Get one best solution (first row) and return both its indices and names

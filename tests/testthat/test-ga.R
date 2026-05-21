@@ -25,7 +25,8 @@ test_that("ohs_parent_selection and local_gebv_parent_selection produce identica
     n_founders = 3,
     popSize    = 20,
     maxiter    = 50,
-    run        = 10
+    run        = 10,
+    monitor    = FALSE
   )
 
   set.seed(42)
@@ -34,7 +35,8 @@ test_that("ohs_parent_selection and local_gebv_parent_selection produce identica
     n_founders = 3,
     popSize    = 20,
     maxiter    = 50,
-    run        = 10
+    run        = 10,
+    monitor    = FALSE
   )
 
   expect_equal(result_ohs$One_Solution, result_gebv$One_Solution)
