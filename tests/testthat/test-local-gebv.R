@@ -58,9 +58,9 @@ make_gebv_haploblocks <- function() {
 
 # Tests: output structure -----------------------------------------------------
 
-test_that("compute_local_GEBV returns a named list with correct structure", {
+test_that("local GEBV computationreturns a named list with correct structure", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -98,9 +98,9 @@ test_that("compute_local_GEBV returns a named list with correct structure", {
 
 # Tests: haplotype effect values ----------------------------------------------
 
-test_that("compute_local_GEBV computes correct haplotype effects with center = TRUE", {
+test_that("local GEBV computationcomputes correct haplotype effects with center = TRUE", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -124,9 +124,9 @@ test_that("compute_local_GEBV computes correct haplotype effects with center = T
 
 # Tests: block variance -------------------------------------------------------
 
-test_that("compute_local_GEBV computes correct block variance", {
+test_that("local GEBV computationcomputes correct block variance", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -147,7 +147,7 @@ test_that("set_missing_NA = TRUE produces NA effect for any individual with a mi
   geno           <- make_gebv_geno()
   geno$ind1[geno$marker == "m2"] <- NA_integer_
 
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = geno,
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -178,9 +178,9 @@ make_gebv_pecov <- function() {
   m
 }
 
-test_that("compute_local_GEBV adds PEV and p-value columns when marker_pecov is supplied", {
+test_that("local GEBV computationadds PEV and p-value columns when marker_pecov is supplied", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -201,9 +201,9 @@ test_that("compute_local_GEBV adds PEV and p-value columns when marker_pecov is 
 })
 
 
-test_that("compute_local_GEBV computes correct PEV values with diagonal marker_pecov", {
+test_that("local GEBV computationcomputes correct PEV values with diagonal marker_pecov", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -237,9 +237,9 @@ test_that("compute_local_GEBV computes correct PEV values with diagonal marker_p
 })
 
 
-test_that("compute_local_GEBV p-values satisfy 2*(1 - pnorm(|effect/sqrt(PEV)|))", {
+test_that("local GEBV computationp-values satisfy 2*(1 - pnorm(|effect/sqrt(PEV)|))", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -255,9 +255,9 @@ test_that("compute_local_GEBV p-values satisfy 2*(1 - pnorm(|effect/sqrt(PEV)|))
 })
 
 
-test_that("compute_local_GEBV does not add PEV columns when marker_pecov is absent", {
+test_that("local GEBV computationdoes not add PEV columns when marker_pecov is absent", {
   progressr::handlers("void")
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -275,7 +275,7 @@ test_that("set_missing_NA = FALSE imputes missing genotypes rather than returnin
   geno           <- make_gebv_geno()
   geno$ind1[geno$marker == "m2"] <- NA_integer_
 
-  result <- compute_local_GEBV(
+  result <- .compute_local_block_effects(
     geno           = geno,
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -299,7 +299,7 @@ test_that("parallel local GEBV matches serial results", {
   )
   on.exit(options(old_options), add = TRUE)
 
-  serial_result <- compute_local_GEBV(
+  serial_result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -309,7 +309,7 @@ test_that("parallel local GEBV matches serial results", {
     parallel       = FALSE
   )
 
-  parallel_result <- compute_local_GEBV(
+  parallel_result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
     marker_effects = make_gebv_marker_effects(),
     haploblocks_df = make_gebv_haploblocks(),
@@ -324,4 +324,24 @@ test_that("parallel local GEBV matches serial results", {
   expect_equal(parallel_result$Haplotype_ID_Matrix, serial_result$Haplotype_ID_Matrix)
   expect_equal(parallel_result$Haplotype_Effect_Matrix, serial_result$Haplotype_Effect_Matrix, tolerance = 1e-10)
   expect_equal(parallel_result$Haplotypes, serial_result$Haplotypes, tolerance = 1e-10)
+})
+
+
+# Tests: wrapper equivalence --------------------------------------------------
+
+test_that("compute_local_GEBV and compute_haplotype_effects produce identical output", {
+  progressr::handlers("void")
+  args <- list(
+    geno           = make_gebv_geno(),
+    marker_effects = make_gebv_marker_effects(),
+    haploblocks_df = make_gebv_haploblocks(),
+    marker_pecov   = make_gebv_pecov(),
+    set_missing_NA = TRUE,
+    mean_adjust    = TRUE
+  )
+
+  result_gebv  <- do.call(compute_local_GEBV,       args)
+  result_haplo <- do.call(compute_haplotype_effects, args)
+
+  expect_equal(result_gebv, result_haplo)
 })

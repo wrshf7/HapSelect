@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(FastStack)
+library(HapSelect)
 
-test_check("FastStack")
+test_check("HapSelect")

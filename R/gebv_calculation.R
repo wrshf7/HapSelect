@@ -2,8 +2,12 @@
 ###### Computing localGEBV ######
 ##################################
 
-# Main entry point for localGEBV calculation. This function takes the full genotype matrix, marker effects, and haploblock definitions, and computes local GEBV for each individual at each haploblock.
-# The function is designed to handle large datasets efficiently by processing haploblocks in parallel chunks, with optional progress reporting.
+# Computes local GEBV for each individual at each haploblock using the genotype/dosage approach.
+# Marker effects should come from a marker-level genomic prediction model (e.g. RR-BLUP / GBLUP)
+# and genotypes should be dosage values (0/1/2).
+# mean_adjust defaults to TRUE because marker effects are typically estimated on mean-centered
+# genotypes; subtracting the per-marker mean at prediction time matches that estimation scale
+# and ensures the average individual receives a local effect of zero at each block.
 # Inputs:
 # geno - data frame of genotypes, rows = markers, cols = individuals (starting from 4th col), first col = marker ID
 # marker_effects - data frame with at least 2 columns: first col = marker ID (matching geno), second col = marker effect size
@@ -13,7 +17,56 @@
 # mean_adjust - logical; if TRUE subtract marker means from genotypes before multiplying by effects; must match how marker effects were originally estimated
 # parallel - logical; if TRUE, process haploblocks in parallel using future; if FALSE, process sequentially with progress bar
 # chunk_size - integer; maximum number of blocks per chunk in parallel mode; caps the genotype data sent to each worker (default 100)
-compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, mean_adjust = TRUE, parallel = FALSE, chunk_size = 100){
+compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov,
+                              set_missing_NA = TRUE, mean_adjust = TRUE,
+                              parallel = FALSE, chunk_size = 100){
+  .compute_local_block_effects(
+    geno = geno,
+    marker_effects = marker_effects,
+    haploblocks_df = haploblocks_df,
+    marker_pecov = marker_pecov,
+    set_missing_NA = set_missing_NA,
+    mean_adjust = mean_adjust,
+    parallel = parallel,
+    chunk_size = chunk_size
+  )
+}
+
+# Computes local haplotype effects for each individual at each haploblock using the true haplotype approach.
+# Each row in geno should represent a single chromosome (phased, binary 0/1 allele values) rather
+# than a diploid dosage. Marker effects should be per-marker contributions derived from a
+# haplotype-level prediction model.
+# mean_adjust defaults to TRUE because the same logic applies as the dosage approach: effects are
+# estimated on mean-centered input (allele frequencies play the role of the per-marker mean), so
+# binary allele values must be centered before multiplication to avoid the population mean leaking
+# into every individual's local effect.
+# Inputs:
+# geno - data frame of phased genotypes, rows = markers, cols = chromosomes (starting from 4th col), first col = marker ID; allele values should be binary (0/1)
+# marker_effects - data frame with at least 2 columns: first col = marker ID (matching geno), second col = marker effect size derived from a haplotype-level model
+# haploblocks_df - data frame defining haploblocks, must have at least Block_ID and Block columns; Block column should list marker IDs in the block separated by ";"
+# marker_pecov - optional prediction error covariance matrix for markers; required if haplo_test is TRUE
+# set_missing_NA - logical; if TRUE any chromosome with >= 1 missing allele in the block gets NA effect; if FALSE only chromosomes with all alleles missing get NA (partial NA imputed to 0)
+# mean_adjust - logical; if TRUE subtract per-marker allele frequencies from allele values before multiplying by effects; must match how marker effects were originally estimated
+# parallel - logical; if TRUE, process haploblocks in parallel using future; if FALSE, process sequentially with progress bar
+# chunk_size - integer; maximum number of blocks per chunk in parallel mode; caps the genotype data sent to each worker (default 100)
+compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marker_pecov,
+                                     set_missing_NA = TRUE, mean_adjust = TRUE,
+                                     parallel = FALSE, chunk_size = 100){
+  .compute_local_block_effects(
+    geno = geno,
+    marker_effects = marker_effects,
+    haploblocks_df = haploblocks_df,
+    marker_pecov = marker_pecov,
+    set_missing_NA = set_missing_NA,
+    mean_adjust = mean_adjust,
+    parallel = parallel,
+    chunk_size = chunk_size
+  )
+}
+
+# Internal computation engine. See compute_local_GEBV() or compute_haplotype_effects() for
+# full parameter documentation.
+.compute_local_block_effects = function(geno, marker_effects, haploblocks_df, marker_pecov, set_missing_NA = TRUE, mean_adjust = TRUE, parallel = FALSE, chunk_size = 100){
 
   # If users submit a custom haploblocks_df file, ensure it was properly formatted
   check_haploblocks_df(haploblocks_df)
@@ -604,7 +657,7 @@ calculate_gebv_block = function(haploblock, marker_idx, marker_ids, effect_vec,
     mean_adjust = mean_adjust
   )
 
-  # Call the progress function if provided (e.g. to update a progress bar in the main compute_local_GEBV function)
+  # Call the progress function if provided (e.g. to update a progress bar in the caller)
   if(!is.null(p)){
     p()
   }
