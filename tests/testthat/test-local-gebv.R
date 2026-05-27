@@ -58,7 +58,7 @@ make_gebv_haploblocks <- function() {
 
 # Tests: output structure -----------------------------------------------------
 
-test_that("local GEBV computationreturns a named list with correct structure", {
+test_that("local GEBV computation returns a named list with correct structure", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
@@ -98,7 +98,7 @@ test_that("local GEBV computationreturns a named list with correct structure", {
 
 # Tests: haplotype effect values ----------------------------------------------
 
-test_that("local GEBV computationcomputes correct haplotype effects with center = TRUE", {
+test_that("local GEBV computation computes correct haplotype effects with center = TRUE", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
@@ -124,7 +124,7 @@ test_that("local GEBV computationcomputes correct haplotype effects with center 
 
 # Tests: block variance -------------------------------------------------------
 
-test_that("local GEBV computationcomputes correct block variance", {
+test_that("local GEBV computation computes correct block variance", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
@@ -178,7 +178,7 @@ make_gebv_pecov <- function() {
   m
 }
 
-test_that("local GEBV computationadds PEV and p-value columns when marker_pecov is supplied", {
+test_that("local GEBV computation adds PEV and p-value columns when marker_pecov is supplied", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
@@ -201,7 +201,7 @@ test_that("local GEBV computationadds PEV and p-value columns when marker_pecov 
 })
 
 
-test_that("local GEBV computationcomputes correct PEV values with diagonal marker_pecov", {
+test_that("local GEBV computation computes correct PEV values with diagonal marker_pecov", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
@@ -237,7 +237,7 @@ test_that("local GEBV computationcomputes correct PEV values with diagonal marke
 })
 
 
-test_that("local GEBV computationp-values satisfy 2*(1 - pnorm(|effect/sqrt(PEV)|))", {
+test_that("local GEBV computation p-values satisfy 2*(1 - pnorm(|effect/sqrt(PEV)|))", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
@@ -255,7 +255,7 @@ test_that("local GEBV computationp-values satisfy 2*(1 - pnorm(|effect/sqrt(PEV)
 })
 
 
-test_that("local GEBV computationdoes not add PEV columns when marker_pecov is absent", {
+test_that("local GEBV computation does not add PEV columns when marker_pecov is absent", {
   progressr::handlers("void")
   result <- .compute_local_block_effects(
     geno           = make_gebv_geno(),
