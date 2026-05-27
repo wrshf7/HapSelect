@@ -2,7 +2,7 @@
 ####### Genetic Algorithm ########
 ##################################
 
-#function that selects top blocks and returns the localGEBV for the GA
+# Selects top blocks and returns the localGEBV for the GA
 select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_of_total_var = NULL){
 
   #check only one value was provided
@@ -52,23 +52,110 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
 
 }
 
-####main function####
-genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500, run = 50, selfing = FALSE, pmutation = 0.1, pcrossover = 0.8, pelite = 0.5){
+# Retained for backward compatibility. Prefer ohs_parent_selection() or local_gebv_parent_selection().
+genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
+                             run = 50, allow_selfing = FALSE, pmutation = 0.1,
+                             pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
+  .genetic_algorithm(
+    localGEBV     = localGEBV,
+    n_founders    = n_founders,
+    popSize       = popSize,
+    maxiter       = maxiter,
+    run           = run,
+    allow_selfing = allow_selfing,
+    pmutation     = pmutation,
+    pcrossover    = pcrossover,
+    pelite        = pelite,
+    monitor       = monitor
+  )
+}
+
+# Selects a founder set to maximise offspring haplotype value using the Optimal Haplotype
+# Selection (OHS) approach. For each haploblock, the best-scoring parent pair is identified
+# and their average offspring contribution is summed across all blocks. The genetic algorithm
+# searches for the set of founders that maximises this total.
+# localGEBV should be the Haplotype_Effect_Matrix_GA from select_top_blocks(), with rows as
+# individuals and columns as haploblocks.
+# Inputs:
+# localGEBV    - numeric matrix or data frame; rows = individuals, cols = haploblocks; typically
+#                Haplotype_Effect_Matrix_GA from select_top_blocks()
+# n_founders   - integer; number of founders to select
+# popSize      - integer; number of candidate solutions in each GA generation
+# maxiter      - integer; maximum number of generations to run
+# run          - integer; stop early if the best solution does not improve for this many generations
+# allow_selfing      - logical; if TRUE allow an individual to be paired with itself
+# pmutation    - numeric (0-1); per-element mutation probability
+# pcrossover   - numeric (0-1); crossover probability
+# pelite       - numeric (0-1); fraction of the population treated as elite during crossover
+ohs_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
+                                run = 50, allow_selfing = FALSE, pmutation = 0.1,
+                                pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
+  .genetic_algorithm(
+    localGEBV     = localGEBV,
+    n_founders    = n_founders,
+    popSize       = popSize,
+    maxiter       = maxiter,
+    run           = run,
+    allow_selfing = allow_selfing,
+    pmutation     = pmutation,
+    pcrossover    = pcrossover,
+    pelite        = pelite,
+    monitor       = monitor
+  )
+}
+
+# Selects a founder set to maximise offspring local GEBV using block-level genomic estimated
+# breeding values. For each haploblock, the best-scoring parent pair is identified and their
+# average offspring contribution is summed across all blocks. The genetic algorithm searches
+# for the set of founders that maximises this total.
+# localGEBV should be the Haplotype_Effect_Matrix_GA from select_top_blocks(), with rows as
+# individuals and columns as haploblocks.
+# Inputs:
+# localGEBV    - numeric matrix or data frame; rows = individuals, cols = haploblocks; typically
+#                Haplotype_Effect_Matrix_GA from select_top_blocks()
+# n_founders   - integer; number of founders to select
+# popSize      - integer; number of candidate solutions in each GA generation
+# maxiter      - integer; maximum number of generations to run
+# run          - integer; stop early if the best solution does not improve for this many generations
+# allow_selfing      - logical; if TRUE allow an individual to be paired with itself
+# pmutation    - numeric (0-1); per-element mutation probability
+# pcrossover   - numeric (0-1); crossover probability
+# pelite       - numeric (0-1); fraction of the population treated as elite during crossover
+local_gebv_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
+                                       run = 50, allow_selfing = FALSE, pmutation = 0.1,
+                                       pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
+  .genetic_algorithm(
+    localGEBV     = localGEBV,
+    n_founders    = n_founders,
+    popSize       = popSize,
+    maxiter       = maxiter,
+    run           = run,
+    allow_selfing = allow_selfing,
+    pmutation     = pmutation,
+    pcrossover    = pcrossover,
+    pelite        = pelite,
+    monitor       = monitor
+  )
+}
+
+# Internal computation engine. See ohs_parent_selection() or local_gebv_parent_selection()
+# for full parameter documentation.
+.genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500, run = 50, allow_selfing = FALSE, pmutation = 0.1, pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
   # Define number of individuals and number of haplotype blocks based on input matrix
   n_individuals = nrow(localGEBV)   # <-- total number of individuals to choose from
   n_blocks = ncol(localGEBV)        # <-- number of genomic regions (haploblocks)
 
   #### fitness function ####
   # Calculates total score by summing the best expected offspring GEBV per block
-  ohs_fitness_custom = function(localGEBV, selected_ind, selfing){
+  score_founder_set = function(localGEBV, selected_ind, allow_selfing){
     # Subset localGEBV matrix to only selected individuals
     sel_localGEBV = localGEBV[selected_ind, , drop = FALSE]
 
-    # Create all pairwise combinations of selected individuals (no selfing)
+    # Create all pairwise combinations of selected individuals (no self-pairs)
     combos = combn(1:nrow(sel_localGEBV), 2)
 
-    if(selfing == TRUE){ # If selfing is true allow for selfing pairs
-      combos2 = rbind(1:nrow(sel_localGEBV), 1:nrow(sel_localGEBV)) # Introduce selfing pairs
+    if(allow_selfing == TRUE){ # If allow_selfing is TRUE, add self-pairs
+      combos2 = rbind(1:nrow(sel_localGEBV), 1:nrow(sel_localGEBV)) # Introduce self-pairs
       combos = cbind(combos, combos2)
     }
 
@@ -97,9 +184,9 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
 
   #### fitness wrapper function ####
   # Wrapper that limits the solution to n_founders and calls the fitness function - GA function doesn't allow for multiple arguments
-  fitness_wrapper = function(selected_ind){
+  ga_fitness = function(selected_ind){
     selected_ind = selected_ind[1:n_founders]  # Ensure the input is the right length
-    total_score = ohs_fitness_custom(localGEBV = localGEBV, selected_ind = selected_ind, selfing = selfing)
+    total_score = score_founder_set(localGEBV = localGEBV, selected_ind = selected_ind, allow_selfing = allow_selfing)
     return(total_score)
   }
 
@@ -125,50 +212,6 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
     }
     return(mutated)
   }
-
-  #### custom crossover function ####
-  # Combines two parent solutions into two new children, preserving some structure and enforcing uniqueness
-  # If not enough individuals, pulls randomly from the base population sans individuals already in the unique set
-  # If too many unique individuals, randomly samples them
-  # Future direction: pull from the top percentage of population solutions?
-  # custom_crossover = function(object, parents){
-  #   parent1 = object@population[parents[1], ]
-  #   parent2 = object@population[parents[2], ]
-  #
-  #   half = floor(n_founders / 2)
-  #
-  #   # Keep first half from one parent and fill in from the other
-  #   base1 = parent1[1:half]
-  #   base2 = parent2[1:half]
-  #
-  #   add1 = setdiff(parent2, base1)
-  #   add2 = setdiff(parent1, base2)
-  #
-  #   child1 = unique(c(base1, add1))
-  #   child2 = unique(c(base2, add2))
-  #
-  #   # Ensure exactly n_founders in each child - pull randomly from base population to fill in
-  #   # Sample from existing if too many
-  #   if (length(child1) < n_founders) {
-  #     filler1 = setdiff(1:n_individuals, child1)
-  #     child1 = c(child1, sample(filler1, n_founders - length(child1)))
-  #   } else if (length(child1) > n_founders) {
-  #     child1 = sample(child1, n_founders)
-  #   }
-  #
-  #   if (length(child2) < n_founders) {
-  #     filler2 = setdiff(1:n_individuals, child2)
-  #     child2 = c(child2, sample(filler2, n_founders - length(child2)))
-  #   } else if (length(child2) > n_founders) {
-  #     child2 = sample(child2, n_founders)
-  #   }
-  #
-  #   # Combine into matrix and compute fitness for both children
-  #   children = rbind(as.integer(child1), as.integer(child2))
-  #   fitness_values = apply(children, 1, fitness_wrapper)
-  #
-  #   return(list(children = children, fitness = fitness_values))
-  # }
 
   custom_crossover = function(object, parents){
     # Extract the two parent solutions (each is a vector of founder IDs)
@@ -243,7 +286,7 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
     children = rbind(as.integer(child1), as.integer(child2))
 
     # Compute fitness for each child using your wrapper function
-    fitness_values = apply(children, 1, fitness_wrapper)
+    fitness_values = apply(children, 1, ga_fitness)
 
     # Return list containing children and their fitness values
     return(list(children = children, fitness = fitness_values))
@@ -253,7 +296,7 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
   #### Run GA ####
   ga_result = GA::ga(
     type = "real-valued",                            # Each solution is a numeric vector (indices)
-    fitness = fitness_wrapper,                       # Function to evaluate solution fitness
+    fitness = ga_fitness,                       # Function to evaluate solution fitness
     population = custom_population,                  # Custom initial population generator
     mutation = custom_mutation,                      # Custom mutation operator
     crossover = custom_crossover,                    # Custom crossover operator
@@ -262,7 +305,7 @@ genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter 
     popSize = popSize,                               # Number of founder sets/solutions
     maxiter = maxiter,                               # Max number of iterations to run the GA
     run = run,                                       # Stop if best solution doesn't improve for this many generations
-    monitor = TRUE                                   # Show progress
+    monitor = monitor                                # Show progress
   )
 
   # Get one best solution (first row) and return both its indices and names

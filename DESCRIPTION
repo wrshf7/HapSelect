@@ -40,5 +40,6 @@ Imports:
 LinkingTo:
     Rcpp
 Suggests:
+    covr,
     jsonlite,
     testthat (>= 3.0.0)

@@ -1,4 +1,9 @@
 test_that("PLINK and HapSelect LD implementations output match reasonably closely", {
+  skip_if(
+    inherits(tryCatch(HapSelect:::find_plink(), error = function(e) e), "error"),
+    "PLINK executable not found"
+  )
+
   genotypes <- data.frame(
     marker = paste0("m", 1:8),
     chrom = rep(1, 8),

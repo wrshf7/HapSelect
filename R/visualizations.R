@@ -94,8 +94,8 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
 
 
 #####Haplotype effects plot######
-unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
 
+.effects_plot_engine = function(haplo_obj, colors, pos_type, y_label){
   if(!is.list(haplo_obj)){
     stop("'haplo_obj' must be a haploblock object.")
   }
@@ -108,8 +108,7 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
     stop("'colors' must contain exactly 2 valid R/hex colors.")
   }
 
-  #plotting strategy - midpoint or start of haplotype
-  pos_type = match.arg(pos_type)
+  pos_type = match.arg(pos_type, c("midpoint", "start"))
 
   haploblocks = haplo_obj$Haploblocks
   haplotypes = haplo_obj$Haplotypes
@@ -132,30 +131,31 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
     mutate(chr_start = lag(cumsum(chr_len), default = 0),
            chr_center = chr_start + chr_len / 2)
 
-  #All in one dataframe
   haplotypes = left_join(haplotypes, chr_info, by = "Chr")
   haplotypes$Cum_Pos = haplotypes$Pos + haplotypes$chr_start
 
-  #expand colors to all chromos
   color_vec = rep(colors, length.out = length(unique(haplotypes$Chr)))
 
-  #ggplot
-  haplo_effects_plot = ggplot(haplotypes, aes(x = Cum_Pos, y = Haplotype_Effect, color = Chr)) +
+  ggplot(haplotypes, aes(x = Cum_Pos, y = Haplotype_Effect, color = Chr)) +
     geom_point(size = 2, alpha = 0.3) +
     theme_cowplot() +
     scale_color_manual(values = color_vec) +
     scale_x_continuous(breaks = chr_info$chr_center, labels = chr_info$Chr) +
-    labs(x = "Chromosome", y = "Unique localGEBV") +
+    labs(x = "Chromosome", y = y_label) +
     theme(legend.position = "none")
+}
 
-  return(haplo_effects_plot)
+unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
+  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique Haplotype Effects")
+}
 
+unique_localGEBV_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
+  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique localGEBV Effects")
 }
 
 ######Funnel Plot Creation######
 
-block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("blue", "purple", "red")){
-
+.funnel_plot_engine = function(haplo_obj, mean_line, scale_colors, x_label, y_label){
   if(!is.list(haplo_obj)){
     stop("'haplo_obj' must be a haploblock object.")
   }
@@ -176,14 +176,13 @@ block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("
   haploblocks$Scaled_Block_Var = (haploblocks$Scaled_Block_Var - min(haploblocks$Scaled_Block_Var, na.rm = TRUE)) /
     (max(haploblocks$Scaled_Block_Var, na.rm = TRUE) - min(haploblocks$Scaled_Block_Var, na.rm = TRUE))
 
-
   haplotypes = left_join(haplotypes, haploblocks, by = "Block_ID")
 
   funnel_plot = ggplot(haplotypes, aes(x = Haplotype_Effect, y = Scaled_Block_Var, color = Haplotype_Effect)) +
     geom_point(alpha = 0.3, size = 2) +
     theme_cowplot() +
     scale_color_gradient2(low = scale_colors[1], mid = scale_colors[2], high = scale_colors[3], midpoint = 0, name = "Effect Size") +
-    labs(x = "localGEBV", y = "Scaled Haploblock Variance")
+    labs(x = x_label, y = y_label)
 
   if(mean_line){
     funnel_plot = funnel_plot +
@@ -191,6 +190,18 @@ block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("
   }
 
   return(funnel_plot)
+}
+
+block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("blue", "purple", "red")){
+  .funnel_plot_engine(haplo_obj, mean_line, scale_colors, x_label = "localGEBV", y_label = "Scaled Haploblock Variance")
+}
+
+haplo_block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("blue", "purple", "red")){
+  .funnel_plot_engine(haplo_obj, mean_line, scale_colors, x_label = "Haplotype Effect", y_label = "Scaled Haplotype Block Variance")
+}
+
+local_gebv_block_var_funnel_plot = function(haplo_obj, mean_line = TRUE, scale_colors = c("blue", "purple", "red")){
+  .funnel_plot_engine(haplo_obj, mean_line, scale_colors, x_label = "localGEBV", y_label = "Scaled localGEBV Block Variance")
 }
 
 
