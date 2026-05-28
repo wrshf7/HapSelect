@@ -1,320 +1,559 @@
-##################################
-####### Genetic Algorithm ########
-##################################
+#############################################
+#### Unified Genetic Algorithm Framework ####
+#############################################
 
-# Selects top blocks and returns the localGEBV for the GA
-select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_of_total_var = NULL){
+############################
+# 1. Strategy definitions  #
+############################
 
-  #check only one value was provided
-  if(sum(c(!is.null(n), !is.null(perc_total), !is.null(perc_of_total_var))) != 1 | any(c(is.character(n), is.character(perc_total), is.character(perc_of_total_var)))){
-    stop("Please ensure only one of the following is non-null and numerical: number of blocks, percentage of total blocks, or blocks comprising percentage of total block variance is specified.")
+VALID_STRATEGIES_LOCAL <- c(
+  "selfing",
+  "no_selfing"
+)
+
+VALID_STRATEGIES_OHS <- c(
+  "self_allow_duplicate_chromosomes",
+  "self_no_duplicate_chromosomes",
+  "no_self_unique_individuals"
+)
+
+validate_strategy <- function(strategy, type = c("localGEBV", "OHS")) {
+  type <- match.arg(type)
+
+  if (type == "localGEBV" && !(strategy %in% VALID_STRATEGIES_LOCAL)) {
+    stop("Invalid strategy for localGEBV")
   }
 
-  #if percentages were specified, check they're within range
-  if(!is.null(perc_total) && (perc_total <= 0 || perc_total > 1)){
-    stop("Please ensure percentages are specified between 0 and 1.")
+  if (type == "OHS" && !(strategy %in% VALID_STRATEGIES_OHS)) {
+    stop("Invalid strategy for OHS")
+  }
+}
+
+
+#############################################################################
+###### 2. Helper: extract active matrices and build haplotyep metadata ######
+############################################################################
+
+get_effect_matrix <- function(obj) {
+  if (!is.null(obj$Haplotype_Effect_Matrix_GA)) {
+    obj$Haplotype_Effect_Matrix_GA
+  } else {
+    stop("Be sure to use `select_top_blocks()` and use the object output here!")
+  }
+}
+
+get_block_matrix <- function(obj) {
+  if (!is.null(obj$Haploblocks_GA)) {
+    obj$Haploblocks_GA
+  } else {
+    stop("Be sure to use `select_top_blocks()` and use the object output here!")
+  }
+}
+
+
+build_row_metadata <- function(effect_matrix){
+
+  rn <- rownames(effect_matrix)
+
+  # OHS format
+  if(any(grepl("_[0-9]+$", rn))){
+
+    individual <- sub("_[0-9]+$", "", rn)
+    chromosome  <- sub("^.*_([0-9]+)$", "\\1", rn)
+
+    data.frame(
+      row = seq_len(nrow(effect_matrix)),
+      individual = individual,
+      chromosome = chromosome,
+      stringsAsFactors = FALSE
+    )
+
+  } else {
+
+    # localGEBV format
+    data.frame(
+      row = seq_len(nrow(effect_matrix)),
+      individual = rn,
+      chromosome = NA,
+      stringsAsFactors = FALSE
+    )
+
+  }
+}
+
+#############################################################
+#### 3. CORE GA ENGINE (individual-based, fully shared) #####
+#############################################################
+
+.genetic_algorithm_core <- function(
+    fitness_fn,
+    n_individuals,
+    n_founders,
+    popSize = 100,
+    maxiter = 500,
+    run = 50,
+    pmutation = 0.1,
+    pcrossover = 0.1,
+    monitor = TRUE
+){
+
+
+  ##########################
+  # population initializer #
+  ##########################
+
+  custom_population <- function(object){
+    t(replicate(object@popSize,
+                sample(1:n_individuals, n_founders, replace = FALSE)))
   }
 
-  if(!is.null(perc_of_total_var) && (perc_of_total_var < 0 || perc_of_total_var > 1)){
-    stop("Please ensure percentages are specified between 0 and 1.")
-  }
+  #################
+  # mutation      #
+  #################
 
-  #order the blocks by variance
-  haploblocks_df = haploblock_obj$Haploblocks
-  haploblocks_df = haploblocks_df[order(haploblocks_df$Block_Var, decreasing = TRUE), ]
+  custom_mutation <- function(object, parents){
 
-  #select blocks based on which parameter was not null - a set number
-  if(!is.null(n)){
-    haploblocks_df = haploblocks_df[1:n, ]
-    block_id = haploblocks_df$Block_ID
-    haploblock_obj$Haploblocks_GA = haploblocks_df
-    haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
+    out <- matrix(
+      NA,
+      nrow = length(parents),
+      ncol = n_founders
+    )
 
-  #at least a certain percentage of blocks (ceiling)
-  } else if(!is.null(perc_total)){
-    haploblocks_df = haploblocks_df[1:ceiling(nrow(haploblocks_df) * perc_total), ]
-    block_id = haploblocks_df$Block_ID
-    haploblock_obj$Haploblocks_GA = haploblocks_df
-    haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
+    for(i in seq_along(parents)){
 
-  #percentage of blocks explaining at least a certain percentage of variance (ceiling)
-  } else if(!is.null(perc_of_total_var)){
-    cumulative_var = cumsum(haploblocks_df$Block_Var) / sum(haploblocks_df$Block_Var)
-    haploblocks_df = haploblocks_df[1:which(cumulative_var >= perc_of_total_var)[1], ]
-    block_id = haploblocks_df$Block_ID
-    haploblock_obj$Haploblocks_GA = haploblocks_df
-    haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
-  } else{
-    stop("Please ensure only one of the selection methods is specified as non-NULL and is an appropriate numeric value.")
-  }
+      sol <- object@population[parents[i], ]
 
-  return(haploblock_obj)
+      pos <- sample(seq_along(sol), 1)
 
-}
+      available <- setdiff(
+        seq_len(n_individuals),
+        sol
+      )
 
-# Retained for backward compatibility. Prefer ohs_parent_selection() or local_gebv_parent_selection().
-genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
-                             run = 50, allow_selfing = FALSE, pmutation = 0.1,
-                             pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
-  .genetic_algorithm(
-    localGEBV     = localGEBV,
-    n_founders    = n_founders,
-    popSize       = popSize,
-    maxiter       = maxiter,
-    run           = run,
-    allow_selfing = allow_selfing,
-    pmutation     = pmutation,
-    pcrossover    = pcrossover,
-    pelite        = pelite,
-    monitor       = monitor
-  )
-}
-
-# Selects a founder set to maximise offspring haplotype value using the Optimal Haplotype
-# Selection (OHS) approach. For each haploblock, the best-scoring parent pair is identified
-# and their average offspring contribution is summed across all blocks. The genetic algorithm
-# searches for the set of founders that maximises this total.
-# localGEBV should be the Haplotype_Effect_Matrix_GA from select_top_blocks(), with rows as
-# individuals and columns as haploblocks.
-# Inputs:
-# localGEBV    - numeric matrix or data frame; rows = individuals, cols = haploblocks; typically
-#                Haplotype_Effect_Matrix_GA from select_top_blocks()
-# n_founders   - integer; number of founders to select
-# popSize      - integer; number of candidate solutions in each GA generation
-# maxiter      - integer; maximum number of generations to run
-# run          - integer; stop early if the best solution does not improve for this many generations
-# allow_selfing      - logical; if TRUE allow an individual to be paired with itself
-# pmutation    - numeric (0-1); per-element mutation probability
-# pcrossover   - numeric (0-1); crossover probability
-# pelite       - numeric (0-1); fraction of the population treated as elite during crossover
-ohs_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
-                                run = 50, allow_selfing = FALSE, pmutation = 0.1,
-                                pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
-  .genetic_algorithm(
-    localGEBV     = localGEBV,
-    n_founders    = n_founders,
-    popSize       = popSize,
-    maxiter       = maxiter,
-    run           = run,
-    allow_selfing = allow_selfing,
-    pmutation     = pmutation,
-    pcrossover    = pcrossover,
-    pelite        = pelite,
-    monitor       = monitor
-  )
-}
-
-# Selects a founder set to maximise offspring local GEBV using block-level genomic estimated
-# breeding values. For each haploblock, the best-scoring parent pair is identified and their
-# average offspring contribution is summed across all blocks. The genetic algorithm searches
-# for the set of founders that maximises this total.
-# localGEBV should be the Haplotype_Effect_Matrix_GA from select_top_blocks(), with rows as
-# individuals and columns as haploblocks.
-# Inputs:
-# localGEBV    - numeric matrix or data frame; rows = individuals, cols = haploblocks; typically
-#                Haplotype_Effect_Matrix_GA from select_top_blocks()
-# n_founders   - integer; number of founders to select
-# popSize      - integer; number of candidate solutions in each GA generation
-# maxiter      - integer; maximum number of generations to run
-# run          - integer; stop early if the best solution does not improve for this many generations
-# allow_selfing      - logical; if TRUE allow an individual to be paired with itself
-# pmutation    - numeric (0-1); per-element mutation probability
-# pcrossover   - numeric (0-1); crossover probability
-# pelite       - numeric (0-1); fraction of the population treated as elite during crossover
-local_gebv_parent_selection = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500,
-                                       run = 50, allow_selfing = FALSE, pmutation = 0.1,
-                                       pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
-  .genetic_algorithm(
-    localGEBV     = localGEBV,
-    n_founders    = n_founders,
-    popSize       = popSize,
-    maxiter       = maxiter,
-    run           = run,
-    allow_selfing = allow_selfing,
-    pmutation     = pmutation,
-    pcrossover    = pcrossover,
-    pelite        = pelite,
-    monitor       = monitor
-  )
-}
-
-# Internal computation engine. See ohs_parent_selection() or local_gebv_parent_selection()
-# for full parameter documentation.
-.genetic_algorithm = function(localGEBV, n_founders = 20, popSize = 100, maxiter = 500, run = 50, allow_selfing = FALSE, pmutation = 0.1, pcrossover = 0.8, pelite = 0.5, monitor = TRUE){
-  # Define number of individuals and number of haplotype blocks based on input matrix
-  n_individuals = nrow(localGEBV)   # <-- total number of individuals to choose from
-  n_blocks = ncol(localGEBV)        # <-- number of genomic regions (haploblocks)
-
-  #### fitness function ####
-  # Calculates total score by summing the best expected offspring GEBV per block
-  score_founder_set = function(localGEBV, selected_ind, allow_selfing){
-    # Subset localGEBV matrix to only selected individuals
-    sel_localGEBV = localGEBV[selected_ind, , drop = FALSE]
-
-    # Create all pairwise combinations of selected individuals (no self-pairs)
-    combos = combn(1:nrow(sel_localGEBV), 2)
-
-    if(allow_selfing == TRUE){ # If allow_selfing is TRUE, add self-pairs
-      combos2 = rbind(1:nrow(sel_localGEBV), 1:nrow(sel_localGEBV)) # Introduce self-pairs
-      combos = cbind(combos, combos2)
-    }
-
-    # Initialize running total for combined fitness
-    total_score = 0
-
-    # For each haplotype block
-    for(block in 1:n_blocks){
-      # Extract local GEBV for that block
-      block_values = sel_localGEBV[ , block]
-
-      # Compute average offspring GEBV for each pair
-      avg_scores = colMeans(matrix(block_values[combos], nrow = 2))
-
-      # Take the highest-scoring pair for the block
-      if (all(is.na(avg_scores))) {
-        block_score = -1e6   # large negative penalty
-      } else {
-        block_score = max(avg_scores, na.rm = TRUE)
+      if(length(available) > 0){
+        sol[pos] <- sample(available, 1)
       }
-      total_score = total_score + block_score
+
+      out[i, ] <- sol
     }
 
-    return(total_score)
+    out
   }
 
-  #### fitness wrapper function ####
-  # Wrapper that limits the solution to n_founders and calls the fitness function - GA function doesn't allow for multiple arguments
-  ga_fitness = function(selected_ind){
-    selected_ind = selected_ind[1:n_founders]  # Ensure the input is the right length
-    total_score = score_founder_set(localGEBV = localGEBV, selected_ind = selected_ind, allow_selfing = allow_selfing)
-    return(total_score)
-  }
+  #################
+  # crossover     #
+  #################
 
-  #### define founder pops function ####
-  # Generates a random initial population of solutions (each is a founder set)
-  # popSize number of founder solutions with n_founder number of founders per solution set (rows are populations, columns are the founders)
-  custom_population = function(object){
-    pops = t(replicate(object@popSize, sample(1:n_individuals, n_founders, replace = FALSE)))  # Each row is a candidate solution
-    return(pops)
-  }
+  custom_crossover <- function(object, parents){
 
-  #### custom mutation function #####
-  # Randomly mutate one element of a founder set by replacing it with an unused individual
-  # Selects the replacement from the total base pool minus those already in the solution set (population)
-  custom_mutation = function(object, parents){
-    mutated = matrix(NA, nrow = length(parents), ncol = n_founders)
-    for (i in seq_along(parents)) {
-      ind = object@population[parents[i], ]                         # Get parent solution
-      pos = sample(n_founders, 1)                                   # Random position to mutate
-      new_val = sample(setdiff(1:n_individuals, ind), 1)            # Sample a new individual not already selected
-      ind[pos] = new_val                                            # Replace
-      mutated[i, ] = ind                                            # Save mutated solution
-    }
-    return(mutated)
-  }
+    p1 <- object@population[parents[1], ]
+    p2 <- object@population[parents[2], ]
 
-  custom_crossover = function(object, parents){
-    # Extract the two parent solutions (each is a vector of founder IDs)
-    parent1 = object@population[parents[1], ]
-    parent2 = object@population[parents[2], ]
+    take1 <- sample(seq_along(p1), ceiling(length(p1)/2))
+    take2 <- sample(seq_along(p2), ceiling(length(p2)/2))
 
-    # Take the first half of each parent to start building the children
-    half = floor(n_founders / 2)
-    base1 = parent1[1:half]
-    base2 = parent2[1:half]
+    child1 <- unique(c(
+      p1[take1],
+      p2
+    ))
 
-    # Add founders from the other parent that are not already in the base
-    add1 = setdiff(parent2, base1)
-    add2 = setdiff(parent1, base2)
+    child2 <- unique(c(
+      p2[take2],
+      p1
+    ))
 
-    # Merge bases and additions to get initial child solutions
-    child1 = unique(c(base1, add1))
-    child2 = unique(c(base2, add2))
+    repair <- function(x){
 
-    ## ============================================================
-    ## NEW: Limit filler pool to top X% of population by fitness
-    ## ============================================================
+      x <- unique(x)
 
-    # Get the fitness values for the whole current population
-    pop_fitness = object@fitness
-
-    # Calculate number of elite individuals to keep (at least 1)
-    elite_size = max(1, floor(length(pop_fitness) * pelite))
-
-    # Get indices of the top-performing individuals (highest fitness first)
-    elite_indices = order(pop_fitness, decreasing = TRUE)[1:elite_size]
-
-    # Collect all founders used by these elite individuals (unique set)
-    elite_founders = unique(as.vector(object@population[elite_indices, ]))
-
-    ## ------------------------------------------------------------
-    ## Fill missing founders in each child
-    ## ------------------------------------------------------------
-
-    # Fill missing positions in Child 1 using elite founders
-    if (length(child1) < n_founders) {
-      filler1 = setdiff(elite_founders, child1)  # avoid duplicates
-      # If not enough elite founders available, fill from full population
-      if (length(filler1) < (n_founders - length(child1))) {
-        filler1 = c(filler1, setdiff(1:n_individuals, child1))
+      if(length(x) > n_founders){
+        x <- sample(x, n_founders)
       }
-      # Randomly sample from filler pool to complete the child
-      child1 = c(child1, sample(filler1, n_founders - length(child1)))
-    }
-    # If child has too many founders, trim down to exactly n_founders
-    else if (length(child1) > n_founders) {
-      child1 = sample(child1, n_founders)
-    }
 
-    # Fill missing positions in Child 2 using elite founders
-    if (length(child2) < n_founders) {
-      filler2 = setdiff(elite_founders, child2)
-      if (length(filler2) < (n_founders - length(child2))) {
-        filler2 = c(filler2, setdiff(1:n_individuals, child2))
+      if(length(x) < n_founders){
+
+        available <- setdiff(
+          seq_len(n_individuals),
+          x
+        )
+
+        x <- c(
+          x,
+          sample(
+            available,
+            n_founders - length(x)
+          )
+        )
       }
-      child2 = c(child2, sample(filler2, n_founders - length(child2)))
-    }
-    else if (length(child2) > n_founders) {
-      child2 = sample(child2, n_founders)
+
+      x
     }
 
-    ## ------------------------------------------------------------
-    ## Evaluate the children
-    ## ------------------------------------------------------------
+    child1 <- repair(child1)
+    child2 <- repair(child2)
 
-    # Combine children into a matrix (rows = individuals, cols = founders)
-    children = rbind(as.integer(child1), as.integer(child2))
+    children <- rbind(child1, child2)
 
-    # Compute fitness for each child using your wrapper function
-    fitness_values = apply(children, 1, ga_fitness)
+    fitness_values = apply(children, 1, fitness_fn)
 
-    # Return list containing children and their fitness values
-    return(list(children = children, fitness = fitness_values))
+    list(
+      children = children,
+      fitness = fitness_values
+    )
   }
 
+  #################
+  # run GA        #
+  #################
 
-  #### Run GA ####
-  ga_result = GA::ga(
-    type = "real-valued",                            # Each solution is a numeric vector (indices)
-    fitness = ga_fitness,                       # Function to evaluate solution fitness
-    population = custom_population,                  # Custom initial population generator
-    mutation = custom_mutation,                      # Custom mutation operator
-    crossover = custom_crossover,                    # Custom crossover operator
-    lower = rep(1, n_founders),                      # Lower bound (index 1)
-    upper = rep(n_individuals, n_founders),          # Upper bound (index = n_individuals)
-    popSize = popSize,                               # Number of founder sets/solutions
-    maxiter = maxiter,                               # Max number of iterations to run the GA
-    run = run,                                       # Stop if best solution doesn't improve for this many generations
-    monitor = monitor                                # Show progress
+  GA::ga(
+    type = "real-valued",
+    fitness = fitness_fn,
+    lower = rep(1, n_founders),
+    upper = rep(n_individuals, n_founders),
+    popSize = popSize,
+    maxiter = maxiter,
+    run = run,
+    pcrossover = pcrossover,
+    pmutation = pmutation,
+    population = custom_population,
+    mutation = custom_mutation,
+    crossover = custom_crossover,
+    monitor = monitor
   )
-
-  # Get one best solution (first row) and return both its indices and names
-  one_solution = sort(ga_result@solution[1,])
-  one_solution = data.frame(
-    Indices = one_solution,
-    Names = rownames(localGEBV)[one_solution]        # Look up individual names by row index
-  )
-
-  return(list(GA = ga_result, One_Solution = one_solution))  # Return GA object and best solution
 }
 
+########################################################
+#####            4. LOCAL GEBV FITNESS             #####
+########################################################
+
+fitness_localGEBV <- function(
+    effect_matrix,
+    strategy = c(
+      "selfing",
+      "no_selfing"
+    )
+){
+
+  strategy <- match.arg(strategy)
+
+  function(selected_ind){
+
+    #pull localGEBV
+    selected <- effect_matrix[selected_ind, , drop = FALSE]
+
+    #################################################
+    # individual pairings
+    #################################################
+
+    if(nrow(selected) < 2 && strategy == "no_selfing"){
+      return(0)
+    }
+
+    combos <- combn(
+      seq_len(nrow(selected)),
+      2,
+      simplify = TRUE
+    )
+
+    combos <- t(combos)
+
+    if(strategy == "selfing"){
+
+      self_pairs <- cbind(
+        seq_len(nrow(selected)),
+        seq_len(nrow(selected))
+      )
+
+      combos <- rbind(
+        combos,
+        self_pairs
+      )
+    }
+
+    total_score <- 0
+
+    #compute max progeny GEBV for each block
+    for(block in seq_len(ncol(selected))){
+
+      vals <- selected[, block]
+
+      scores <- (vals[combos[,1]] + vals[combos[,2]]) / 2 # future spot to update for ploidy difference
+
+      total_score <- total_score + max(scores)
+    }
+
+    total_score
+  }
+}
+
+########################################################
+##### 5. OHS FITNESS (full haplotype-aware engine) #####
+########################################################
+
+fitness_OHS <- function(
+    effect_matrix,
+    row_metadata,
+    strategy = c(
+      "self_allow_duplicate_chromosomes",
+      "self_no_duplicate_chromosomes",
+      "no_self_unique_individuals"
+    )
+){
+
+  strategy <- match.arg(strategy)
+
+  individual_map <- split(
+    row_metadata$row,
+    row_metadata$individual
+  )
+
+  function(selected_ind){
+
+    #################################################
+    # expand selected individuals into chromosomes
+    #################################################
+
+    selected_names <- names(individual_map)[selected_ind]
+
+    selected_rows <- unlist(
+      individual_map[selected_names]
+    )
+
+    meta <- row_metadata[selected_rows, ]
+
+    #################################################
+    # chromosome pairings
+    #################################################
+
+    if(length(selected_rows) < 2){
+      return(0)
+    }
+
+    # unique chromosome pairs
+    combos <- combn(
+      seq_along(selected_rows),
+      2,
+      simplify = TRUE
+    )
+
+    combos <- t(combos)
+
+    #################################################
+    # optionally allow selfing
+    #################################################
+
+    if(strategy == "self_allow_duplicate_chromosomes"){
+
+      self_pairs <- cbind(
+        seq_along(selected_rows),
+        seq_along(selected_rows)
+      )
+
+      combos <- rbind(
+        combos,
+        self_pairs
+      )
+    }
+
+    #################################################
+    # strategy filtering
+    #################################################
+
+    r1 <- combos[,1]
+    r2 <- combos[,2]
+
+    same_row <- r1 == r2
+
+    same_individual <-
+      meta$individual[r1] ==
+      meta$individual[r2]
+
+    #################################################
+    # strategy rules
+    #################################################
+
+    keep <- rep(TRUE, nrow(combos))
+
+    if(strategy == "self_no_duplicate_chromosomes"){
+      keep <- !same_row
+    }
+
+    if(strategy == "no_self_unique_individuals"){
+      keep <- !same_individual
+    }
+
+    combos <- combos[keep, , drop = FALSE]
+
+    #################################################
+    # compute optimal score
+    #################################################
+
+    total_score <- 0
+
+    #edge case for
+    if(nrow(combos) == 0){
+      return(total_score)
+    }
+
+    for(block in seq_len(ncol(effect_matrix))){
+
+
+
+      #pull out chromosomes of selected parents
+      vals <- effect_matrix[selected_rows, block]
+
+
+
+      #for each valid chromosome combo (based on filtering above), compute haplo sum
+      #currently limited to diploid! This is a point of future expansion.
+      scores <- vals[combos[,1]] + vals[combos[,2]] #eventually need to alter for polyploid
+
+      total_score <- total_score + max(scores)
+    }
+
+    total_score
+  }
+}
+
+########################################################
+#####       6. localGEBV wrapper                   #####
+########################################################
+
+local_gebv_parent_selection <- function(
+    haploblock_obj,
+    strategy = c("selfing", "no_selfing"),
+    n_founders = 20,
+    popSize = 100,
+    maxiter = 500,
+    run = 50,
+    pmutation = 0.1,
+    pcrossover = 0.1,
+    monitor = TRUE
+){
+
+  strategy <- match.arg(strategy)
+
+  validate_strategy(
+    strategy,
+    type = "localGEBV"
+  )
+
+  effect_matrix <- as.matrix(
+    get_effect_matrix(haploblock_obj)
+  )
+
+  fitness_fn <- fitness_localGEBV(
+    effect_matrix = effect_matrix,
+    strategy = strategy
+  )
+
+  ga_result <- .genetic_algorithm_core(
+    fitness_fn = fitness_fn,
+    n_individuals = nrow(effect_matrix),
+    n_founders = n_founders,
+    popSize = popSize,
+    maxiter = maxiter,
+    run = run,
+    pmutation = pmutation,
+    pcrossover = pcrossover,
+    monitor = monitor
+  )
+
+  solution <- ga_result@solution
+
+  if(is.matrix(solution)){
+    solution <- solution[1, ]
+  }
+
+  solution <- sort(as.integer(solution))
+
+  unique_individuals <- row.names(effect_matrix)
+
+  One_Solution = data.frame(
+    Index = solution,
+    Individual = unique_individuals[solution]
+  )
+
+
+    return_obj = list(GA = ga_result, One_Solution = One_Solution)
+    return(return_obj)
+}
+
+########################################################
+#####             7. OHS wrapper                   #####
+########################################################
+
+ohs_parent_selection <- function(
+    haploblock_obj,
+    strategy = c(
+      "self_allow_duplicate_chromosomes",
+      "self_no_duplicate_chromosomes",
+      "no_self_unique_individuals"
+    ),
+    n_founders = 20,
+    popSize = 100,
+    maxiter = 500,
+    run = 50,
+    pmutation = 0.1,
+    pcrossover = 0.1,
+    monitor = TRUE
+){
+
+  strategy <- match.arg(strategy)
+
+  validate_strategy(
+    strategy,
+    type = "OHS"
+  )
+
+  effect_matrix <- as.matrix(
+    get_effect_matrix(haploblock_obj)
+  )
+
+  row_metadata <- build_row_metadata(
+    effect_matrix
+  )
+
+  n_individuals <- length(
+    unique(row_metadata$individual)
+  )
+
+  fitness_fn <- fitness_OHS(
+    effect_matrix = effect_matrix,
+    row_metadata = row_metadata,
+    strategy = strategy
+  )
+
+  ga_result <- .genetic_algorithm_core(
+    fitness_fn = fitness_fn,
+    n_individuals = n_individuals,
+    n_founders = n_founders,
+    popSize = popSize,
+    maxiter = maxiter,
+    run = run,
+    pmutation = pmutation,
+    pcrossover = pcrossover,
+    monitor = monitor
+  )
+
+  solution <- ga_result@solution
+
+  if(is.matrix(solution)){
+    solution <- solution[1, ]
+  }
+
+  solution <- sort(as.integer(solution))
+
+  unique_individuals <- unique(
+    row_metadata$individual
+  )
+
+  One_Solution = data.frame(
+    Index = solution,
+    Individual = unique_individuals[solution]
+  )
+
+  return_obj = list(GA = ga_result, One_Solution = One_Solution)
+  return(return_obj)
+}
