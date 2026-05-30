@@ -243,6 +243,9 @@ plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 10000
     stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
   }
 
+  #extract autosome number
+  chr_num = max(geno[,2])
+
   in_prefix = tempfile("hapselect_plink_in_")
   on.exit(unlink(paste0(in_prefix, c(".ped", ".map", ".bed", ".bim", ".fam", ".log", ".nosex")),
                  force = TRUE), add = TRUE)
@@ -250,7 +253,9 @@ plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 10000
   write_plink_ped_map(geno, in_prefix)
 
   # Convert text files to binary so plink_pairwise_ld can consume them
-  run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix))
+  run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix, "--chr-set", as.character(chr_num)))
+
+  extra_args = c("--chr-set", as.character(chr_num), extra_args)
 
   plink_pairwise_ld(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
                     ld_window_r2 = ld_window_r2, extra_args = extra_args)
