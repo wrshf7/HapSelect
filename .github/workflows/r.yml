@@ -24,15 +24,9 @@ jobs:
           extra-packages: any::rcmdcheck, any::covr, any::xml2
           needs: check
 
-      - name: R CMD Check
-        run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--no-vignettes", "--ignore-vignettes"), error_on = "error")
-        shell: Rscript {0}
-
       - name: Generate coverage report
         run: |
-          install_path <- file.path(normalizePath(Sys.getenv("RUNNER_TEMP"), winslash = "/"), "package")
           cov <- covr::package_coverage(
-            install_path = install_path,
             line_exclusions = list("R/plink_LD.R")
           )
           pct <- covr::percent_coverage(cov)
@@ -43,4 +37,8 @@ jobs:
             lines <- c(lines, sprintf("| %s | %.1f%% |", basename(f), file_pcts[[f]]))
           }
           writeLines(lines, Sys.getenv("GITHUB_STEP_SUMMARY"))
+        shell: Rscript {0}
+
+      - name: R CMD Check
+        run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--no-vignettes", "--ignore-vignettes"), error_on = "error")
         shell: Rscript {0}
