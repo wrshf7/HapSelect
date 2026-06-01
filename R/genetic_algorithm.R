@@ -102,7 +102,6 @@ build_row_metadata <- function(effect_matrix){
   # population initializer #
   ##########################
 
-  # nocov start
   custom_population <- function(object){
     t(replicate(object@popSize,
                 sample(1:n_individuals, n_founders, replace = FALSE)))
@@ -202,7 +201,6 @@ build_row_metadata <- function(effect_matrix){
       fitness = fitness_values
     )
   }
-  # nocov end
 
   #################
   # run GA        #

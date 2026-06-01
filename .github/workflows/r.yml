@@ -30,30 +30,17 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          # covr crashes on zero-coverage functions because subprocess srcref file
-          # indices don't map to real paths in the parent process. We exclude these
-          # files from instrumentation to prevent the crash, then report them as 0%
-          # manually so the summary stays accurate.
-          no_tests <- c(
-            "R/visualizations.R",
-            "R/basic_TS_vs_GA_simulation.R",
-            "R/genomic_prediction.R",
-            "R/haploblock_var_test.R",
-            "R/order_map_file.R"
-          )
+          install_path <- file.path(normalizePath(Sys.getenv("RUNNER_TEMP"), winslash = "/"), "package")
           cov <- covr::package_coverage(
-            line_exclusions = c(list("R/plink_LD.R"), as.list(no_tests))
+            install_path = install_path,
+            line_exclusions = list("R/plink_LD.R")
           )
           pct <- covr::percent_coverage(cov)
           file_pcts <- covr::file_coverage(cov)
           file_pcts <- file_pcts[!grepl("\\.cpp$", names(file_pcts))]
-          lines <- c("## HapSelect Coverage", "", sprintf("**Total (tested files): %.1f%%**", pct), "", "| File | Coverage |", "| --- | --- |")
+          lines <- c("## HapSelect Coverage", "", sprintf("**Total: %.1f%%**", pct), "", "| File | Coverage |", "| --- | --- |")
           for (f in names(file_pcts)) {
             lines <- c(lines, sprintf("| %s | %.1f%% |", basename(f), file_pcts[[f]]))
           }
-          for (f in no_tests) {
-            lines <- c(lines, sprintf("| %s | 0%% (no tests) |", basename(f)))
-          }
-          lines <- c(lines, "| plink_LD.R | N/A (requires PLINK binary) |")
           writeLines(lines, Sys.getenv("GITHUB_STEP_SUMMARY"))
         shell: Rscript {0}

@@ -82,7 +82,6 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
 
   # Define the block mapping function that will be applied to each haploblock.
   # This function calls the core calculation function for a single block, passing the relevant subset of markers and genotypes, as well as the pre-calculated inputs.
-  # nocov start
   block_mapper = function(haploblock, p = NULL){
     calculate_gebv_block(
       haploblock = haploblock,
@@ -98,7 +97,6 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
       p = p
     )
   }
-  # nocov end
 
   # Process each haploblock to compute local GEBV
   # If in serial mode, use purrr::map with a progress bar to apply the block_mapper to each block ID in haploblocks_df.
