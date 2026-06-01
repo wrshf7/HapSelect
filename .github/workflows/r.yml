@@ -35,7 +35,7 @@ jobs:
           pct <- covr::percent_coverage(cov)
           
           # 3. Correctly extract per-file metrics from the package coverage object
-          file_pcts <- covr::to_dataframe(cov)
+          file_pcts <- as.data.frame(cov)
           
           # 4. Group and calculate percentages per file, ignoring .cpp files
           library(stats) # Safe default for aggregate
