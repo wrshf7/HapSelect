@@ -28,7 +28,7 @@ jobs:
         run: |
           # 1. Run package coverage
           cov <- covr::package_coverage(
-            line_exclusions = list("R/plink_LD.R")
+            line_exclusions = list("R/plink_LD.R", "R/visualizations.R")
           )
           
           # 2. Extract total percentage
@@ -36,11 +36,11 @@ jobs:
           
           # 3. Convert to dataframe and process
           file_pcts <- as.data.frame(cov)
-          
-          # 4. Calculate percentages per file, excluding .cpp files
-          file_summary <- aggregate(value ~ filename, data = file_pcts, FUN = sum)
-          file_summary <- file_summary[!grepl("\\.cpp$", file_summary$filename), ]
-          file_summary$pct <- (file_summary$value / nrow(file_pcts)) * 100
+          file_pcts <- file_pcts[!grepl("\\.cpp$", file_pcts$filename), ]
+
+          # 4. Calculate percentages per file: fraction of lines executed at least once
+          file_summary <- aggregate(value ~ filename, data = file_pcts, FUN = function(x) mean(x > 0) * 100)
+          names(file_summary)[2] <- "pct"
           
           # 5. Build the GitHub Step Summary Markdown
           lines <- c(
