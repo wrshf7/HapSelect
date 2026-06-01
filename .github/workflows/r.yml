@@ -26,6 +26,7 @@ jobs:
 
       - name: Generate coverage report
         run: |
+          options(keep.source = TRUE, keep.parse.data = TRUE)
           cov <- covr::package_coverage(
             line_exclusions = list("R/plink_LD.R")
           )
