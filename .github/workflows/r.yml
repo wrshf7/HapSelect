@@ -58,3 +58,7 @@ jobs:
           
           writeLines(lines, Sys.getenv("GITHUB_STEP_SUMMARY"))
         shell: Rscript {0}
+
+      - name: Run R CMD check
+        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
+        shell: Rscript {0}
