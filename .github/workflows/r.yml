@@ -30,7 +30,7 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cov <- covr::package_coverage(exclusions = "R/plink_LD.R")
+          cov <- covr::package_coverage(line_exclusions = list("R/plink_LD.R"))
           pct <- covr::percent_coverage(cov)
           file_pcts <- covr::file_coverage(cov)
           file_pcts <- file_pcts[!grepl("\\.cpp$", names(file_pcts))]
