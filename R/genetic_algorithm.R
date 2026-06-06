@@ -82,7 +82,7 @@ validate_strategy <- function(strategy, type = c("localGEBV", "OHS")) {
 
 
 #############################################################################
-###### 2. Helper: extract active matrices and build haplotyep metadata ######
+###### 2. Helper: extract active matrices and build haplotype metadata ######
 ############################################################################
 
 get_effect_matrix <- function(obj) {
@@ -149,60 +149,250 @@ build_row_metadata <- function(effect_matrix){
 ){
 
 
-  ##########################
-  # population initializer #
-  ##########################
-
+  # population initializer
+  # create the initial populations by random sampling
   custom_population <- function(object){
     t(replicate(object@popSize,
                 sample(1:n_individuals, n_founders, replace = FALSE)))
   }
 
-  #################
-  # mutation      #
-  #################
-
+  # Custom mutation operator for subset-selection GA.
+  #
+  # INPUTS
+  #   object:
+  #     GA object passed automatically by GA::ga().
+  #     Contains the current population in:
+  #       object@population
+  #
+  #   parents:
+  #     Integer vector of row indices identifying the candidate
+  #     solutions selected by GA for mutation.
+  #
+  #     IMPORTANT:
+  #     These are NOT the founder IDs themselves.
+  #     They are row numbers of solutions within the current
+  #     GA population.
+  #
+  #     Example:
+  #       parents = c(4, 17, 32)
+  #
+  #     means mutate population members:
+  #       object@population[4, ]
+  #       object@population[17, ]
+  #       object@population[32, ]
+  #
+  #
+  # MUTATION LOGIC
+  #
+  #   Each candidate solution is a vector of founder IDs:
+  #
+  #       c(12, 44, 7, 98, 31)
+  #
+  #   representing a subset of selected individuals.
+  #
+  #   For each solution selected for mutation:
+  #
+  #     1. Randomly choose one founder position.
+  #
+  #     2. Identify all individuals not already present in
+  #        the current subset.
+  #
+  #     3. Replace the chosen founder with one randomly
+  #        sampled unused individual.
+  #
+  #   This preserves:
+  #
+  #     - fixed subset size (n_founders)
+  #     - uniqueness of founder IDs
+  #     - valid founder IDs between 1:n_individuals
+  #
+  #
+  # OUTPUT
+  #
+  #   Returns a matrix with:
+  #
+  #     rows = mutated solutions
+  #     cols = founder positions
+  #
+  #   Dimensions:
+  #
+  #     length(parents) x n_founders
+  #
+  #   Example:
+  #
+  #     [,1] [,2] [,3] [,4] [,5]
+  #   [1,]  12   44   55   98   31
+  #   [2,]   7   21   83   16   99
+  #
+  #   GA expects the returned matrix to contain the mutated
+  #   versions of the population members specified by
+  #   'parents'. These rows replace the corresponding
+  #   individuals in the next generation.
+  #
+  #
+  # NOTE
+  #
+  #   Mutation probability is controlled by GA::ga()
+  #   through the pmutation argument.
+  #
+  #   This function only defines HOW a selected solution
+  #   is mutated, not WHETHER mutation occurs.
+  #
   custom_mutation <- function(object, parents){
 
+    #matrix of popSize (number of pops) x # of parents (founders) in a pop
     out <- matrix(
       NA,
-      nrow = length(parents),
+      nrow = length(parents), #this is providing the pops that need to be mutated!
       ncol = n_founders
     )
 
+
+    #parents is a list of the popSize containing n_founders if I recall correctly
     for(i in seq_along(parents)){
 
+
+      #extract theset of founders from the current pop to make a mutation
       sol <- object@population[parents[i], ]
 
+      #choose a random individual in that population
       pos <- sample(seq_along(sol), 1)
 
+      #find new individuals that could replace it
       available <- setdiff(
         seq_len(n_individuals),
         sol
       )
 
+      #sample from those new individuals to replace a population member
       if(length(available) > 0){
         sol[pos] <- sample(available, 1)
       }
 
+      #return the new set of parents to the current population
       out[i, ] <- sol
     }
 
     out
   }
 
-  #################
-  # crossover     #
-  #################
-
+  # crossover
+  # Custom crossover operator for subset-selection GA.
+  #
+  # INPUTS
+  #   object:
+  #     GA object passed automatically by GA::ga().
+  #
+  #   parents:
+  #     Integer vector of length 2 containing the row
+  #     indices of the two candidate solutions selected
+  #     for crossover.
+  #
+  #     Example:
+  #
+  #       parents = c(8, 21)
+  #
+  #     means crossover:
+  #
+  #       object@population[8, ]
+  #       object@population[21, ]
+  #
+  #
+  # REPRESENTATION
+  #
+  #   Each solution is a vector of founder IDs:
+  #
+  #       c(12, 44, 7, 98, 31)
+  #
+  #   representing a subset of selected individuals.
+  #
+  #   Founder order has no biological meaning and the
+  #   solution should be interpreted as a set.
+  #
+  #
+  # CROSSOVER LOGIC
+  #
+  #   1. Randomly sample approximately half of the founders
+  #      from parent 1.
+  #
+  #   2. Combine those founders with all founders from
+  #      parent 2.
+  #
+  #   3. Remove duplicates.
+  #
+  #   4. Repeat the process in the opposite direction to
+  #      create a second child.
+  #
+  #   This allows each child to inherit founders from both
+  #   parental subsets.
+  #
+  #
+  # REPAIR STEP
+  #
+  #   After combining founders, the resulting child may
+  #   contain too many or too few founders.
+  #
+  #   Too many founders:
+  #     Randomly sample down to n_founders.
+  #
+  #   Too few founders:
+  #     Randomly add individuals not already present
+  #     until n_founders founders are present.
+  #
+  #   This guarantees:
+  #
+  #     - fixed subset size
+  #     - unique founder IDs
+  #     - valid founder IDs
+  #
+  #
+  # OUTPUT
+  #
+  #   Returns a list containing:
+  #
+  #     children:
+  #       Matrix of offspring solutions.
+  #
+  #       Dimensions:
+  #         2 x n_founders
+  #
+  #     fitness:
+  #       Fitness values of the offspring.
+  #
+  #   Example:
+  #
+  #     $children
+  #          [,1] [,2] [,3] [,4] [,5]
+  #     child1   5   12   44   61   88
+  #     child2   3   17   44   72   91
+  #
+  #     $fitness
+  #     [1] 152.3 149.7
+  #
+  #   This is the structure expected by GA::ga().
+  #
+  #
+  # NOTE
+  #
+  #   This is a set-based crossover rather than a classical
+  #   positional crossover.
+  #
+  #   Founder order is not meaningful, so the operator
+  #   effectively mixes parental subsets and then repairs
+  #   the resulting offspring to satisfy the subset-size
+  #   constraint.
+  #
   custom_crossover <- function(object, parents){
 
+    #select the vectors of parents provided by the GA
     p1 <- object@population[parents[1], ]
     p2 <- object@population[parents[2], ]
 
+    #select a random half from each population
     take1 <- sample(seq_along(p1), ceiling(length(p1)/2))
     take2 <- sample(seq_along(p2), ceiling(length(p2)/2))
 
+    #create the unique sets of parents
     child1 <- unique(c(
       p1[take1],
       p2
@@ -213,10 +403,14 @@ build_row_metadata <- function(effect_matrix){
       p1
     ))
 
+    #if there are too few/too many parents, we need to bring in more (mutation)
+    #or extract the needed number
     repair <- function(x){
 
+      #unique individuals
       x <- unique(x)
 
+      #sample up or down
       if(length(x) > n_founders){
         x <- sample(x, n_founders)
       }
@@ -237,6 +431,7 @@ build_row_metadata <- function(effect_matrix){
         )
       }
 
+      #return the new population
       x
     }
 
@@ -245,18 +440,17 @@ build_row_metadata <- function(effect_matrix){
 
     children <- rbind(child1, child2)
 
+    #calculate fitness
     fitness_values = apply(children, 1, fitness_fn)
 
+    #return the new pops and fitness values
     list(
       children = children,
       fitness = fitness_values
     )
   }
 
-  #################
-  # run GA        #
-  #################
-
+  # run GA
   GA::ga(
     type = "real-valued",
     fitness = fitness_fn,
@@ -275,7 +469,7 @@ build_row_metadata <- function(effect_matrix){
 }
 
 ########################################################
-#####            4. LOCAL GEBV FITNESS             #####
+#####          4. LOCAL GEBV FITNESS               #####
 ########################################################
 
 fitness_localGEBV <- function(
@@ -293,14 +487,13 @@ fitness_localGEBV <- function(
     #pull localGEBV
     selected <- effect_matrix[selected_ind, , drop = FALSE]
 
-    #################################################
     # individual pairings
-    #################################################
 
     if(nrow(selected) < 2 && strategy == "no_selfing"){
       return(0)
     }
 
+    #make the individual pairings
     combos <- combn(
       seq_len(nrow(selected)),
       2,
@@ -309,6 +502,7 @@ fitness_localGEBV <- function(
 
     combos <- t(combos)
 
+    #add self to self if valid
     if(strategy == "selfing"){
 
       self_pairs <- cbind(
@@ -325,6 +519,7 @@ fitness_localGEBV <- function(
     total_score <- 0
 
     #compute max progeny GEBV for each block
+    #for each block, evaluate each pair's fitness by averaging localGEBV (averaging across the 4 chromosomes)
     for(block in seq_len(ncol(selected))){
 
       vals <- selected[, block]
@@ -361,9 +556,7 @@ fitness_OHS <- function(
 
   function(selected_ind){
 
-    #################################################
     # expand selected individuals into chromosomes
-    #################################################
 
     selected_names <- names(individual_map)[selected_ind]
 
@@ -373,9 +566,7 @@ fitness_OHS <- function(
 
     meta <- row_metadata[selected_rows, ]
 
-    #################################################
     # chromosome pairings
-    #################################################
 
     if(length(selected_rows) < 2){
       return(0)
@@ -390,9 +581,7 @@ fitness_OHS <- function(
 
     combos <- t(combos)
 
-    #################################################
     # optionally allow selfing
-    #################################################
 
     if(strategy == "self_allow_duplicate_chromosomes"){
 
@@ -407,9 +596,7 @@ fitness_OHS <- function(
       )
     }
 
-    #################################################
-    # strategy filtering
-    #################################################
+    # strategy filtering - depending on the strategy chosen
 
     r1 <- combos[,1]
     r2 <- combos[,2]
@@ -420,9 +607,7 @@ fitness_OHS <- function(
       meta$individual[r1] ==
       meta$individual[r2]
 
-    #################################################
     # strategy rules
-    #################################################
 
     keep <- rep(TRUE, nrow(combos))
 
@@ -436,9 +621,7 @@ fitness_OHS <- function(
 
     combos <- combos[keep, , drop = FALSE]
 
-    #################################################
     # compute optimal score
-    #################################################
 
     total_score <- 0
 
@@ -447,6 +630,8 @@ fitness_OHS <- function(
       return(total_score)
     }
 
+
+    #compute pairwise chromosome localGEBV (addition of haplotype GEBV)
     for(block in seq_len(ncol(effect_matrix))){
 
 
