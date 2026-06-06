@@ -1,44 +1,299 @@
 # Fixtures --------------------------------------------------------------------
 
-make_ga_localgebv <- function() {
+# 3-individual, 2-block matrix for localGEBV fitness unit tests.
+#
+# Values are chosen so scores can be worked out by hand:
+#
+#          B1   B2
+# ind1    1.0  0.0
+# ind2    0.0  1.0
+# ind3    0.5  0.5
+#
+# Selecting all 3 individuals, no_selfing pairs: (1,2), (1,3), (2,3)
+#   B1 midparents: 0.5, 0.75, 0.25  -> max 0.75
+#   B2 midparents: 0.5, 0.25, 0.75  -> max 0.75
+#   total = 1.5
+#
+# With selfing, self-pairs (1,1),(2,2),(3,3) lift the per-block max:
+#   B1: (ind1 x ind1) = (1+1)/2 = 1.0  -> total B1 max = 1.0
+#   B2: (ind2 x ind2) = (1+1)/2 = 1.0  -> total B2 max = 1.0
+#   total = 2.0
+make_lgebv_fitness_matrix <- function() {
   matrix(
-    c( 0.8, -0.5,  0.3,  0.1, -0.2,
-      -0.3,  0.6, -0.1,  0.4,  0.5,
-       0.1,  0.2,  0.7, -0.4,  0.3),
-    nrow = 5, ncol = 3,
+    c(1.0, 0.0, 0.5,
+      0.0, 1.0, 0.5),
+    nrow = 3, ncol = 2,
+    dimnames = list(paste0("ind", 1:3), paste0("B", 1:2))
+  )
+}
+
+# 2-individual (2 chromosomes each), 2-block matrix for OHS fitness unit tests.
+#
+#              B1   B2
+# ind1_1       5.0  0.1
+# ind1_2       4.0  0.1
+# ind2_1       1.0  3.0
+# ind2_2       1.0  4.0
+#
+# Selecting both individuals, the strategy controls which chromosome pairs are valid:
+#
+# no_self_unique_individuals (cross-individual only: ind1 vs ind2)
+#   B1: max(5+1, 5+1, 4+1, 4+1) = 6.0   B2: max(0.1+3, 0.1+4, 0.1+3, 0.1+4) = 4.1
+#   total = 10.1
+#
+# self_no_duplicate_chromosomes (also allows same-individual cross-chromosome pairs)
+#   adds (ind1_1, ind1_2) and (ind2_1, ind2_2)
+#   B1: max now includes 5+4=9  -> max = 9.0
+#   B2: max now includes 3+4=7  -> max = 7.0
+#   total = 16.0
+#
+# self_allow_duplicate_chromosomes (also allows each chromosome paired with itself)
+#   adds (ind1_1,ind1_1)=10, (ind1_2,ind1_2)=8, (ind2_1,ind2_1)=2, (ind2_2,ind2_2)=2
+#   B1: max = 10.0   B2: adds (ind2_2,ind2_2)=8  -> max = 8.0
+#   total = 18.0
+make_ohs_fitness_matrix <- function() {
+  matrix(
+    c(5.0, 4.0, 1.0, 1.0,
+      0.1, 0.1, 3.0, 4.0),
+    nrow = 4, ncol = 2,
     dimnames = list(
-      paste0("ind", 1:5),
-      paste0("B",   1:3)
+      c("ind1_1", "ind1_2", "ind2_1", "ind2_2"),
+      paste0("B", 1:2)
     )
   )
 }
 
+# Minimal haploblock_obj for local_gebv_parent_selection integration tests.
+# 5 individuals, 3 blocks.
+make_lgebv_obj <- function() {
+  set.seed(1)
+  m <- matrix(rnorm(5 * 3), nrow = 5, ncol = 3,
+              dimnames = list(paste0("ind", 1:5), paste0("B", 1:3)))
+  list(Haplotype_Effect_Matrix_GA = as.data.frame(m))
+}
 
-# Tests: wrapper equivalence --------------------------------------------------
+# Minimal haploblock_obj for ohs_parent_selection integration tests.
+# 4 individuals x 2 chromosomes each, 3 blocks.
+make_ohs_obj <- function() {
+  set.seed(1)
+  rnames <- paste0(rep(paste0("ind", 1:4), each = 2), "_", rep(1:2, 4))
+  m <- matrix(rnorm(8 * 3), nrow = 8, ncol = 3,
+              dimnames = list(rnames, paste0("B", 1:3)))
+  list(Haplotype_Effect_Matrix_GA = as.data.frame(m))
+}
 
-test_that("ohs_parent_selection and local_gebv_parent_selection produce identical output", {
-  lgebv <- make_ga_localgebv()
+
+# Tests: build_row_metadata ---------------------------------------------------
+
+test_that("build_row_metadata parses OHS-format row names into individual and chromosome columns", {
+  m    <- make_ohs_fitness_matrix()
+  meta <- build_row_metadata(m)
+
+  expect_equal(meta$individual,  c("ind1", "ind1", "ind2", "ind2"))
+  expect_equal(meta$chromosome,  c("1", "2", "1", "2"))
+  expect_equal(meta$row,         1:4)
+})
+
+test_that("build_row_metadata handles plain individual names (localGEBV format) with NA chromosomes", {
+  m    <- make_lgebv_fitness_matrix()
+  meta <- build_row_metadata(m)
+
+  expect_equal(meta$individual, paste0("ind", 1:3))
+  expect_true(all(is.na(meta$chromosome)))
+  expect_equal(meta$row, 1:3)
+})
+
+
+# Tests: validate_strategy ----------------------------------------------------
+
+test_that("validate_strategy rejects an invalid localGEBV strategy", {
+  expect_error(validate_strategy("bad_strategy", type = "localGEBV"))
+})
+
+test_that("validate_strategy rejects an OHS strategy name passed to localGEBV", {
+  expect_error(validate_strategy("no_self_unique_individuals", type = "localGEBV"))
+})
+
+test_that("validate_strategy rejects an invalid OHS strategy", {
+  expect_error(validate_strategy("selfing", type = "OHS"))
+})
+
+test_that("validate_strategy accepts all valid strategies without error", {
+  expect_no_error(validate_strategy("selfing",    type = "localGEBV"))
+  expect_no_error(validate_strategy("no_selfing", type = "localGEBV"))
+  expect_no_error(validate_strategy("self_allow_duplicate_chromosomes", type = "OHS"))
+  expect_no_error(validate_strategy("self_no_duplicate_chromosomes",    type = "OHS"))
+  expect_no_error(validate_strategy("no_self_unique_individuals",       type = "OHS"))
+})
+
+
+# Tests: fitness_localGEBV ----------------------------------------------------
+
+test_that("fitness_localGEBV no_selfing scores the best midparent value per block", {
+  m  <- make_lgebv_fitness_matrix()
+  fn <- fitness_localGEBV(m, strategy = "no_selfing")
+
+  # B1 best pair: (ind1, ind3) -> (1.0+0.5)/2 = 0.75
+  # B2 best pair: (ind2, ind3) -> (1.0+0.5)/2 = 0.75
+  expect_equal(fn(c(1, 2, 3)), 1.5)
+})
+
+test_that("fitness_localGEBV selfing scores higher than no_selfing when self-pairing is optimal", {
+  m         <- make_lgebv_fitness_matrix()
+  fn_self   <- fitness_localGEBV(m, strategy = "selfing")
+  fn_noself <- fitness_localGEBV(m, strategy = "no_selfing")
+
+  # Self-pairs lift each block: (ind1 x ind1) -> B1 = 1.0; (ind2 x ind2) -> B2 = 1.0
+  expect_equal(fn_self(c(1, 2, 3)), 2.0)
+  expect_gt(fn_self(c(1, 2, 3)), fn_noself(c(1, 2, 3)))
+})
+
+
+# Tests: fitness_OHS ----------------------------------------------------------
+
+test_that("fitness_OHS no_self_unique_individuals only scores cross-individual chromosome pairs", {
+  m    <- make_ohs_fitness_matrix()
+  meta <- build_row_metadata(m)
+  fn   <- fitness_OHS(m, meta, strategy = "no_self_unique_individuals")
+
+  # B1 best cross-pair: ind1_1 + ind2_2 = 5+1 = 6.0
+  # B2 best cross-pair: ind1_2 + ind2_2 = 0.1+4 = 4.1
+  expect_equal(fn(c(1, 2)), 10.1)
+})
+
+test_that("fitness_OHS self_no_duplicate_chromosomes allows same-individual cross-chromosome pairs", {
+  m    <- make_ohs_fitness_matrix()
+  meta <- build_row_metadata(m)
+  fn   <- fitness_OHS(m, meta, strategy = "self_no_duplicate_chromosomes")
+
+  # B1 best pair: ind1_1 + ind1_2 = 5+4 = 9.0 (same individual, different chromosomes)
+  # B2 best pair: ind2_1 + ind2_2 = 3+4 = 7.0
+  expect_equal(fn(c(1, 2)), 16.0)
+})
+
+test_that("fitness_OHS self_allow_duplicate_chromosomes allows a chromosome paired with itself", {
+  m    <- make_ohs_fitness_matrix()
+  meta <- build_row_metadata(m)
+  fn   <- fitness_OHS(m, meta, strategy = "self_allow_duplicate_chromosomes")
+
+  # B1 best pair: ind1_1 x ind1_1 = 5+5 = 10.0
+  # B2 best pair: ind2_2 x ind2_2 = 4+4 = 8.0
+  expect_equal(fn(c(1, 2)), 18.0)
+})
+
+test_that("fitness_OHS scores increase from most to least restrictive strategy", {
+  m    <- make_ohs_fitness_matrix()
+  meta <- build_row_metadata(m)
+
+  no_self    <- fitness_OHS(m, meta, "no_self_unique_individuals")(c(1, 2))
+  self_cross <- fitness_OHS(m, meta, "self_no_duplicate_chromosomes")(c(1, 2))
+  self_all   <- fitness_OHS(m, meta, "self_allow_duplicate_chromosomes")(c(1, 2))
+
+  expect_lt(no_self, self_cross)
+  expect_lt(self_cross, self_all)
+})
+
+
+# Tests: fitness_localGEBV vs fitness_OHS -------------------------------------
+
+test_that("fitness_OHS scores exactly double fitness_localGEBV when chromosomes duplicate individual values", {
+  m_lgebv <- make_lgebv_fitness_matrix()
+
+  # OHS version: expand each individual into 2 identical chromosomes
+  m_ohs <- m_lgebv[rep(seq_len(nrow(m_lgebv)), each = 2), ]
+  rownames(m_ohs) <- paste0(rep(rownames(m_lgebv), each = 2), "_", rep(1:2, nrow(m_lgebv)))
+  meta_ohs <- build_row_metadata(m_ohs)
+
+  fn_lgebv <- fitness_localGEBV(m_lgebv, strategy = "no_selfing")
+  fn_ohs   <- fitness_OHS(m_ohs, meta_ohs, strategy = "no_self_unique_individuals")
+
+  # localGEBV uses (a+b)/2; OHS uses a+b — so OHS total = localGEBV total * 2
+  expect_equal(fn_ohs(c(1, 2, 3)), fn_lgebv(c(1, 2, 3)) * 2)
+})
+
+
+# Tests: local_gebv_parent_selection ------------------------------------------
+
+test_that("local_gebv_parent_selection returns correct list structure", {
+  obj <- make_lgebv_obj()
 
   set.seed(42)
-  result_ohs <- ohs_parent_selection(
-    localGEBV  = lgebv,
-    n_founders = 3,
-    popSize    = 20,
-    maxiter    = 50,
-    run        = 10,
-    monitor    = FALSE
+  result <- local_gebv_parent_selection(
+    haploblock_obj = obj,
+    strategy       = "no_selfing",
+    n_founders     = 3,
+    popSize        = 20,
+    maxiter        = 50,
+    run            = 10,
+    monitor        = FALSE
   )
+
+  expect_named(result, c("GA", "One_Solution"))
+  expect_named(result$One_Solution, c("Index", "Individual"))
+  expect_equal(nrow(result$One_Solution), 3)
+  expect_true(all(result$One_Solution$Index %in% 1:5))
+  expect_true(all(result$One_Solution$Individual %in% paste0("ind", 1:5)))
+})
+
+test_that("local_gebv_parent_selection runs without error for the selfing strategy", {
+  obj <- make_lgebv_obj()
 
   set.seed(42)
-  result_gebv <- local_gebv_parent_selection(
-    localGEBV  = lgebv,
-    n_founders = 3,
-    popSize    = 20,
-    maxiter    = 50,
-    run        = 10,
-    monitor    = FALSE
+  expect_no_error(
+    local_gebv_parent_selection(
+      haploblock_obj = obj,
+      strategy       = "selfing",
+      n_founders     = 3,
+      popSize        = 20,
+      maxiter        = 50,
+      run            = 10,
+      monitor        = FALSE
+    )
+  )
+})
+
+
+# Tests: ohs_parent_selection -------------------------------------------------
+
+test_that("ohs_parent_selection returns correct list structure with individual-level indices", {
+  obj <- make_ohs_obj()
+
+  set.seed(42)
+  result <- ohs_parent_selection(
+    haploblock_obj = obj,
+    strategy       = "no_self_unique_individuals",
+    n_founders     = 3,
+    popSize        = 20,
+    maxiter        = 50,
+    run            = 10,
+    monitor        = FALSE
   )
 
-  expect_equal(result_ohs$One_Solution, result_gebv$One_Solution)
-  expect_equal(result_ohs$GA@fitnessValue, result_gebv$GA@fitnessValue)
+  expect_named(result, c("GA", "One_Solution"))
+  expect_named(result$One_Solution, c("Index", "Individual"))
+  expect_equal(nrow(result$One_Solution), 3)
+  # Indices refer to unique individuals (1-4), not chromosome rows (1-8)
+  expect_true(all(result$One_Solution$Index %in% 1:4))
+  expect_true(all(result$One_Solution$Individual %in% paste0("ind", 1:4)))
+})
+
+test_that("ohs_parent_selection runs without error for all three strategies", {
+  obj <- make_ohs_obj()
+
+  for (strat in c("self_allow_duplicate_chromosomes",
+                  "self_no_duplicate_chromosomes",
+                  "no_self_unique_individuals")) {
+    set.seed(42)
+    expect_no_error(
+      ohs_parent_selection(
+        haploblock_obj = obj,
+        strategy       = strat,
+        n_founders     = 3,
+        popSize        = 20,
+        maxiter        = 50,
+        run            = 10,
+        monitor        = FALSE
+      )
+    )
+  }
 })
