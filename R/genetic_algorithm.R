@@ -3,6 +3,57 @@
 #############################################
 
 ############################
+# 0. Block Selection       #
+############################
+select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_of_total_var = NULL){
+
+  #check only one value was provided
+  if(sum(c(!is.null(n), !is.null(perc_total), !is.null(perc_of_total_var))) != 1 | any(c(is.character(n), is.character(perc_total), is.character(perc_of_total_var)))){
+    stop("Please ensure only one of the following is non-null and numerical: number of blocks, percentage of total blocks, or blocks comprising percentage of total block variance is specified.")
+  }
+
+  #if percentages were specified, check they're within range
+  if(!is.null(perc_total) && (perc_total <= 0 || perc_total > 1)){
+    stop("Please ensure percentages are specified between 0 and 1.")
+  }
+
+  if(!is.null(perc_of_total_var) && (perc_of_total_var < 0 || perc_of_total_var > 1)){
+    stop("Please ensure percentages are specified between 0 and 1.")
+  }
+
+  #order the blocks by variance
+  haploblocks_df = haploblock_obj$Haploblocks
+  haploblocks_df = haploblocks_df[order(haploblocks_df$Block_Var, decreasing = TRUE), ]
+
+  #select blocks based on which parameter was not null - a set number
+  if(!is.null(n)){
+    haploblocks_df = haploblocks_df[1:n, ]
+    block_id = haploblocks_df$Block_ID
+    haploblock_obj$Haploblocks_GA = haploblocks_df
+    haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
+
+    #at least a certain percentage of blocks (ceiling)
+  } else if(!is.null(perc_total)){
+    haploblocks_df = haploblocks_df[1:ceiling(nrow(haploblocks_df) * perc_total), ]
+    block_id = haploblocks_df$Block_ID
+    haploblock_obj$Haploblocks_GA = haploblocks_df
+    haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
+
+    #percentage of blocks explaining at least a certain percentage of variance (ceiling)
+  } else if(!is.null(perc_of_total_var)){
+    cumulative_var = cumsum(haploblocks_df$Block_Var) / sum(haploblocks_df$Block_Var)
+    haploblocks_df = haploblocks_df[1:which(cumulative_var >= perc_of_total_var)[1], ]
+    block_id = haploblocks_df$Block_ID
+    haploblock_obj$Haploblocks_GA = haploblocks_df
+    haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
+  } else{
+    stop("Please ensure only one of the selection methods is specified as non-NULL and is an appropriate numeric value.")
+  }
+
+  return(haploblock_obj)
+}
+
+############################
 # 1. Strategy definitions  #
 ############################
 
