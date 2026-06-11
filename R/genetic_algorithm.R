@@ -81,9 +81,35 @@ validate_strategy <- function(strategy, type = c("localGEBV", "OHS")) {
 }
 
 
-#############################################################################
-###### 2. Helper: extract active matrices and build haplotype metadata ######
-############################################################################
+####################################################################################################
+###### 2. Helper: extract active matrices and build haplotype metadata and reporting function ######
+####################################################################################################
+
+#custom monitoring function - if sign is flipped for fitness calculation, then flip the sign here too
+#had to use this because there was no straight forward way to get the GA to minimize, so it's all in custom functions
+#this means that reporting needed to be conducted in custon functions too
+custom_monitor <- function(obj, maximize = TRUE){
+
+  best <- max(obj@fitness, na.rm = TRUE)
+  mean_fit <- mean(obj@fitness, na.rm = TRUE)
+  sd_fit <- sd(obj@fitness, na.rm = TRUE)
+
+  if(!maximize){
+    best <- -best
+    mean_fit <- -mean_fit
+    sd_fit <- -sd_fit
+  }
+
+  cat(
+    sprintf(
+      "Iter %4d | Best = %.3f | Mean = %.3f | SD = %.3f\n",
+      obj@iter,
+      best,
+      mean_fit,
+      sd(obj@fitness, na.rm = TRUE)
+    )
+  )
+}
 
 get_effect_matrix <- function(obj) {
   if (!is.null(obj$Haplotype_Effect_Matrix_GA)) {
@@ -145,9 +171,14 @@ build_row_metadata <- function(effect_matrix){
     run = 50,
     pmutation = 0.1,
     pcrossover = 0.1,
-    monitor = TRUE
+    maximize = maximize,
+    monitor = monitor
 ){
 
+  monitor_fn <- FALSE
+  if(monitor) {
+    monitor_fn <- function(obj) custom_monitor(obj, maximize = maximize)
+  }
 
   # population initializer
   # create the initial populations by random sampling
@@ -464,7 +495,7 @@ build_row_metadata <- function(effect_matrix){
     population = custom_population,
     mutation = custom_mutation,
     crossover = custom_crossover,
-    monitor = monitor
+    monitor = monitor_fn
   )
 }
 
@@ -474,6 +505,7 @@ build_row_metadata <- function(effect_matrix){
 
 fitness_localGEBV <- function(
     effect_matrix,
+    maximize = TRUE,
     strategy = c(
       "selfing",
       "no_selfing"
@@ -481,6 +513,14 @@ fitness_localGEBV <- function(
 ){
 
   strategy <- match.arg(strategy)
+
+  #if the goal is to minimize, then flip the sign
+  #highly positive values become highly negative whereas lowly positive values are only slightly negative
+  #negative values then become large positive values
+
+  if(!maximize){
+    effect_matrix <- effect_matrix * -1
+  }
 
   function(selected_ind){
 
@@ -540,6 +580,7 @@ fitness_localGEBV <- function(
 fitness_OHS <- function(
     effect_matrix,
     row_metadata,
+    maximize = TRUE,
     strategy = c(
       "self_allow_duplicate_chromosomes",
       "self_no_duplicate_chromosomes",
@@ -548,6 +589,14 @@ fitness_OHS <- function(
 ){
 
   strategy <- match.arg(strategy)
+
+  #if the goal is to minimize, then flip the sign
+  #highly positive values become highly negative whereas lowly positive values are only slightly negative
+  #negative values then become large positive values
+
+  if(!maximize){
+    effect_matrix <- effect_matrix * -1
+  }
 
   individual_map <- split(
     row_metadata$row,
@@ -665,6 +714,7 @@ local_gebv_parent_selection <- function(
     run = 50,
     pmutation = 0.1,
     pcrossover = 0.1,
+    maximize = TRUE,
     monitor = TRUE
 ){
 
@@ -679,9 +729,11 @@ local_gebv_parent_selection <- function(
     get_effect_matrix(haploblock_obj)
   )
 
+
   fitness_fn <- fitness_localGEBV(
     effect_matrix = effect_matrix,
-    strategy = strategy
+    strategy = strategy,
+    maximize = maximize
   )
 
   ga_result <- .genetic_algorithm_core(
@@ -693,6 +745,7 @@ local_gebv_parent_selection <- function(
     run = run,
     pmutation = pmutation,
     pcrossover = pcrossover,
+    maximize = maximize,
     monitor = monitor
   )
 
@@ -701,6 +754,7 @@ local_gebv_parent_selection <- function(
   if(is.matrix(solution)){
     solution <- solution[1, ]
   }
+
 
   solution <- sort(as.integer(solution))
 
@@ -711,9 +765,18 @@ local_gebv_parent_selection <- function(
     Individual = unique_individuals[solution]
   )
 
+  #modify outputs if minimization is specified
+  #minimization occurs by flipping the sign of the fitness (multiplication by -1) in order to make "lower" values more positive and greater
+  #this is because the GA only maximizes values. Therefore, the "max" value is actually the minimum.
+  #values must be re-transformed back to the original scale by multiplying by -1.
+  if(!maximize){
+    ga_result@fitnessValue = -ga_result@fitnessValue
+    ga_result@fitness = -ga_result@fitness
+    ga_result@summary = -ga_result@summary
+  }
 
-    return_obj = list(GA = ga_result, One_Solution = One_Solution)
-    return(return_obj)
+  return_obj = list(GA = ga_result, One_Solution = One_Solution)
+  return(return_obj)
 }
 
 ########################################################
@@ -733,6 +796,7 @@ ohs_parent_selection <- function(
     run = 50,
     pmutation = 0.1,
     pcrossover = 0.1,
+    maximize = TRUE,
     monitor = TRUE
 ){
 
@@ -758,6 +822,7 @@ ohs_parent_selection <- function(
   fitness_fn <- fitness_OHS(
     effect_matrix = effect_matrix,
     row_metadata = row_metadata,
+    maximize = maximize,
     strategy = strategy
   )
 
@@ -770,6 +835,7 @@ ohs_parent_selection <- function(
     run = run,
     pmutation = pmutation,
     pcrossover = pcrossover,
+    maximize = maximize,
     monitor = monitor
   )
 
@@ -789,6 +855,17 @@ ohs_parent_selection <- function(
     Index = solution,
     Individual = unique_individuals[solution]
   )
+
+  #modify outputs if minimization is specified
+  #minimization occurs by flipping the sign of the fitness (multiplication by -1) in order to make "lower" values more positive and greater
+  #this is because the GA only maximizes values. Therefore, the "max" value is actually the minimum.
+  #values must be re-transformed back to the original scale by multiplying by -1.
+
+  if(!maximize){
+    ga_result@fitnessValue = -ga_result@fitnessValue
+    ga_result@fitness = -ga_result@fitness
+    ga_result@summary = -ga_result@summary
+  }
 
   return_obj = list(GA = ga_result, One_Solution = One_Solution)
   return(return_obj)
