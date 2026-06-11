@@ -500,7 +500,7 @@ build_row_metadata <- function(effect_matrix){
 }
 
 ########################################################
-#####          4. LOCAL GEBV FITNESS               #####
+#####          4. LOCALGEBV FITNESS               #####
 ########################################################
 
 fitness_localGEBV <- function(
@@ -653,6 +653,102 @@ fitness_localGEBV <- function(
 ########################################################
 ##### 5. OHS FITNESS (full haplotype-aware engine) #####
 ########################################################
+
+# OHS fitness function
+#
+# Creates and returns a fitness evaluation function for use by the
+# genetic algorithm. The returned function evaluates a candidate
+# founder subset under the Optimal Haplotype Selection (OHS)
+# framework.
+#
+# INPUTS
+#   effect_matrix :
+#     Matrix of haplotype effects.
+#
+#     Rows correspond to chromosomes/haplotypes.
+#     Columns correspond to genomic blocks.
+#
+#   row_metadata :
+#     Metadata describing each row of effect_matrix.
+#
+#     Required columns:
+#       row         = row index in effect_matrix
+#       individual  = individual identifier
+#       chromosome  = chromosome identifier
+#
+#   maximize :
+#     Logical.
+#
+#     If FALSE, haplotype effects are multiplied by -1 so that
+#     minimization problems can be solved using the GA's
+#     maximization framework.
+#
+#   strategy :
+#     Determines which chromosome pairings are permitted:
+#
+#       self_allow_duplicate_chromosomes
+#         Allows all chromosome pairings, including pairing a
+#         chromosome with itself.
+#
+#       self_no_duplicate_chromosomes
+#         Allows selfing but prevents a chromosome from pairing
+#         with itself.
+#
+#       no_self_unique_individuals
+#         Only allows chromosome pairings originating from
+#         different individuals.
+#
+#
+# PRECOMPUTED OBJECTS
+#
+#   individual_map :
+#     Maps each individual to the corresponding rows of
+#     effect_matrix.
+#
+#     This is constructed once when the fitness function is
+#     created and reused throughout the GA run.
+#
+#
+# RETURNS
+#
+#   A function taking:
+#
+#       selected_ind
+#
+#   where selected_ind is an integer vector of founder indices
+#   proposed by the GA.
+#
+#   The returned function evaluates the subset and returns a
+#   single scalar fitness value.
+#
+#
+# FITNESS CALCULATION
+#
+#   1. Expand founder indices into chromosome rows.
+#
+#   2. Generate all valid chromosome pairings according to the
+#      selected strategy.
+#
+#   3. For each genomic block:
+#
+#        a. Compute haplotype scores for every valid chromosome
+#           pair.
+#
+#        b. Identify the best chromosome pair.
+#
+#        c. Add the best score to the running total.
+#
+#   4. Return the sum across all blocks.
+#
+#
+# BIOLOGICAL INTERPRETATION
+#
+#   The objective approximates the theoretical best haplotype
+#   combination obtainable from the selected founder set at
+#   each genomic block.
+#
+#   The GA therefore searches for founder subsets that maximize
+#   genome-wide haplotype potential.
 
 fitness_OHS <- function(
     effect_matrix,

@@ -131,7 +131,7 @@ test_that("validate_strategy accepts all valid strategies without error", {
 
 test_that("fitness_localGEBV no_selfing scores the best midparent value per block", {
   m  <- make_lgebv_fitness_matrix()
-  fn <- fitness_localGEBV(m, strategy = "no_selfing")
+  fn <- fitness_localGEBV(m, maximize, strategy = "no_selfing")
 
   # B1 best pair: (ind1, ind3) -> (1.0+0.5)/2 = 0.75
   # B2 best pair: (ind2, ind3) -> (1.0+0.5)/2 = 0.75
@@ -140,8 +140,8 @@ test_that("fitness_localGEBV no_selfing scores the best midparent value per bloc
 
 test_that("fitness_localGEBV selfing scores higher than no_selfing when self-pairing is optimal", {
   m         <- make_lgebv_fitness_matrix()
-  fn_self   <- fitness_localGEBV(m, strategy = "selfing")
-  fn_noself <- fitness_localGEBV(m, strategy = "no_selfing")
+  fn_self   <- fitness_localGEBV(m, maximize = TRUE, strategy = "selfing")
+  fn_noself <- fitness_localGEBV(m, maximize = TRUE, strategy = "no_selfing")
 
   # Self-pairs lift each block: (ind1 x ind1) -> B1 = 1.0; (ind2 x ind2) -> B2 = 1.0
   expect_equal(fn_self(c(1, 2, 3)), 2.0)
@@ -154,7 +154,7 @@ test_that("fitness_localGEBV selfing scores higher than no_selfing when self-pai
 test_that("fitness_OHS no_self_unique_individuals only scores cross-individual chromosome pairs", {
   m    <- make_ohs_fitness_matrix()
   meta <- build_row_metadata(m)
-  fn   <- fitness_OHS(m, meta, strategy = "no_self_unique_individuals")
+  fn   <- fitness_OHS(m, meta,  maximize = TRUE, strategy = "no_self_unique_individuals")
 
   # B1 best cross-pair: ind1_1 + ind2_2 = 5+1 = 6.0
   # B2 best cross-pair: ind1_2 + ind2_2 = 0.1+4 = 4.1
@@ -164,7 +164,7 @@ test_that("fitness_OHS no_self_unique_individuals only scores cross-individual c
 test_that("fitness_OHS self_no_duplicate_chromosomes allows same-individual cross-chromosome pairs", {
   m    <- make_ohs_fitness_matrix()
   meta <- build_row_metadata(m)
-  fn   <- fitness_OHS(m, meta, strategy = "self_no_duplicate_chromosomes")
+  fn   <- fitness_OHS(m, meta, maximize = TRUE, strategy = "self_no_duplicate_chromosomes")
 
   # B1 best pair: ind1_1 + ind1_2 = 5+4 = 9.0 (same individual, different chromosomes)
   # B2 best pair: ind2_1 + ind2_2 = 3+4 = 7.0
@@ -174,7 +174,7 @@ test_that("fitness_OHS self_no_duplicate_chromosomes allows same-individual cros
 test_that("fitness_OHS self_allow_duplicate_chromosomes allows a chromosome paired with itself", {
   m    <- make_ohs_fitness_matrix()
   meta <- build_row_metadata(m)
-  fn   <- fitness_OHS(m, meta, strategy = "self_allow_duplicate_chromosomes")
+  fn   <- fitness_OHS(m, meta, maximize = TRUE, strategy = "self_allow_duplicate_chromosomes")
 
   # B1 best pair: ind1_1 x ind1_1 = 5+5 = 10.0
   # B2 best pair: ind2_2 x ind2_2 = 4+4 = 8.0
@@ -185,9 +185,9 @@ test_that("fitness_OHS scores increase from most to least restrictive strategy",
   m    <- make_ohs_fitness_matrix()
   meta <- build_row_metadata(m)
 
-  no_self    <- fitness_OHS(m, meta, "no_self_unique_individuals")(c(1, 2))
-  self_cross <- fitness_OHS(m, meta, "self_no_duplicate_chromosomes")(c(1, 2))
-  self_all   <- fitness_OHS(m, meta, "self_allow_duplicate_chromosomes")(c(1, 2))
+  no_self    <- fitness_OHS(m, meta, maximize = TRUE, "no_self_unique_individuals")(c(1, 2))
+  self_cross <- fitness_OHS(m, meta, maximize = TRUE, "self_no_duplicate_chromosomes")(c(1, 2))
+  self_all   <- fitness_OHS(m, meta, maximize = TRUE, "self_allow_duplicate_chromosomes")(c(1, 2))
 
   expect_lt(no_self, self_cross)
   expect_lt(self_cross, self_all)
@@ -204,8 +204,8 @@ test_that("fitness_OHS scores exactly double fitness_localGEBV when chromosomes 
   rownames(m_ohs) <- paste0(rep(rownames(m_lgebv), each = 2), "_", rep(1:2, nrow(m_lgebv)))
   meta_ohs <- build_row_metadata(m_ohs)
 
-  fn_lgebv <- fitness_localGEBV(m_lgebv, strategy = "no_selfing")
-  fn_ohs   <- fitness_OHS(m_ohs, meta_ohs, strategy = "no_self_unique_individuals")
+  fn_lgebv <- fitness_localGEBV(m_lgebv, maximize = TRUE, strategy = "no_selfing")
+  fn_ohs   <- fitness_OHS(m_ohs, meta_ohs, maximize = TRUE, strategy = "no_self_unique_individuals")
 
   # localGEBV uses (a+b)/2; OHS uses a+b — so OHS total = localGEBV total * 2
   expect_equal(fn_ohs(c(1, 2, 3)), fn_lgebv(c(1, 2, 3)) * 2)
@@ -225,6 +225,7 @@ test_that("local_gebv_parent_selection returns correct list structure", {
     popSize        = 20,
     maxiter        = 50,
     run            = 10,
+    maximize       = TRUE,
     monitor        = FALSE
   )
 
@@ -247,6 +248,7 @@ test_that("local_gebv_parent_selection runs without error for the selfing strate
       popSize        = 20,
       maxiter        = 50,
       run            = 10,
+      maximize       = TRUE,
       monitor        = FALSE
     )
   )
@@ -266,6 +268,7 @@ test_that("ohs_parent_selection returns correct list structure with individual-l
     popSize        = 20,
     maxiter        = 50,
     run            = 10,
+    maximize       = TRUE,
     monitor        = FALSE
   )
 
@@ -292,6 +295,7 @@ test_that("ohs_parent_selection runs without error for all three strategies", {
         popSize        = 20,
         maxiter        = 50,
         run            = 10,
+        maximize       = TRUE,
         monitor        = FALSE
       )
     )
