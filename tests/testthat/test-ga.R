@@ -131,7 +131,7 @@ test_that("validate_strategy accepts all valid strategies without error", {
 
 test_that("fitness_localGEBV no_selfing scores the best midparent value per block", {
   m  <- make_lgebv_fitness_matrix()
-  fn <- fitness_localGEBV(m, maximize, strategy = "no_selfing")
+  fn <- fitness_localGEBV(m, maximize = TRUE, strategy = "no_selfing")
 
   # B1 best pair: (ind1, ind3) -> (1.0+0.5)/2 = 0.75
   # B2 best pair: (ind2, ind3) -> (1.0+0.5)/2 = 0.75
