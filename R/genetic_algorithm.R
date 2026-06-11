@@ -87,7 +87,7 @@ validate_strategy <- function(strategy, type = c("localGEBV", "OHS")) {
 
 #custom monitoring function - if sign is flipped for fitness calculation, then flip the sign here too
 #had to use this because there was no straight forward way to get the GA to minimize, so it's all in custom functions
-#this means that reporting needed to be conducted in custon functions too
+#this means that reporting needed to be conducted in custom functions too
 custom_monitor <- function(obj, maximize = TRUE){
 
   best <- max(obj@fitness, na.rm = TRUE)
@@ -436,34 +436,34 @@ build_row_metadata <- function(effect_matrix){
 
     #if there are too few/too many parents, we need to bring in more (mutation)
     #or extract the needed number
-    repair <- function(x){
+    repair <- function(child){
 
       #unique individuals
-      x <- unique(x)
+      child <- unique(child)
 
       #sample up or down
-      if(length(x) > n_founders){
-        x <- sample(x, n_founders)
+      if(length(child) > n_founders){
+        child <- sample(child, n_founders)
       }
 
-      if(length(x) < n_founders){
+      if(length(child) < n_founders){
 
         available <- setdiff(
           seq_len(n_individuals),
-          x
+          child
         )
 
-        x <- c(
-          x,
+        child <- c(
+          child,
           sample(
             available,
-            n_founders - length(x)
+            n_founders - length(child)
           )
         )
       }
 
       #return the new population
-      x
+      child
     }
 
     child1 <- repair(child1)
@@ -522,6 +522,83 @@ fitness_localGEBV <- function(
     effect_matrix <- effect_matrix * -1
   }
 
+  # DESCRIPTION of selected_ind()
+  #   Evaluates a candidate subset of individuals based on their
+  #   ability to produce high-performing progeny across multiple
+  #   genomic blocks using local GEBV values.
+  #
+  #   The function considers all pairwise combinations of selected
+  #   individuals (and optionally selfing pairs), computes expected
+  #   progeny values per block, and returns the sum of the best
+  #   possible cross for each block.
+  #
+  #
+  # ARGUMENTS (closure input via outer function)
+  #   effect_matrix :
+  #     Numeric matrix of localGEBV values.
+  #     Rows = individuals
+  #     Columns = genomic blocks (localGEBV)
+  #
+  #   strategy :
+  #     Character string controlling mating design:
+  #       - "selfing"    : allows self-pair combinations
+  #       - "no_selfing" : only distinct individual crosses allowed
+  #
+  #
+  # INPUT (to returned function)
+  #   selected_ind :
+  #     Integer vector of selected individual indices (subset solution
+  #     proposed by the GA).
+  #
+  #
+  # RETURNS
+  #   Numeric scalar fitness value:
+  #     Sum over blocks of the maximum expected progeny GEBV
+  #     obtainable from any pair of selected individuals.
+  #
+  #
+  # METHOD
+  #   1. Subset the effect matrix for selected individuals.
+  #
+  #   2. Construct all possible pairwise combinations of individuals:
+  #        - includes all unique i < j pairs
+  #        - optionally includes selfing pairs (i, i)
+  #
+  #   3. For each genomic block:
+  #        a. Extract localGEBV values for selected individuals
+  #        b. Compute progeny values for each pair:
+  #             (parent1 + parent2) / 2
+  #        c. Identify the best (maximum) expected progeny value
+  #
+  #   4. Sum the best values across all blocks to form final fitness.
+  #
+  #
+  # BIOLOGICAL INTERPRETATION
+  #   This function approximates a selection objective where:
+  #     - Each block contributes independently to fitness
+  #     - The best possible mating combination per block is assumed
+  #     - The GA searches for subsets of individuals that maximize
+  #       cross potential across the genome
+  #
+  #
+  # ASSUMPTIONS
+  #   - Diploid additive model (mid-parent value)
+  #   - No epistasis between blocks in fitness aggregation
+  #   - All individuals contribute equally within selected subset
+  #
+  #
+  # FUTURE EXTENSIONS (not implemented)
+  #   - Polyploid adjustment (replace /2 with ploidy-aware scaling)
+  #   - Weighted block contributions
+  #   - Explicit mate allocation instead of best-pair approximation
+  #
+  #
+  # EDGE CASES
+  #   - If fewer than 2 individuals are selected and selfing is disabled,
+  #     returns 0 fitness.
+  #
+
+  #passed in the GA
   function(selected_ind){
 
     #pull localGEBV
