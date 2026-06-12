@@ -299,7 +299,7 @@ build_ohs_row_metadata <- function(effect_matrix){
       out[i, ] <- sol
     }
 
-    out
+    return(out)
   }
 
   # crossover
@@ -631,7 +631,7 @@ fitness_localGEBV <- function(
     total_score <- 0
 
     #compute max progeny GEBV for each block
-    #for each block, evaluate each pair's fitness by averaging localGEBV (averaging across the 4 chromosomes)
+    #for each block, evaluate each pair's fitness by averaging localGEBV (mid-parent value across selected individuals)
     for(block in seq_len(ncol(selected))){
 
       vals <- selected[, block]
@@ -770,11 +770,11 @@ fitness_OHS <- function(
     row_metadata$row,
     row_metadata$individual
   )
-
+  
+  # Compute the fitness of a candidate founder subset under the OHS framework.
   function(selected_ind){
 
     # expand selected individuals into chromosomes
-
     selected_names <- names(individual_map)[selected_ind]
 
     selected_rows <- unlist(
@@ -784,7 +784,6 @@ fitness_OHS <- function(
     meta <- row_metadata[selected_rows, ]
 
     # chromosome pairings
-
     if(length(selected_rows) < 2){
       return(0)
     }
@@ -799,7 +798,6 @@ fitness_OHS <- function(
     combos <- t(combos)
 
     # optionally allow selfing
-
     if(strategy == "self_allow_duplicate_chromosomes"){
 
       self_pairs <- cbind(
@@ -814,7 +812,6 @@ fitness_OHS <- function(
     }
 
     # strategy filtering - depending on the strategy chosen
-
     r1 <- combos[,1]
     r2 <- combos[,2]
 
@@ -825,7 +822,6 @@ fitness_OHS <- function(
       meta$individual[r2]
 
     # strategy rules
-
     keep <- rep(TRUE, nrow(combos))
 
     if(strategy == "self_no_duplicate_chromosomes"){
@@ -839,24 +835,18 @@ fitness_OHS <- function(
     combos <- combos[keep, , drop = FALSE]
 
     # compute optimal score
-
     total_score <- 0
 
-    #edge case for
+    #edge case: no valid chromosome pairs after strategy filtering
     if(nrow(combos) == 0){
       return(total_score)
     }
 
-
     #compute pairwise chromosome localGEBV (addition of haplotype GEBV)
     for(block in seq_len(ncol(effect_matrix))){
 
-
-
       #pull out chromosomes of selected parents
       vals <- effect_matrix[selected_rows, block]
-
-
 
       #for each valid chromosome combo (based on filtering above), compute haplo sum
       #currently limited to diploid! This is a point of future expansion.
@@ -897,7 +887,6 @@ local_gebv_parent_selection <- function(
     get_effect_matrix(haploblock_obj)
   )
 
-
   fitness_fn <- fitness_localGEBV(
     effect_matrix = effect_matrix,
     strategy = strategy,
@@ -923,10 +912,9 @@ local_gebv_parent_selection <- function(
     solution <- solution[1, ]
   }
 
-
   solution <- sort(as.integer(solution))
 
-  unique_individuals <- row.names(effect_matrix)
+  unique_individuals <- rownames(effect_matrix)
 
   selected_founders = data.frame(
     indices     = solution,
