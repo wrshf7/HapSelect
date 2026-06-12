@@ -27,6 +27,12 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
 
   #select blocks based on which parameter was not null - a set number
   if(!is.null(n)){
+    # Check if n exceeds the number of available blocks
+    if(n > nrow(haploblocks_df)) {
+      stop("n exceeds the number of available blocks.")
+    }
+
+    # subset the top n blocks and corresponding rows in the effect matrix
     haploblocks_df = haploblocks_df[1:n, ]
     block_id = haploblocks_df$Block_ID
     haploblock_obj$Haploblocks_GA = haploblocks_df
@@ -46,7 +52,7 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
     block_id = haploblocks_df$Block_ID
     haploblock_obj$Haploblocks_GA = haploblocks_df
     haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
-  } else{
+  } else {
     stop("Please ensure only one of the selection methods is specified as non-NULL and is an appropriate numeric value.")
   }
 
@@ -106,7 +112,7 @@ custom_monitor <- function(obj, maximize = TRUE){
       obj@iter,
       best,
       mean_fit,
-      sd(obj@fitness, na.rm = TRUE)
+      sd_fit
     )
   )
 }
