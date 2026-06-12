@@ -127,35 +127,24 @@ get_block_matrix <- function(obj) {
   }
 }
 
-
-build_row_metadata <- function(effect_matrix){
-
+# Build row metadata for the effect matrix, assuming row names are in the format "individual_chromosome".
+# Used for ohs fitness function to map from selected individuals to their corresponding chromosome rows.
+build_ohs_row_metadata <- function(effect_matrix){
   rn <- rownames(effect_matrix)
 
-  # OHS format
-  if(any(grepl("_[0-9]+$", rn))){
+  # Split row names into individual and chromosome components
+  parts <- strsplit(rn, "_")
+  
+  # Assumes the last part is the chromosome and the preceding parts form the individual identifier
+  individual <- vapply(parts, function(x) paste(x[-length(x)], collapse = "_"), character(1))
+  chromosome <- vapply(parts, function(x) x[length(x)], character(1))
 
-    individual <- sub("_[0-9]+$", "", rn)
-    chromosome  <- sub("^.*_([0-9]+)$", "\\1", rn)
-
-    data.frame(
-      row = seq_len(nrow(effect_matrix)),
-      individual = individual,
-      chromosome = chromosome,
-      stringsAsFactors = FALSE
-    )
-
-  } else {
-
-    # localGEBV format
-    data.frame(
-      row = seq_len(nrow(effect_matrix)),
-      individual = rn,
-      chromosome = NA,
-      stringsAsFactors = FALSE
-    )
-
-  }
+  data.frame(
+    row = seq_len(nrow(effect_matrix)),
+    individual = individual,
+    chromosome = chromosome,
+    stringsAsFactors = FALSE
+  )
 }
 
 #############################################################
@@ -984,7 +973,7 @@ ohs_parent_selection <- function(
     get_effect_matrix(haploblock_obj)
   )
 
-  row_metadata <- build_row_metadata(
+  row_metadata <- build_ohs_row_metadata(
     effect_matrix
   )
 

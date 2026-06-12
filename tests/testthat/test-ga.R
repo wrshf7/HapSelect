@@ -83,24 +83,15 @@ make_ohs_obj <- function() {
 }
 
 
-# Tests: build_row_metadata ---------------------------------------------------
+# Tests: build_ohs_row_metadata ---------------------------------------------------
 
-test_that("build_row_metadata parses OHS-format row names into individual and chromosome columns", {
+test_that("build_ohs_row_metadata parses OHS-format row names into individual and chromosome columns", {
   m    <- make_ohs_fitness_matrix()
-  meta <- build_row_metadata(m)
+  meta <- build_ohs_row_metadata(m)
 
   expect_equal(meta$individual,  c("ind1", "ind1", "ind2", "ind2"))
   expect_equal(meta$chromosome,  c("1", "2", "1", "2"))
   expect_equal(meta$row,         1:4)
-})
-
-test_that("build_row_metadata handles plain individual names (localGEBV format) with NA chromosomes", {
-  m    <- make_lgebv_fitness_matrix()
-  meta <- build_row_metadata(m)
-
-  expect_equal(meta$individual, paste0("ind", 1:3))
-  expect_true(all(is.na(meta$chromosome)))
-  expect_equal(meta$row, 1:3)
 })
 
 
@@ -153,7 +144,7 @@ test_that("fitness_localGEBV selfing scores higher than no_selfing when self-pai
 
 test_that("fitness_OHS no_self_unique_individuals only scores cross-individual chromosome pairs", {
   m    <- make_ohs_fitness_matrix()
-  meta <- build_row_metadata(m)
+  meta <- build_ohs_row_metadata(m)
   fn   <- fitness_OHS(m, meta,  maximize = TRUE, strategy = "no_self_unique_individuals")
 
   # B1 best cross-pair: ind1_1 + ind2_2 = 5+1 = 6.0
@@ -163,7 +154,7 @@ test_that("fitness_OHS no_self_unique_individuals only scores cross-individual c
 
 test_that("fitness_OHS self_no_duplicate_chromosomes allows same-individual cross-chromosome pairs", {
   m    <- make_ohs_fitness_matrix()
-  meta <- build_row_metadata(m)
+  meta <- build_ohs_row_metadata(m)
   fn   <- fitness_OHS(m, meta, maximize = TRUE, strategy = "self_no_duplicate_chromosomes")
 
   # B1 best pair: ind1_1 + ind1_2 = 5+4 = 9.0 (same individual, different chromosomes)
@@ -173,7 +164,7 @@ test_that("fitness_OHS self_no_duplicate_chromosomes allows same-individual cros
 
 test_that("fitness_OHS self_allow_duplicate_chromosomes allows a chromosome paired with itself", {
   m    <- make_ohs_fitness_matrix()
-  meta <- build_row_metadata(m)
+  meta <- build_ohs_row_metadata(m)
   fn   <- fitness_OHS(m, meta, maximize = TRUE, strategy = "self_allow_duplicate_chromosomes")
 
   # B1 best pair: ind1_1 x ind1_1 = 5+5 = 10.0
@@ -183,7 +174,7 @@ test_that("fitness_OHS self_allow_duplicate_chromosomes allows a chromosome pair
 
 test_that("fitness_OHS scores increase from most to least restrictive strategy", {
   m    <- make_ohs_fitness_matrix()
-  meta <- build_row_metadata(m)
+  meta <- build_ohs_row_metadata(m)
 
   no_self    <- fitness_OHS(m, meta, maximize = TRUE, "no_self_unique_individuals")(c(1, 2))
   self_cross <- fitness_OHS(m, meta, maximize = TRUE, "self_no_duplicate_chromosomes")(c(1, 2))
@@ -202,7 +193,7 @@ test_that("fitness_OHS scores exactly double fitness_localGEBV when chromosomes 
   # OHS version: expand each individual into 2 identical chromosomes
   m_ohs <- m_lgebv[rep(seq_len(nrow(m_lgebv)), each = 2), ]
   rownames(m_ohs) <- paste0(rep(rownames(m_lgebv), each = 2), "_", rep(1:2, nrow(m_lgebv)))
-  meta_ohs <- build_row_metadata(m_ohs)
+  meta_ohs <- build_ohs_row_metadata(m_ohs)
 
   fn_lgebv <- fitness_localGEBV(m_lgebv, maximize = TRUE, strategy = "no_selfing")
   fn_ohs   <- fitness_OHS(m_ohs, meta_ohs, maximize = TRUE, strategy = "no_self_unique_individuals")
