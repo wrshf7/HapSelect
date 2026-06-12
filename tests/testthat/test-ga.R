@@ -220,11 +220,11 @@ test_that("local_gebv_parent_selection returns correct list structure", {
     monitor        = FALSE
   )
 
-  expect_named(result, c("GA", "One_Solution"))
-  expect_named(result$One_Solution, c("Index", "Individual"))
-  expect_equal(nrow(result$One_Solution), 3)
-  expect_true(all(result$One_Solution$Index %in% 1:5))
-  expect_true(all(result$One_Solution$Individual %in% paste0("ind", 1:5)))
+  expect_named(result, c("GA", "selected_founders"))
+  expect_named(result$selected_founders, c("indices", "individuals"))
+  expect_equal(nrow(result$selected_founders), 3)
+  expect_true(all(result$selected_founders$indices %in% 1:5))
+  expect_true(all(result$selected_founders$individuals %in% paste0("ind", 1:5)))
 })
 
 test_that("local_gebv_parent_selection runs without error for the selfing strategy", {
@@ -263,12 +263,12 @@ test_that("ohs_parent_selection returns correct list structure with individual-l
     monitor        = FALSE
   )
 
-  expect_named(result, c("GA", "One_Solution"))
-  expect_named(result$One_Solution, c("Index", "Individual"))
-  expect_equal(nrow(result$One_Solution), 3)
+  expect_named(result, c("GA", "selected_founders"))
+  expect_named(result$selected_founders, c("indices", "individuals"))
+  expect_equal(nrow(result$selected_founders), 3)
   # Indices refer to unique individuals (1-4), not chromosome rows (1-8)
-  expect_true(all(result$One_Solution$Index %in% 1:4))
-  expect_true(all(result$One_Solution$Individual %in% paste0("ind", 1:4)))
+  expect_true(all(result$selected_founders$indices %in% 1:4))
+  expect_true(all(result$selected_founders$individuals %in% paste0("ind", 1:4)))
 })
 
 test_that("ohs_parent_selection runs without error for all three strategies", {

@@ -922,9 +922,9 @@ local_gebv_parent_selection <- function(
 
   unique_individuals <- row.names(effect_matrix)
 
-  One_Solution = data.frame(
-    Index = solution,
-    Individual = unique_individuals[solution]
+  selected_founders = data.frame(
+    indices     = solution,
+    individuals = unique_individuals[solution]
   )
 
   #modify outputs if minimization is specified
@@ -937,8 +937,7 @@ local_gebv_parent_selection <- function(
     ga_result@summary = -ga_result@summary
   }
 
-  return_obj = list(GA = ga_result, One_Solution = One_Solution)
-  return(return_obj)
+  return(list(GA = ga_result, selected_founders = selected_founders))
 }
 
 ########################################################
@@ -1007,15 +1006,14 @@ ohs_parent_selection <- function(
     solution <- solution[1, ]
   }
 
+  # Map solution indices back to individual identifiers
   solution <- sort(as.integer(solution))
+  unique_individuals <- sort(unique(row_metadata$individual))
 
-  unique_individuals <- unique(
-    row_metadata$individual
-  )
-
-  One_Solution = data.frame(
-    Index = solution,
-    Individual = unique_individuals[solution]
+  # Create a data frame of selected founders with their corresponding individual identifiers
+  selected_founders = data.frame(
+    indices     = solution,
+    individuals = unique_individuals[solution]
   )
 
   #modify outputs if minimization is specified
@@ -1029,6 +1027,5 @@ ohs_parent_selection <- function(
     ga_result@summary = -ga_result@summary
   }
 
-  return_obj = list(GA = ga_result, One_Solution = One_Solution)
-  return(return_obj)
+  return(list(GA = ga_result, selected_founders = selected_founders))
 }
