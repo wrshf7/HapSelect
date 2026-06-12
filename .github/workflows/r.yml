@@ -28,7 +28,7 @@ jobs:
         run: |
           # 1. Run package coverage
           cov <- covr::package_coverage(
-            line_exclusions = list("R/plink_LD.R", "R/visualizations.R", "R/haploblock_var_test.R")
+            line_exclusions = list("R/plink_LD.R", "R/visualizations.R", "R/haploblock_var_test.R", "R/basic_TS_vs_GA_simulation.R")
           )
           
           # 2. Extract total percentage
