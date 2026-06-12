@@ -456,8 +456,8 @@ localGEBV_vs_TS_simulation = function(
     stop("alpha must contain 4 numeric values between 0 and 1.")
   }
 
-  GA_parents_names <- GA_output$One_Solution$Individual
-  GA_parents_indices <- GA_output$One_Solution$Index
+  GA_parents_names <- GA_output$selected_founders$individuals
+  GA_parents_indices <- GA_output$selected_founders$indices
 
   num_GA_parents <- length(GA_parents_indices)
 
@@ -604,7 +604,7 @@ OHS_vs_TS_simulation = function(
 
 
   # ---- GA parents now by NAME ----
-  GA_parent_names <- GA_output$One_Solution$Individual
+  GA_parent_names <- GA_output$selected_founders$individuals
 
   if(is.null(num_TS_parents)){
     num_TS_parents <- length(GA_parent_names)

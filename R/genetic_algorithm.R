@@ -27,6 +27,12 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
 
   #select blocks based on which parameter was not null - a set number
   if(!is.null(n)){
+    # Check if n exceeds the number of available blocks
+    if(n > nrow(haploblocks_df)) {
+      stop("n exceeds the number of available blocks.")
+    }
+
+    # subset the top n blocks and corresponding rows in the effect matrix
     haploblocks_df = haploblocks_df[1:n, ]
     block_id = haploblocks_df$Block_ID
     haploblock_obj$Haploblocks_GA = haploblocks_df
@@ -46,7 +52,7 @@ select_top_blocks = function(haploblock_obj, n = NULL, perc_total = NULL, perc_o
     block_id = haploblocks_df$Block_ID
     haploblock_obj$Haploblocks_GA = haploblocks_df
     haploblock_obj$Haplotype_Effect_Matrix_GA = as.data.frame(t(haploblock_obj$Haplotype_Effect_Matrix[block_id, ]))
-  } else{
+  } else {
     stop("Please ensure only one of the selection methods is specified as non-NULL and is an appropriate numeric value.")
   }
 
@@ -106,7 +112,7 @@ custom_monitor <- function(obj, maximize = TRUE){
       obj@iter,
       best,
       mean_fit,
-      sd(obj@fitness, na.rm = TRUE)
+      sd_fit
     )
   )
 }
@@ -127,35 +133,24 @@ get_block_matrix <- function(obj) {
   }
 }
 
-
-build_row_metadata <- function(effect_matrix){
-
+# Build row metadata for the effect matrix, assuming row names are in the format "individual_chromosome".
+# Used for ohs fitness function to map from selected individuals to their corresponding chromosome rows.
+build_ohs_row_metadata <- function(effect_matrix){
   rn <- rownames(effect_matrix)
 
-  # OHS format
-  if(any(grepl("_[0-9]+$", rn))){
+  # Split row names into individual and chromosome components
+  parts <- strsplit(rn, "_")
+  
+  # Assumes the last part is the chromosome and the preceding parts form the individual identifier
+  individual <- vapply(parts, function(x) paste(x[-length(x)], collapse = "_"), character(1))
+  chromosome <- vapply(parts, function(x) x[length(x)], character(1))
 
-    individual <- sub("_[0-9]+$", "", rn)
-    chromosome  <- sub("^.*_([0-9]+)$", "\\1", rn)
-
-    data.frame(
-      row = seq_len(nrow(effect_matrix)),
-      individual = individual,
-      chromosome = chromosome,
-      stringsAsFactors = FALSE
-    )
-
-  } else {
-
-    # localGEBV format
-    data.frame(
-      row = seq_len(nrow(effect_matrix)),
-      individual = rn,
-      chromosome = NA,
-      stringsAsFactors = FALSE
-    )
-
-  }
+  data.frame(
+    row = seq_len(nrow(effect_matrix)),
+    individual = individual,
+    chromosome = chromosome,
+    stringsAsFactors = FALSE
+  )
 }
 
 #############################################################
@@ -304,7 +299,7 @@ build_row_metadata <- function(effect_matrix){
       out[i, ] <- sol
     }
 
-    out
+    return(out)
   }
 
   # crossover
@@ -636,7 +631,7 @@ fitness_localGEBV <- function(
     total_score <- 0
 
     #compute max progeny GEBV for each block
-    #for each block, evaluate each pair's fitness by averaging localGEBV (averaging across the 4 chromosomes)
+    #for each block, evaluate each pair's fitness by averaging localGEBV (mid-parent value across selected individuals)
     for(block in seq_len(ncol(selected))){
 
       vals <- selected[, block]
@@ -775,11 +770,11 @@ fitness_OHS <- function(
     row_metadata$row,
     row_metadata$individual
   )
-
+  
+  # Compute the fitness of a candidate founder subset under the OHS framework.
   function(selected_ind){
 
     # expand selected individuals into chromosomes
-
     selected_names <- names(individual_map)[selected_ind]
 
     selected_rows <- unlist(
@@ -789,7 +784,6 @@ fitness_OHS <- function(
     meta <- row_metadata[selected_rows, ]
 
     # chromosome pairings
-
     if(length(selected_rows) < 2){
       return(0)
     }
@@ -804,7 +798,6 @@ fitness_OHS <- function(
     combos <- t(combos)
 
     # optionally allow selfing
-
     if(strategy == "self_allow_duplicate_chromosomes"){
 
       self_pairs <- cbind(
@@ -819,7 +812,6 @@ fitness_OHS <- function(
     }
 
     # strategy filtering - depending on the strategy chosen
-
     r1 <- combos[,1]
     r2 <- combos[,2]
 
@@ -830,7 +822,6 @@ fitness_OHS <- function(
       meta$individual[r2]
 
     # strategy rules
-
     keep <- rep(TRUE, nrow(combos))
 
     if(strategy == "self_no_duplicate_chromosomes"){
@@ -844,24 +835,18 @@ fitness_OHS <- function(
     combos <- combos[keep, , drop = FALSE]
 
     # compute optimal score
-
     total_score <- 0
 
-    #edge case for
+    #edge case: no valid chromosome pairs after strategy filtering
     if(nrow(combos) == 0){
       return(total_score)
     }
 
-
     #compute pairwise chromosome localGEBV (addition of haplotype GEBV)
     for(block in seq_len(ncol(effect_matrix))){
 
-
-
       #pull out chromosomes of selected parents
       vals <- effect_matrix[selected_rows, block]
-
-
 
       #for each valid chromosome combo (based on filtering above), compute haplo sum
       #currently limited to diploid! This is a point of future expansion.
@@ -902,7 +887,6 @@ local_gebv_parent_selection <- function(
     get_effect_matrix(haploblock_obj)
   )
 
-
   fitness_fn <- fitness_localGEBV(
     effect_matrix = effect_matrix,
     strategy = strategy,
@@ -928,14 +912,13 @@ local_gebv_parent_selection <- function(
     solution <- solution[1, ]
   }
 
-
   solution <- sort(as.integer(solution))
 
-  unique_individuals <- row.names(effect_matrix)
+  unique_individuals <- rownames(effect_matrix)
 
-  One_Solution = data.frame(
-    Index = solution,
-    Individual = unique_individuals[solution]
+  selected_founders = data.frame(
+    indices     = solution,
+    individuals = unique_individuals[solution]
   )
 
   #modify outputs if minimization is specified
@@ -948,8 +931,7 @@ local_gebv_parent_selection <- function(
     ga_result@summary = -ga_result@summary
   }
 
-  return_obj = list(GA = ga_result, One_Solution = One_Solution)
-  return(return_obj)
+  return(list(GA = ga_result, selected_founders = selected_founders))
 }
 
 ########################################################
@@ -984,7 +966,7 @@ ohs_parent_selection <- function(
     get_effect_matrix(haploblock_obj)
   )
 
-  row_metadata <- build_row_metadata(
+  row_metadata <- build_ohs_row_metadata(
     effect_matrix
   )
 
@@ -1018,15 +1000,14 @@ ohs_parent_selection <- function(
     solution <- solution[1, ]
   }
 
+  # Map solution indices back to individual identifiers
   solution <- sort(as.integer(solution))
+  unique_individuals <- sort(unique(row_metadata$individual))
 
-  unique_individuals <- unique(
-    row_metadata$individual
-  )
-
-  One_Solution = data.frame(
-    Index = solution,
-    Individual = unique_individuals[solution]
+  # Create a data frame of selected founders with their corresponding individual identifiers
+  selected_founders = data.frame(
+    indices     = solution,
+    individuals = unique_individuals[solution]
   )
 
   #modify outputs if minimization is specified
@@ -1040,6 +1021,5 @@ ohs_parent_selection <- function(
     ga_result@summary = -ga_result@summary
   }
 
-  return_obj = list(GA = ga_result, One_Solution = One_Solution)
-  return(return_obj)
+  return(list(GA = ga_result, selected_founders = selected_founders))
 }

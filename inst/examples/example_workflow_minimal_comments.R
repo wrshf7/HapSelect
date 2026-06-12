@@ -180,7 +180,7 @@ GA_output = genetic_algorithm(localGEBV = haploblock_obj$Haplotype_Effect_Matrix
                               run = 150, selfing = FALSE, pmutation = 0.2, pcrossover = 0.8, pelite = 0.5)
 
 #one unique set of parents - other solutions may exist, see the GA_output$GA@solution object for other potential sets of parents with the same fitness
-GA_output$One_Solution
+GA_output$selected_founders
 
 #basic simulation of GA vs TS selected parents and PCA plot
 
