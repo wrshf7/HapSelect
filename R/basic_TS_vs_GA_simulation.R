@@ -97,7 +97,8 @@ delete_sim_files = function(file_list){
 
 # simulation function
 run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
-                                num_cross_per_gen, num_GA_parents, num_TS_parents){
+                                num_cross_per_gen, num_GA_parents, num_TS_parents,
+                                maximize){
 
   #tracking
   mean_BV_GA = list()
@@ -118,7 +119,7 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
     current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
     mean_BV_GA[[rep]] = sim_gens(num_gen = num_gen, init = init,
                                  num_parents = num_GA_parents, num_cross_per_gen = num_cross_per_gen,
-                                 current_pop = current_pop)
+                                 current_pop = current_pop, maximize = maximize)
   }
 
   groups = see.existing.groups()$Group
@@ -140,7 +141,7 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
     current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
     mean_BV_TS[[rep]] = sim_gens(num_gen = num_gen, init = init,
                                  num_parents = num_TS_parents, num_cross_per_gen = num_cross_per_gen,
-                                 current_pop = current_pop)
+                                 current_pop = current_pop, maximize = maximize)
   }
 
   groups = see.existing.groups()$Group
@@ -182,7 +183,7 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 }
 
 # main function to run the simulation for specified number of generations
-sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop){
+sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, maximize){
   mean_BV = c()
   for(gen in seq_len(num_gen)){
     # Record mean BV of current population
@@ -191,7 +192,10 @@ sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop){
     # Select top parents by GEBV
     selected = genomicSimulation::break.group.by.GEBV(
       current_pop,
-      number = num_parents
+      number = num_parents,
+      #if maximizing is TRUE, then selecting by low should be FALSE
+      #if maximize is FALSE, then select by low should be TRUE
+      low.score.best = !maximize
     )
 
     # Generate next generation (1000 offspring)
@@ -425,6 +429,7 @@ localGEBV_vs_TS_simulation = function(
     num_cross_per_gen = 1000,
     num_TS_parents = NULL,
     mean_adjust = TRUE,
+    maximize = TRUE,
     max_cM_chr = 100,
     PCA = TRUE,
     colors = c("green", "#d95f02", "#A01FF0", "gray80"),
@@ -438,6 +443,11 @@ localGEBV_vs_TS_simulation = function(
 
   #check the number of crosses per generation
   if(length(num_gen) >1  || anyNA(as.numeric(num_gen))) stop("The num_gen value must be a single numeric and cannot be NA!")
+
+  #check maximize is specified correctly
+  if(length(maximize) != 1 || any(is.na(maximize)) || any(is.null(maximize)) || any(!is.logical(maximize))){
+    stop("Please ensure the maximize argument is only specified as TRUE or FALSE.")
+  }
 
   #check number of colors
   if(
@@ -486,7 +496,13 @@ localGEBV_vs_TS_simulation = function(
 
   GEBV <- genotype_matrix_centered %*% marker_effects[,2]
   GEBV <- cbind(GEBV, 1:nrow(GEBV))
-  GEBV <- GEBV[order(GEBV[,1], decreasing=TRUE), ]
+
+  #sort based on selecting for min or max
+  if(maximize){
+    GEBV <- GEBV[order(GEBV[,1], decreasing=TRUE), ]
+  } else{
+    GEBV <- GEBV[order(GEBV[,1], decreasing=FALSE), ]
+  }
 
   TS_indices <- GEBV[1:num_TS_parents,2]
 
@@ -528,7 +544,8 @@ localGEBV_vs_TS_simulation = function(
     num_sim_reps,
     num_cross_per_gen,
     num_GA_parents,
-    num_TS_parents
+    num_TS_parents,
+    maximize = maximize
   )
 
   delete_sim_files(temp_files)
@@ -552,10 +569,12 @@ localGEBV_vs_TS_simulation = function(
     return(list(
       Simulation_Plot = sim_plot,
       PCA_Plot = PCA_list$PCA_plot,
+      Simulation_Summary = summary_df,
       PCA_df = PCA_list$PCA_df
     ))
   } else {
-    return(sim_plot)
+    return(list(Simulation_Plot = sim_plot,
+           Simulation_Summary = summary_df))
   }
 }
 
@@ -571,6 +590,7 @@ OHS_vs_TS_simulation = function(
     num_cross_per_gen = 1000,
     num_TS_parents = NULL,
     mean_adjust = TRUE,
+    maximize = TRUE,
     max_cM_chr = 100,
     PCA = TRUE,
     colors = c("green", "#d95f02", "#A01FF0", "gray80"),
@@ -584,6 +604,11 @@ OHS_vs_TS_simulation = function(
 
   #check the number of crosses per generation
   if(length(num_gen) >1  || anyNA(as.numeric(num_gen))) stop("The num_gen value must be a single numeric and cannot be NA!")
+
+  #check maximize is specified correctly
+  if(length(maximize) != 1 || any(is.na(maximize)) || any(is.null(maximize)) || any(!is.logical(maximize))){
+    stop("Please ensure the maximize argument is only specified as TRUE or FALSE.")
+  }
 
   #check number of colors
   if(
@@ -627,7 +652,13 @@ OHS_vs_TS_simulation = function(
 
   GEBV <- t(dosage_matrix) %*% marker_effects[,2]
   GEBV <- cbind(GEBV, 1:nrow(GEBV))
-  GEBV <- GEBV[order(GEBV[,1], decreasing=TRUE), ]
+
+  #sort based on selecting for min or max
+  if(maximize){
+    GEBV <- GEBV[order(GEBV[,1], decreasing=TRUE), ]
+  } else{
+    GEBV <- GEBV[order(GEBV[,1], decreasing=FALSE), ]
+  }
 
   TS_parent_names <- rownames(GEBV)[1:num_TS_parents]
 
@@ -671,7 +702,8 @@ OHS_vs_TS_simulation = function(
     num_sim_reps,
     num_cross_per_gen,
     ncol(GA_geno),
-    ncol(TS_geno)
+    ncol(TS_geno),
+    maximize = maximize
   )
 
   delete_sim_files(temp_files)
@@ -708,9 +740,13 @@ OHS_vs_TS_simulation = function(
     return(list(
       Simulation_Plot = sim_plot,
       PCA_Plot = PCA_list$PCA_plot,
+      Simulation_Summary = summary_df,
       PCA_df = PCA_list$PCA_df
     ))
   } else {
-    return(sim_plot)
+    return(list(
+      Simulation_Plot = sim_plot,
+      Simulation_Summary = summary_df
+    ))
   }
 }

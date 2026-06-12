@@ -140,17 +140,18 @@ build_ohs_row_metadata <- function(effect_matrix){
 
   # Split row names into individual and chromosome components
   parts <- strsplit(rn, "_")
-  
+
   # Assumes the last part is the chromosome and the preceding parts form the individual identifier
   individual <- vapply(parts, function(x) paste(x[-length(x)], collapse = "_"), character(1))
   chromosome <- vapply(parts, function(x) x[length(x)], character(1))
 
-  data.frame(
+  metadata = data.frame(
     row = seq_len(nrow(effect_matrix)),
     individual = individual,
     chromosome = chromosome,
     stringsAsFactors = FALSE
   )
+  return(metadata)
 }
 
 #############################################################
@@ -770,7 +771,7 @@ fitness_OHS <- function(
     row_metadata$row,
     row_metadata$individual
   )
-  
+
   # Compute the fitness of a candidate founder subset under the OHS framework.
   function(selected_ind){
 
@@ -883,6 +884,11 @@ local_gebv_parent_selection <- function(
     type = "localGEBV"
   )
 
+  #check maximize is specified correctly
+  if(length(maximize) != 1 || any(is.na(maximize)) || any(is.null(maximize)) || any(!is.logical(maximize))){
+    stop("Please ensure the maximize argument is only specified as TRUE or FALSE.")
+  }
+
   effect_matrix <- as.matrix(
     get_effect_matrix(haploblock_obj)
   )
@@ -961,6 +967,11 @@ ohs_parent_selection <- function(
     strategy,
     type = "OHS"
   )
+
+  #check maximize is specified correctly
+  if(length(maximize) != 1 || any(is.na(maximize)) || any(is.null(maximize)) || any(!is.logical(maximize))){
+    stop("Please ensure the maximize argument is only specified as TRUE or FALSE.")
+  }
 
   effect_matrix <- as.matrix(
     get_effect_matrix(haploblock_obj)
