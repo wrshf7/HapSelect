@@ -135,7 +135,7 @@ get_block_matrix <- function(obj) {
 
 # Build row metadata for the effect matrix, assuming row names are in the format "individual_chromosome".
 # Used for ohs fitness function to map from selected individuals to their corresponding chromosome rows.
-build_ohs_row_metadata <- function(effect_matrix){
+build_haplotype_row_metadata <- function(effect_matrix){
   rn <- rownames(effect_matrix)
 
   # Split row names into individual and chromosome components
@@ -977,7 +977,7 @@ haplotype_parent_selection <- function(
     get_effect_matrix(haploblock_obj)
   )
 
-  row_metadata <- build_ohs_row_metadata(
+  row_metadata <- build_haplotype_row_metadata(
     effect_matrix
   )
 
