@@ -37,17 +37,17 @@ make_lgebv_fitness_matrix <- function() {
 #
 # Selecting both individuals, the strategy controls which chromosome pairs are valid:
 #
-# no_self_unique_individuals (cross-individual only: ind1 vs ind2)
+# OHS (cross-individual only: ind1 vs ind2)
 #   B1: max(5+1, 5+1, 4+1, 4+1) = 6.0   B2: max(0.1+3, 0.1+4, 0.1+3, 0.1+4) = 4.1
 #   total = 10.1
 #
-# self_no_duplicate_chromosomes (also allows same-individual cross-chromosome pairs)
+# Hybrid (also allows same-individual cross-chromosome pairs)
 #   adds (ind1_1, ind1_2) and (ind2_1, ind2_2)
 #   B1: max now includes 5+4=9  -> max = 9.0
 #   B2: max now includes 3+4=7  -> max = 7.0
 #   total = 16.0
 #
-# self_allow_duplicate_chromosomes (also allows each chromosome paired with itself)
+# OPV (also allows each chromosome paired with itself)
 #   adds (ind1_1,ind1_1)=10, (ind1_2,ind1_2)=8, (ind2_1,ind2_1)=2, (ind2_2,ind2_2)=2
 #   B1: max = 10.0   B2: adds (ind2_2,ind2_2)=8  -> max = 8.0
 #   total = 18.0
@@ -254,7 +254,7 @@ test_that("haplotype_parent_selection returns correct list structure with indivi
   set.seed(42)
   result <- haplotype_parent_selection(
     haploblock_obj = obj,
-    strategy       = "no_self_unique_individuals",
+    strategy       = "OHS",
     n_founders     = 3,
     popSize        = 20,
     maxiter        = 50,
