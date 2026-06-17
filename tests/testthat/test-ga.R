@@ -27,7 +27,7 @@ make_lgebv_fitness_matrix <- function() {
   )
 }
 
-# 2-individual (2 chromosomes each), 2-block matrix for OHS fitness unit tests.
+# 2-individual (2 chromosomes each), 2-block matrix for haplotype fitness unit tests.
 #
 #              B1   B2
 # ind1_1       5.0  0.1
@@ -51,7 +51,7 @@ make_lgebv_fitness_matrix <- function() {
 #   adds (ind1_1,ind1_1)=10, (ind1_2,ind1_2)=8, (ind2_1,ind2_1)=2, (ind2_2,ind2_2)=2
 #   B1: max = 10.0   B2: adds (ind2_2,ind2_2)=8  -> max = 8.0
 #   total = 18.0
-make_ohs_fitness_matrix <- function() {
+make_haplotype_fitness_matrix <- function() {
   matrix(
     c(5.0, 4.0, 1.0, 1.0,
       0.1, 0.1, 3.0, 4.0),
@@ -72,9 +72,9 @@ make_lgebv_obj <- function() {
   list(Haplotype_Effect_Matrix_GA = as.data.frame(m))
 }
 
-# Minimal haploblock_obj for ohs_parent_selection integration tests.
+# Minimal haploblock_obj for haplotype_parent_selection integration tests.
 # 4 individuals x 2 chromosomes each, 3 blocks.
-make_ohs_obj <- function() {
+make_haplotype_obj <- function() {
   set.seed(1)
   rnames <- paste0(rep(paste0("ind", 1:4), each = 2), "_", rep(1:2, 4))
   m <- matrix(rnorm(8 * 3), nrow = 8, ncol = 3,
@@ -83,11 +83,11 @@ make_ohs_obj <- function() {
 }
 
 
-# Tests: build_ohs_row_metadata ---------------------------------------------------
+# Tests: build_haplotype_row_metadata ---------------------------------------------------
 
-test_that("build_ohs_row_metadata parses OHS-format row names into individual and chromosome columns", {
-  m    <- make_ohs_fitness_matrix()
-  meta <- build_ohs_row_metadata(m)
+test_that("build_haplotype_row_metadata parses haplotype-format row names into individual and chromosome columns", {
+  m    <- make_haplotype_fitness_matrix()
+  meta <- build_haplotype_row_metadata(m)
 
   expect_equal(meta$individual,  c("ind1", "ind1", "ind2", "ind2"))
   expect_equal(meta$chromosome,  c("1", "2", "1", "2"))
@@ -101,20 +101,20 @@ test_that("validate_strategy rejects an invalid localGEBV strategy", {
   expect_error(validate_strategy("bad_strategy", type = "localGEBV"))
 })
 
-test_that("validate_strategy rejects an OHS strategy name passed to localGEBV", {
-  expect_error(validate_strategy("no_self_unique_individuals", type = "localGEBV"))
+test_that("validate_strategy rejects an haplotype strategy name passed to localGEBV", {
+  expect_error(validate_strategy("OHS", type = "localGEBV"))
 })
 
-test_that("validate_strategy rejects an invalid OHS strategy", {
+test_that("validate_strategy rejects an invalid haplotype strategy", {
   expect_error(validate_strategy("selfing", type = "OHS"))
 })
 
 test_that("validate_strategy accepts all valid strategies without error", {
   expect_no_error(validate_strategy("selfing",    type = "localGEBV"))
   expect_no_error(validate_strategy("no_selfing", type = "localGEBV"))
-  expect_no_error(validate_strategy("self_allow_duplicate_chromosomes", type = "OHS"))
-  expect_no_error(validate_strategy("self_no_duplicate_chromosomes",    type = "OHS"))
-  expect_no_error(validate_strategy("no_self_unique_individuals",       type = "OHS"))
+  expect_no_error(validate_strategy("OPV",        type = "Haplotype"))
+  expect_no_error(validate_strategy("Hybrid",     type = "Haplotype"))
+  expect_no_error(validate_strategy("OHS",        type = "Haplotype"))
 })
 
 
@@ -142,64 +142,64 @@ test_that("fitness_localGEBV selfing scores higher than no_selfing when self-pai
 
 # Tests: fitness_OHS ----------------------------------------------------------
 
-test_that("fitness_OHS no_self_unique_individuals only scores cross-individual chromosome pairs", {
-  m    <- make_ohs_fitness_matrix()
-  meta <- build_ohs_row_metadata(m)
-  fn   <- fitness_OHS(m, meta,  maximize = TRUE, strategy = "no_self_unique_individuals")
+test_that("fitness_haplotype OHS only scores cross-individual chromosome pairs", {
+  m    <- make_haplotype_fitness_matrix()
+  meta <- build_haplotype_row_metadata(m)
+  fn   <- fitness_haplotype(m, meta,  maximize = TRUE, strategy = "OHS")
 
   # B1 best cross-pair: ind1_1 + ind2_2 = 5+1 = 6.0
   # B2 best cross-pair: ind1_2 + ind2_2 = 0.1+4 = 4.1
   expect_equal(fn(c(1, 2)), 10.1)
 })
 
-test_that("fitness_OHS self_no_duplicate_chromosomes allows same-individual cross-chromosome pairs", {
-  m    <- make_ohs_fitness_matrix()
-  meta <- build_ohs_row_metadata(m)
-  fn   <- fitness_OHS(m, meta, maximize = TRUE, strategy = "self_no_duplicate_chromosomes")
+test_that("fitness_haplotype hybrid allows same-individual cross-chromosome pairs", {
+  m    <- make_haplotype_fitness_matrix()
+  meta <- build_haplotype_row_metadata(m)
+  fn   <- fitness_haplotype(m, meta, maximize = TRUE, strategy = "Hybrid")
 
   # B1 best pair: ind1_1 + ind1_2 = 5+4 = 9.0 (same individual, different chromosomes)
   # B2 best pair: ind2_1 + ind2_2 = 3+4 = 7.0
   expect_equal(fn(c(1, 2)), 16.0)
 })
 
-test_that("fitness_OHS self_allow_duplicate_chromosomes allows a chromosome paired with itself", {
-  m    <- make_ohs_fitness_matrix()
-  meta <- build_ohs_row_metadata(m)
-  fn   <- fitness_OHS(m, meta, maximize = TRUE, strategy = "self_allow_duplicate_chromosomes")
+test_that("fitness_haplotype OPV allows a chromosome paired with itself", {
+  m    <- make_haplotype_fitness_matrix()
+  meta <- build_haplotype_row_metadata(m)
+  fn   <- fitness_haplotype(m, meta, maximize = TRUE, strategy = "OPV")
 
   # B1 best pair: ind1_1 x ind1_1 = 5+5 = 10.0
   # B2 best pair: ind2_2 x ind2_2 = 4+4 = 8.0
   expect_equal(fn(c(1, 2)), 18.0)
 })
 
-test_that("fitness_OHS scores increase from most to least restrictive strategy", {
-  m    <- make_ohs_fitness_matrix()
-  meta <- build_ohs_row_metadata(m)
+test_that("fitness_haplotype scores increase from most to least restrictive strategy", {
+  m    <- make_haplotype_fitness_matrix()
+  meta <- build_haplotype_row_metadata(m)
 
-  no_self    <- fitness_OHS(m, meta, maximize = TRUE, "no_self_unique_individuals")(c(1, 2))
-  self_cross <- fitness_OHS(m, meta, maximize = TRUE, "self_no_duplicate_chromosomes")(c(1, 2))
-  self_all   <- fitness_OHS(m, meta, maximize = TRUE, "self_allow_duplicate_chromosomes")(c(1, 2))
+  no_self    <- fitness_haplotype(m, meta, maximize = TRUE, "OHS")(c(1, 2))
+  self_cross <- fitness_haplotype(m, meta, maximize = TRUE, "Hybrid")(c(1, 2))
+  self_all   <- fitness_haplotype(m, meta, maximize = TRUE, "OPV")(c(1, 2))
 
   expect_lt(no_self, self_cross)
   expect_lt(self_cross, self_all)
 })
 
 
-# Tests: fitness_localGEBV vs fitness_OHS -------------------------------------
+# Tests: fitness_localGEBV vs fitness_haplotype -------------------------------------
 
-test_that("fitness_OHS scores exactly double fitness_localGEBV when chromosomes duplicate individual values", {
+test_that("fitness_haplotype scores exactly double fitness_localGEBV when chromosomes duplicate individual values", {
   m_lgebv <- make_lgebv_fitness_matrix()
 
-  # OHS version: expand each individual into 2 identical chromosomes
-  m_ohs <- m_lgebv[rep(seq_len(nrow(m_lgebv)), each = 2), ]
-  rownames(m_ohs) <- paste0(rep(rownames(m_lgebv), each = 2), "_", rep(1:2, nrow(m_lgebv)))
-  meta_ohs <- build_ohs_row_metadata(m_ohs)
+  # haplotype version: expand each individual into 2 identical chromosomes
+  m_haplotype <- m_lgebv[rep(seq_len(nrow(m_lgebv)), each = 2), ]
+  rownames(m_haplotype) <- paste0(rep(rownames(m_lgebv), each = 2), "_", rep(1:2, nrow(m_lgebv)))
+  meta_haplotype <- build_haplotype_row_metadata(m_haplotype)
 
   fn_lgebv <- fitness_localGEBV(m_lgebv, maximize = TRUE, strategy = "no_selfing")
-  fn_ohs   <- fitness_OHS(m_ohs, meta_ohs, maximize = TRUE, strategy = "no_self_unique_individuals")
+  fn_haplotype   <- fitness_haplotype(m_haplotype, meta_haplotype, maximize = TRUE, strategy = "OHS")
 
-  # localGEBV uses (a+b)/2; OHS uses a+b — so OHS total = localGEBV total * 2
-  expect_equal(fn_ohs(c(1, 2, 3)), fn_lgebv(c(1, 2, 3)) * 2)
+  # localGEBV uses (a+b)/2; haplotype uses a+b — so haplotype total = localGEBV total * 2
+  expect_equal(fn_haplotype(c(1, 2, 3)), fn_lgebv(c(1, 2, 3)) * 2)
 })
 
 
@@ -246,13 +246,13 @@ test_that("local_gebv_parent_selection runs without error for the selfing strate
 })
 
 
-# Tests: ohs_parent_selection -------------------------------------------------
+# Tests: haplotype_parent_selection -------------------------------------------------
 
-test_that("ohs_parent_selection returns correct list structure with individual-level indices", {
-  obj <- make_ohs_obj()
+test_that("haplotype_parent_selection returns correct list structure with individual-level indices", {
+  obj <- make_haplotype_obj()
 
   set.seed(42)
-  result <- ohs_parent_selection(
+  result <- haplotype_parent_selection(
     haploblock_obj = obj,
     strategy       = "no_self_unique_individuals",
     n_founders     = 3,
@@ -271,15 +271,15 @@ test_that("ohs_parent_selection returns correct list structure with individual-l
   expect_true(all(result$selected_founders$individuals %in% paste0("ind", 1:4)))
 })
 
-test_that("ohs_parent_selection runs without error for all three strategies", {
-  obj <- make_ohs_obj()
+test_that("haplotype_parent_selection runs without error for all three strategies", {
+  obj <- make_haplotype_obj()
 
-  for (strat in c("self_allow_duplicate_chromosomes",
-                  "self_no_duplicate_chromosomes",
-                  "no_self_unique_individuals")) {
+  for (strat in c("OPV",
+                  "Hybrid",
+                  "OHS")) {
     set.seed(42)
     expect_no_error(
-      ohs_parent_selection(
+      haplotype_parent_selection(
         haploblock_obj = obj,
         strategy       = strat,
         n_founders     = 3,

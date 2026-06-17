@@ -579,7 +579,7 @@ localGEBV_vs_TS_simulation = function(
 }
 
 
-OHS_vs_TS_simulation = function(
+Haplotype_vs_TS_simulation = function(
     GA_output,
     geno_phased,
     marker_effects,

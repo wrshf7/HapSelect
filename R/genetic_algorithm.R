@@ -69,20 +69,20 @@ VALID_STRATEGIES_LOCAL <- c(
 )
 
 VALID_STRATEGIES_OHS <- c(
-  "self_allow_duplicate_chromosomes",
-  "self_no_duplicate_chromosomes",
-  "no_self_unique_individuals"
+  "OPV",
+  "Hybrid",
+  "OHS"
 )
 
-validate_strategy <- function(strategy, type = c("localGEBV", "OHS")) {
+validate_strategy <- function(strategy, type = c("localGEBV", "Haplotype")) {
   type <- match.arg(type)
 
   if (type == "localGEBV" && !(strategy %in% VALID_STRATEGIES_LOCAL)) {
     stop("Invalid strategy for localGEBV")
   }
 
-  if (type == "OHS" && !(strategy %in% VALID_STRATEGIES_OHS)) {
-    stop("Invalid strategy for OHS")
+  if (type == "Haplotype" && !(strategy %in% VALID_STRATEGIES_OHS)) {
+    stop("Invalid strategy for Haplotype")
   }
 }
 
@@ -746,14 +746,14 @@ fitness_localGEBV <- function(
 #   The GA therefore searches for founder subsets that maximize
 #   genome-wide haplotype potential.
 
-fitness_OHS <- function(
+fitness_haplotype <- function(
     effect_matrix,
     row_metadata,
     maximize = TRUE,
     strategy = c(
-      "self_allow_duplicate_chromosomes",
-      "self_no_duplicate_chromosomes",
-      "no_self_unique_individuals"
+      "OPV",
+      "Hybrid",
+      "OHS"
     )
 ){
 
@@ -799,7 +799,7 @@ fitness_OHS <- function(
     combos <- t(combos)
 
     # optionally allow selfing
-    if(strategy == "self_allow_duplicate_chromosomes"){
+    if(strategy == "OPV"){
 
       self_pairs <- cbind(
         seq_along(selected_rows),
@@ -825,11 +825,11 @@ fitness_OHS <- function(
     # strategy rules
     keep <- rep(TRUE, nrow(combos))
 
-    if(strategy == "self_no_duplicate_chromosomes"){
+    if(strategy == "Hybrid"){
       keep <- !same_row
     }
 
-    if(strategy == "no_self_unique_individuals"){
+    if(strategy == "OHS"){
       keep <- !same_individual
     }
 
@@ -941,15 +941,15 @@ local_gebv_parent_selection <- function(
 }
 
 ########################################################
-#####             7. OHS wrapper                   #####
+#####             7. Haplotype wrapper                   #####
 ########################################################
 
-ohs_parent_selection <- function(
+haplotype_parent_selection <- function(
     haploblock_obj,
     strategy = c(
-      "self_allow_duplicate_chromosomes",
-      "self_no_duplicate_chromosomes",
-      "no_self_unique_individuals"
+      "OPV",
+      "Hybrid",
+      "OHS"
     ),
     n_founders = 20,
     popSize = 100,
@@ -965,7 +965,7 @@ ohs_parent_selection <- function(
 
   validate_strategy(
     strategy,
-    type = "OHS"
+    type = "Haplotype"
   )
 
   #check maximize is specified correctly
@@ -985,7 +985,7 @@ ohs_parent_selection <- function(
     unique(row_metadata$individual)
   )
 
-  fitness_fn <- fitness_OHS(
+  fitness_fn <- fitness_haplotype(
     effect_matrix = effect_matrix,
     row_metadata = row_metadata,
     maximize = maximize,
