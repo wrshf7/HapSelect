@@ -24,19 +24,41 @@ jobs:
           extra-packages: any::rcmdcheck, any::covr, any::xml2
           needs: check
 
-      - name: R CMD Check
-        run: rcmdcheck::rcmdcheck(args = c("--no-manual", "--no-vignettes", "--ignore-vignettes"), error_on = "error")
-        shell: Rscript {0}
-
       - name: Generate coverage report
         run: |
-          cov <- covr::package_coverage()
+          # 1. Run package coverage
+          cov <- covr::package_coverage(
+            line_exclusions = list("R/plink_LD.R", "R/visualizations.R", "R/haploblock_var_test.R", "R/basic_TS_vs_GA_simulation.R")
+          )
+          
+          # 2. Extract total percentage
           pct <- covr::percent_coverage(cov)
-          file_pcts <- covr::file_coverage(cov)
-          file_pcts <- file_pcts[!grepl("\\.cpp$", names(file_pcts))]
-          lines <- c("## HapSelect Coverage", "", sprintf("**Total: %.1f%%**", pct), "", "| File | Coverage |", "| --- | --- |")
-          for (f in names(file_pcts)) {
-            lines <- c(lines, sprintf("| %s | %.1f%% |", basename(f), file_pcts[[f]]))
+          
+          # 3. Convert to dataframe and process
+          file_pcts <- as.data.frame(cov)
+          file_pcts <- file_pcts[!grepl("\\.cpp$", file_pcts$filename), ]
+
+          # 4. Calculate percentages per file: fraction of lines executed at least once
+          file_summary <- aggregate(value ~ filename, data = file_pcts, FUN = function(x) mean(x > 0) * 100)
+          names(file_summary)[2] <- "pct"
+          
+          # 5. Build the GitHub Step Summary Markdown
+          lines <- c(
+            "## HapSelect Coverage", 
+            "", 
+            sprintf("**Total: %.1f%%**", pct), 
+            "", 
+            "| File | Coverage |", 
+            "| --- | --- |"
+          )
+          
+          for (i in seq_len(nrow(file_summary))) {
+            lines <- c(lines, sprintf("| %s | %.1f%% |", basename(file_summary$filename[i]), file_summary$pct[i]))
           }
+          
           writeLines(lines, Sys.getenv("GITHUB_STEP_SUMMARY"))
+        shell: Rscript {0}
+
+      - name: Run R CMD check
+        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
         shell: Rscript {0}

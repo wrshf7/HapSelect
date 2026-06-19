@@ -176,16 +176,27 @@ nrow(haploblock_obj$Haploblocks_GA)
 
 
 #run the GA
-GA_output = genetic_algorithm(localGEBV = haploblock_obj$Haplotype_Effect_Matrix_GA, n_founders = 20, popSize = 10, maxiter = 300,
-                              run = 150, selfing = FALSE, pmutation = 0.2, pcrossover = 0.8, pelite = 0.5)
+GA_output = ohs_parent_selection(haploblock_obj = haploblock_obj, n_founders = 20, popSize = 10, maxiter = 300,
+                              run = 150, pmutation = 0.2, pcrossover = 0.8, maximize = TRUE, monitor = TRUE, strategy = "no_self_unique_individuals")
 
 #one unique set of parents - other solutions may exist, see the GA_output$GA@solution object for other potential sets of parents with the same fitness
-GA_output$One_Solution
+GA_output$selected_founders
+
+#run the GA
+GA_output = local_gebv_parent_selection(haploblock_obj = haploblock_obj, n_founders = 20, popSize = 10, maxiter = 300,
+                                 run = 150, pmutation = 0.2, pcrossover = 0.8, maximize = TRUE, monitor = TRUE, strategy = "no_selfing")
+
+#one unique set of parents - other solutions may exist, see the GA_output$GA@solution object for other potential sets of parents with the same fitness
+GA_output$selected_founders
 
 #basic simulation of GA vs TS selected parents and PCA plot
 
-parent_sln_obj = GA_vs_TS_simulation(GA_output = GA_output, geno = geno, marker_effects = marker_effects, map = map, genetic_map_position = NULL, num_gen = 50, num_sim_reps = 30,
-                               num_cross_per_gen = 1000, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE,
+parent_sln_obj = OHS_vs_TS_simulation(GA_output = GA_output, geno_phased = geno_phased, marker_effects = marker_effects, map = map, genetic_map_position = NULL, num_gen = 50,
+                                      num_sim_reps = 10, num_cross_per_gen = 100, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE, maximize = TRUE,
+                                      colors = c("green", "#d95f02", "#A01FF0", "gray80"), alpha = c(1,1,1,0.5) )
+
+parent_sln_obj = localGEBV_vs_TS_simulation(GA_output = GA_output, geno = geno, marker_effects = marker_effects, map = map, genetic_map_position = NULL, num_gen = 50, num_sim_reps = 10,
+                               num_cross_per_gen = 100, num_TS_parents = NULL, mean_adjust = TRUE, max_cM_chr = 100, PCA = TRUE, maximize = TRUE,
                                colors = c("green", "#d95f02", "#A01FF0", "gray80"), alpha = c(1,1,1,0.5))
 
 parent_sln_obj$Simulation_Plot
