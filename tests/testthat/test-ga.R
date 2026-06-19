@@ -41,7 +41,7 @@ make_lgebv_fitness_matrix <- function() {
 #   B1: max(5+1, 5+1, 4+1, 4+1) = 6.0   B2: max(0.1+3, 0.1+4, 0.1+3, 0.1+4) = 4.1
 #   total = 10.1
 #
-# Hybrid (also allows same-individual cross-chromosome pairs)
+# Haploid_OHS (also allows same-individual cross-chromosome pairs)
 #   adds (ind1_1, ind1_2) and (ind2_1, ind2_2)
 #   B1: max now includes 5+4=9  -> max = 9.0
 #   B2: max now includes 3+4=7  -> max = 7.0
@@ -113,7 +113,7 @@ test_that("validate_strategy accepts all valid strategies without error", {
   expect_no_error(validate_strategy("selfing",    type = "localGEBV"))
   expect_no_error(validate_strategy("no_selfing", type = "localGEBV"))
   expect_no_error(validate_strategy("OPV",        type = "Haplotype"))
-  expect_no_error(validate_strategy("Hybrid",     type = "Haplotype"))
+  expect_no_error(validate_strategy("Haploid_OHS",     type = "Haplotype"))
   expect_no_error(validate_strategy("OHS",        type = "Haplotype"))
 })
 
@@ -155,7 +155,7 @@ test_that("fitness_haplotype OHS only scores cross-individual chromosome pairs",
 test_that("fitness_haplotype hybrid allows same-individual cross-chromosome pairs", {
   m    <- make_haplotype_fitness_matrix()
   meta <- build_haplotype_row_metadata(m)
-  fn   <- fitness_haplotype(m, meta, maximize = TRUE, strategy = "Hybrid")
+  fn   <- fitness_haplotype(m, meta, maximize = TRUE, strategy = "Haploid_OHS")
 
   # B1 best pair: ind1_1 + ind1_2 = 5+4 = 9.0 (same individual, different chromosomes)
   # B2 best pair: ind2_1 + ind2_2 = 3+4 = 7.0
@@ -177,7 +177,7 @@ test_that("fitness_haplotype scores increase from most to least restrictive stra
   meta <- build_haplotype_row_metadata(m)
 
   no_self    <- fitness_haplotype(m, meta, maximize = TRUE, "OHS")(c(1, 2))
-  self_cross <- fitness_haplotype(m, meta, maximize = TRUE, "Hybrid")(c(1, 2))
+  self_cross <- fitness_haplotype(m, meta, maximize = TRUE, "Haploid_OHS")(c(1, 2))
   self_all   <- fitness_haplotype(m, meta, maximize = TRUE, "OPV")(c(1, 2))
 
   expect_lt(no_self, self_cross)
@@ -275,7 +275,7 @@ test_that("haplotype_parent_selection runs without error for all three strategie
   obj <- make_haplotype_obj()
 
   for (strat in c("OPV",
-                  "Hybrid",
+                  "Haploid_OHS",
                   "OHS")) {
     set.seed(42)
     expect_no_error(

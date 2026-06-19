@@ -70,7 +70,7 @@ VALID_STRATEGIES_LOCAL <- c(
 
 VALID_STRATEGIES_OHS <- c(
   "OPV",
-  "Hybrid",
+  "Haploid_OHS",
   "OHS"
 )
 
@@ -752,7 +752,7 @@ fitness_haplotype <- function(
     maximize = TRUE,
     strategy = c(
       "OPV",
-      "Hybrid",
+      "Haploid_OHS",
       "OHS"
     )
 ){
@@ -825,7 +825,7 @@ fitness_haplotype <- function(
     # strategy rules
     keep <- rep(TRUE, nrow(combos))
 
-    if(strategy == "Hybrid"){
+    if(strategy == "Haploid_OHS"){
       keep <- !same_row
     }
 
@@ -948,7 +948,7 @@ haplotype_parent_selection <- function(
     haploblock_obj,
     strategy = c(
       "OPV",
-      "Hybrid",
+      "Haploid_OHS",
       "OHS"
     ),
     n_founders = 20,
