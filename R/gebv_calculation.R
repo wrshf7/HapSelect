@@ -729,7 +729,7 @@ check_haploblocks_df = function(haploblocks_df){
   }
 
   if(!any(grepl(";", haploblocks_df$Block))){
-    warning("Did not detect the ';' seperator in any blocks. Are all blocks single marker blocks? If not, please ensure you use the exact separator, otherwise extracting marker IDs for blocks will fail!")
+    warning("Did not detect the ';' separator in any blocks. Are all blocks single marker blocks? If not, please ensure you use the exact separator, otherwise extracting marker IDs for blocks will fail!")
   }
 
   split_blocks = strsplit(haploblocks_df$Block, ";")

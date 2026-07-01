@@ -279,7 +279,7 @@ build_haplotype_row_metadata <- function(effect_matrix){
     for(i in seq_along(parents)){
 
 
-      #extract theset of founders from the current pop to make a mutation
+      #extract the set of founders from the current pop to make a mutation
       sol <- object@population[parents[i], ]
 
       #choose a random individual in that population

@@ -39,8 +39,8 @@ The latest documentation for HapSelect is available on the **[HapSelect document
 | Genomic Prediction | Compute marker effects and prediction accuracy | `create_marker_effects_file()`, `cross_validation()` |
 | LocalGEBV | Estimate per-block breeding value per individual | `compute_local_GEBV()` |
 | Visualisation | Explore haploblock structure, localGEBV patterns | `plot_haploblocks()`, `plot_ld_decay()`, … |
-| Parent selection | Optimise founder set using a genetic algorithm | `genetic_algorithm()` |
-| Basic Simulation | Compare GA and TS parent performance over time | `GA_vs_TS_simulation()` |
+| Parent selection | Optimise founder set using a genetic algorithm | `local_gebv_parent_selection()`, `haplotype_parent_selection()` |
+| Basic Simulation | Compare GA and TS parent performance over time | `localGEBV_vs_TS_simulation()`, `Haplotype_vs_TS_simulation()` |
 
 For full documentation, workflow guides, an in-depth installation guide, and parameter details, see the **[HapSelect documentation site](https://wrshf7.github.io/HapSelect-Docs)**.
 
@@ -66,6 +66,6 @@ For details on contributing to this package, see [the development guide](DEVELOP
 
 ## Authors
 
-Will Shaffer, Zane Carter, Victor Papin, 
+Will Shaffer, Zane Carter, Victor Papin
 
 The University of Queensland

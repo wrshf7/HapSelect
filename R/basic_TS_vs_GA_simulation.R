@@ -16,7 +16,7 @@
 # max_cM_chr: default value of 100 used per chromosome. This argument is only used if genetic_map_position is not supplied.
 # colors: the colors of the GA selected, TS selected, GA/TS selected overlapping parents, and all other individuals
 
-# function to check compatability
+# function to check compatibility
 check_geno_marker_compatibility = function(geno, marker_effects, map){
 
   # Extract marker IDs
