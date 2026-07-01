@@ -16,7 +16,7 @@ check_file = function(map){
   if(!is.data.frame(map) || ncol(map) < 3){
     stop("map must be a data frame with at least 3 columns: SNP ID (column 1), chromosome (column 2, numeric), and position (column 3, numeric).")
   }
-  
+
   #make sure SNP ID are characters - if not make them characters and give a warning
   if(is.numeric(map[,1])){
     map[,1] = as.character(map[,1])
@@ -43,7 +43,7 @@ check_file = function(map){
 order_map = function(map){
   #check the files
   map = check_file(map)
-  colnames(map)[1:3] = c("SNP", "Chrom", "Position")
+  colnames(map)[1:3] = c("SNP", "Chromosome", "Position")
 
   #create a progress bar - might not be needed as it's so fast
   handlers("txtprogressbar")
