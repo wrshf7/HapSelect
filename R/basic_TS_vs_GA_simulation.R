@@ -652,7 +652,20 @@ Haplotype_vs_TS_simulation = function(
   colnames(dosage_matrix) <- colnames(phased_matrix)
   rownames(dosage_matrix) <- rownames(phased_matrix)
 
-  GEBV <- t(dosage_matrix) %*% marker_effects[,2]
+  dosage_matrix = cbind(geno_phased[,1:3], dosage_matrix)
+
+  if(mean_adjust){
+    genotype_matrix_centered <- center_genotypes(dosage_matrix)
+    genotype_matrix_centered <- t(genotype_matrix_centered[,4:ncol(genotype_matrix_centered)])
+    genotype_matrix_centered[is.na(genotype_matrix_centered)] = 0
+  } else {
+    genotype_matrix_centered <- t(genotype_matrix[,4:ncol(dosage_matrix)])
+    marker_means                          = colMeans(genotype_matrix_centered, na.rm = TRUE)
+    col_indices                           = which(is.na(genotype_matrix_centered), arr.ind = TRUE)
+    genotype_matrix_centered[col_indices] = marker_means[genotype_matrix_centered[, 2]]
+  }
+
+  GEBV <- genotype_matrix_centered %*% marker_effects[,2]
   GEBV <- cbind(GEBV, 1:nrow(GEBV))
 
   #sort based on selecting for min or max
