@@ -122,12 +122,12 @@ create_marker_effects_file = function(geno, BLUE, h2_method = c("VanRaden", "mar
 
   h2_method = match.arg(h2_method)
 
-  marker_solutions = solve_marker_effects(geno, BLUE, h2_method, ploidy)
+  marker_solutions = solve_marker_effects(geno, BLUE, h2_method, ploidy, mean_impute)
 
 
   prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, BLUE, mean_impute)
   cat(paste0("\nPrediction Accuracy (cor(GEBV, BLUE or deregressed BLUP or adj pheno)) is: ", round(prediction_accuracy,2)))
-C
+
   #output to return
   output_df = data.frame(
     SNP = geno[,1],
