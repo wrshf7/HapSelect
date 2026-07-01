@@ -32,6 +32,7 @@ Imports:
     furrr,
     future,
     GA,
+    genomicSimulation,
     ggplot2,
     progressr,
     purrr,
@@ -43,3 +44,5 @@ Suggests:
     covr,
     jsonlite,
     testthat (>= 3.0.0)
+Remotes:
+    vllrs/genomicSimulation
