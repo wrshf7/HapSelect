@@ -110,7 +110,7 @@ format_plink_ld = function(ld_path, bim){
     stop("One or more SNPs in the PLINK .ld output were not found in the .bim file.")
   }
 
-  # Look up the chromosone of each LD SNP pair
+  # Look up the chromosome of each LD SNP pair
   chrom1 = bim$Chrom[idx1]
   chrom2 = bim$Chrom[idx2]
 
@@ -135,7 +135,7 @@ format_plink_ld = function(ld_path, bim){
     stringsAsFactors = FALSE
   )
 
-  # Sort by chromosone, then loci
+  # Sort by chromosome, then loci
   ld_df = ld_df[order(ld_df$Chrom, ld_df$Locus1, ld_df$Locus2), ]
   row.names(ld_df) = NULL
 

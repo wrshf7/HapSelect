@@ -46,14 +46,14 @@ solve_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
   #checking to ensure the first column are snp marker names
   #I don't check all columns, but it's easy to update it if we should.
   if(!is.numeric(geno[,4]) | max(geno[,4], na.rm = TRUE) > 20 | min(geno[,4], na.rm = TRUE) < 0 | !is.character(geno[,1])){
-    stop("Ensure that columns 1:3 of the genotype file correspond to the map (SNP, Chromosome, Position), the SNP are characters, and columns 4:ncol(geno) are numeric values (only ploidy dosage values between 0 and 20 are accepted.")
+    stop("Ensure that columns 1:3 of the genotype file correspond to the map (SNP, Chromosome, Position), the SNP are characters, and columns 4:ncol(geno) are numeric values (only ploidy dosage values between 0 and 20 are accepted).")
   }
 
   if(mean_impute){
     geno = impute_geno(geno)
   }
 
-  #only select columns that appear in the phenotype file and tranpose the matrix. Rows are individuals
+  #only select columns that appear in the phenotype file and transpose the matrix. Rows are individuals
   #and columns are markers (Z matrix) to connect phenos to marker effects.
   geno_mat = t(geno[, BLUE[,1]])
 
@@ -95,7 +95,7 @@ solve_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
 compute_prediction_accuracy = function(geno, marker_effects, BLUE, mean_impute){
 
 
-  #only select columns that appear in the phenotype file and tranpose the matrix. Rows are individuals
+  #only select columns that appear in the phenotype file and transpose the matrix. Rows are individuals
   #and columns are markers (Z matrix) to connect phenos to marker effects.
   if(mean_impute){
     geno = impute_geno(geno)
@@ -103,7 +103,7 @@ compute_prediction_accuracy = function(geno, marker_effects, BLUE, mean_impute){
 
   geno_mat = t(geno[, BLUE[,1]])
 
-  #create a matrix of n individuals and columns equal to nubmer of markers
+  #create a matrix of n individuals and columns equal to number of markers
   #each column is a repeated vector of a given marker's mean
   geno_means = matrix(data = 1, nrow = nrow(geno_mat), ncol = 1) %*% t(colMeans(geno_mat))
 

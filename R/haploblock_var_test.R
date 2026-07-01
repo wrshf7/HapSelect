@@ -36,7 +36,7 @@ haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
     haploblocks = haploblock_obj$Haploblocks$Block_ID
 
     #compute effective marker number for each block
-    eff_markers = purrr:::map_vec(haploblocks, function(haploblock){
+    eff_markers = purrr::map_vec(haploblocks, function(haploblock){
 
       #extract markers
       markers = unlist(strsplit(haploblock_obj$Haploblocks[haploblock_obj$Haploblocks$Block_ID == haploblock, 1], ";"))
