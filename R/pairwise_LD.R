@@ -85,7 +85,7 @@ pairwise_ld = function(genotype_matrix, parallelize = TRUE){
         #call the ld_func() on the chromosome
         chromo_ld = ld_func(genotypes)
 
-        #once it's done, progres the progress bar and return the chromo data frame
+        #once it's done, progress the progress bar and return the chromo data frame
         p()
         return(chromo_ld)
       })
@@ -95,7 +95,7 @@ pairwise_ld = function(genotype_matrix, parallelize = TRUE){
         #call the ld_func() on the chromosome
         chromo_ld = ld_func(genotypes)
 
-        #once it's done, progres the progress bar and return the chromo data frame
+        #once it's done, progress the progress bar and return the chromo data frame
         p()
         return(chromo_ld)
       })
