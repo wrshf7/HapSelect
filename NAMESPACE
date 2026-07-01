@@ -11,6 +11,7 @@ import(ggplot2)
 import(progressr)
 import(purrr)
 import(rrBLUP)
+import(genomicSimulation)
 
 export(block_obj_to_df)
 export(block_summary)

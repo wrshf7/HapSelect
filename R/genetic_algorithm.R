@@ -639,7 +639,7 @@ fitness_localGEBV <- function(
 
       scores <- (vals[combos[,1]] + vals[combos[,2]]) / 2 # future spot to update for ploidy difference
 
-      total_score <- total_score + max(scores)
+      total_score <- total_score + max(scores, na.rm = TRUE)
     }
 
     total_score
@@ -853,7 +853,7 @@ fitness_haplotype <- function(
       #currently limited to diploid! This is a point of future expansion.
       scores <- vals[combos[,1]] + vals[combos[,2]] #eventually need to alter for polyploid
 
-      total_score <- total_score + max(scores)
+      total_score <- total_score + max(scores, na.rm = TRUE)
     }
 
     total_score

@@ -122,7 +122,7 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
                                  current_pop = current_pop, maximize = maximize)
   }
 
-  groups = see.existing.groups()$Group
+  groups = genomicSimulation::see.existing.groups()$Group
   for(group in groups){
     invisible(utils::capture.output(genomicSimulation::delete.group(group)))
 
@@ -144,7 +144,7 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
                                  current_pop = current_pop, maximize = maximize)
   }
 
-  groups = see.existing.groups()$Group
+  groups = genomicSimulation::see.existing.groups()$Group
   for(group in groups){
     invisible(utils::capture.output(genomicSimulation::delete.group(group)))
 
@@ -510,6 +510,8 @@ localGEBV_vs_TS_simulation = function(
 
   GA_geno <- genotype_matrix[GA_parents_indices, ]
   TS_geno <- genotype_matrix[TS_indices, ]
+  GA_geno <- data.frame(ID = rownames(GA_geno), GA_geno)
+  TS_geno <- data.frame(ID = rownames(TS_geno), TS_geno)
 
   # map handling unchanged
   if(is.null(genetic_map_position)){

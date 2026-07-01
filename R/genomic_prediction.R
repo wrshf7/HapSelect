@@ -2,17 +2,30 @@
 ##### Basic Genomic Prediction ######
 #####################################
 
+#function to impute missing genotypes for prediction:
+impute_geno = function(geno){
+  marker_means = rowMeans(geno[,4:ncol(geno)], na.rm = TRUE)
+  geno_imp <- geno
+
+  geno_mat <- as.matrix(geno_imp[, 4:ncol(geno_imp)])
+
+  na_idx <- which(is.na(geno_mat), arr.ind = TRUE)
+  geno_mat[na_idx] <- marker_means[na_idx[, 1]]
+
+  geno_imp[, 4:ncol(geno_imp)] <- geno_mat
+  return(geno_imp)
+}
+
+
 
 #function to check that all phenotypes have a corresponding genotype
-#I did not export this function as it is an internal call. But do I need to export it
-#for the package to "see" it?
 check_BLUE = function(BLUE, geno){
   check = all(BLUE[,1] %in% colnames(geno)[4:ncol(geno)])
   return(check)
 }
 
 #solve the marker effects
-solve_marker_effects = function(geno, BLUE, h2_method, ploidy){
+solve_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
 
   if(!is.data.frame(BLUE) || ncol(BLUE) < 2){
     stop("BLUE must be a data frame with at least 2 columns: individual ID (column 1, character) and a single adjusted phenotype, BLUE, or de-regressed BLUP (column 2, numeric).")
@@ -36,14 +49,16 @@ solve_marker_effects = function(geno, BLUE, h2_method, ploidy){
     stop("Ensure that columns 1:3 of the genotype file correspond to the map (SNP, Chromosome, Position), the SNP are characters, and columns 4:ncol(geno) are numeric values (only ploidy dosage values between 0 and 20 are accepted.")
   }
 
+  if(mean_impute){
+    geno = impute_geno(geno)
+  }
+
   #only select columns that appear in the phenotype file and tranpose the matrix. Rows are individuals
   #and columns are markers (Z matrix) to connect phenos to marker effects.
   geno_mat = t(geno[, BLUE[,1]])
 
   #allele frequencies
   means = colMeans(geno_mat, na.rm = TRUE)
-
-  ploidy = max(geno_mat)
 
   p = means / ploidy
 
@@ -77,11 +92,15 @@ solve_marker_effects = function(geno, BLUE, h2_method, ploidy){
 
 
 #compute model prediction accuracy
-compute_prediction_accuracy = function(geno, marker_effects, BLUE){
+compute_prediction_accuracy = function(geno, marker_effects, BLUE, mean_impute){
 
 
   #only select columns that appear in the phenotype file and tranpose the matrix. Rows are individuals
   #and columns are markers (Z matrix) to connect phenos to marker effects.
+  if(mean_impute){
+    geno = impute_geno(geno)
+  }
+
   geno_mat = t(geno[, BLUE[,1]])
 
   #create a matrix of n individuals and columns equal to nubmer of markers
@@ -99,25 +118,27 @@ compute_prediction_accuracy = function(geno, marker_effects, BLUE){
 }
 
 #obtain data frame needed for next steps
-create_marker_effects_file = function(geno, BLUE, h2_method = c("VanRaden", "marker_num"), ploidy = 2L){
+create_marker_effects_file = function(geno, BLUE, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
 
   h2_method = match.arg(h2_method)
 
   marker_solutions = solve_marker_effects(geno, BLUE, h2_method, ploidy)
 
 
-  prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, BLUE)
+  prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, BLUE, mean_impute)
   cat(paste0("\nPrediction Accuracy (cor(GEBV, BLUE or deregressed BLUP or adj pheno)) is: ", round(prediction_accuracy,2)))
-
+C
   #output to return
   output_df = data.frame(
     SNP = geno[,1],
     Effect = marker_solutions$u
   )
+
+  return(output_df)
 }
 
 #perform cross-validation to assess prediction accuracy
-n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRaden", "marker_num"), ploidy = 2L){
+n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
   if(nrow(BLUE) <= 200){
     warning("Trying to do CV on a small population size may not work well!\n")
   }
@@ -135,8 +156,8 @@ n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRad
     train_BLUE = BLUE[fold_id != fold, ]
     valid_BLUE = BLUE[fold_id == fold, ]
 
-    marker_solutions = solve_marker_effects(geno, train_BLUE, h2_method, ploidy)
-    prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE)
+    marker_solutions = solve_marker_effects(geno, train_BLUE, h2_method, ploidy, mean_impute)
+    prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE, mean_impute)
     return(prediction_accuracy)
   })
 
@@ -147,7 +168,7 @@ n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRad
   return(CV)
 }
 
-cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30, h2_method = c("VanRaden", "marker_num"), ploidy = 2L){
+cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
   if(nrow(BLUE) <= 200){
     warning("Trying to do CV on a small population size may not work well!\n")
   }
@@ -164,8 +185,8 @@ cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30, h2_method =
     train_BLUE = BLUE[id, ]
     valid_BLUE = BLUE[!(1:nrow(BLUE) %in% id), ]
 
-    marker_solutions = solve_marker_effects(geno, train_BLUE, h2_method, ploidy)
-    prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE)
+    marker_solutions = solve_marker_effects(geno, train_BLUE, h2_method, ploidy, mean_impute)
+    prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE, mean_impute)
     return(prediction_accuracy)
   })
 
