@@ -871,8 +871,8 @@ local_gebv_parent_selection <- function(
     popSize = 100,
     maxiter = 500,
     run = 50,
-    pmutation = 0.1,
-    pcrossover = 0.1,
+    pmutation = 0.6,
+    pcrossover = 0.6,
     maximize = TRUE,
     monitor = TRUE
 ){
@@ -955,8 +955,8 @@ haplotype_parent_selection <- function(
     popSize = 100,
     maxiter = 500,
     run = 50,
-    pmutation = 0.1,
-    pcrossover = 0.1,
+    pmutation = 0.6,
+    pcrossover = 0.6,
     maximize = TRUE,
     monitor = TRUE
 ){

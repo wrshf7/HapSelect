@@ -63,7 +63,7 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
   effects_df = data.frame(
     Effect = marker_effects,
     Chr = as.factor(chr),
-    Pos = pos
+    Pos = as.numeric(pos)
   ) %>% arrange(as.numeric(as.character(Chr)), Pos)
 
   #compute cumulative distance and other chromosome info for the plot
@@ -95,7 +95,7 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
 
 #####Haplotype effects plot######
 
-.effects_plot_engine = function(haplo_obj, colors, pos_type, y_label){
+.effects_plot_engine = function(haplo_obj, colors, pos_type, y_label, y_var){
   if(!is.list(haplo_obj)){
     stop("'haplo_obj' must be a haploblock object.")
   }
@@ -118,6 +118,10 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
     left_join(haploblocks, by = "Block_ID") %>%
     mutate(Chr = as.factor(Chrom))
 
+  if(!y_var %in% names(haplotypes)){
+    stop(sprintf("Column '%s' not found.", y_var))
+  }
+
   if(pos_type == "midpoint"){
     haplotypes$Pos = ( (haplotypes$Start_Pos + haplotypes$End_Pos)/2 )
   } else { haplotypes$Pos = haplotypes$Start_Pos }
@@ -136,7 +140,7 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
 
   color_vec = rep(colors, length.out = length(unique(haplotypes$Chr)))
 
-  ggplot(haplotypes, aes(x = Cum_Pos, y = Haplotype_Effect, color = Chr)) +
+  ggplot(haplotypes, aes(x = Cum_Pos, y = .data[[y_var]], color = Chr)) +
     geom_point(size = 2, alpha = 0.3) +
     theme_cowplot() +
     scale_color_manual(values = color_vec) +
@@ -146,11 +150,25 @@ marker_effects_plot = function(marker_effects, chr, pos, colors = c("#A01FF0", "
 }
 
 unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
-  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique Haplotype Effects")
+  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique Haplotype Effects", y_var = "Haplotype_Effect")
 }
 
 unique_localGEBV_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
-  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique localGEBV Effects")
+  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique localGEBV Effects", y_var = "localGEBV_Effect")
+}
+
+block_variance_manhattan_plot = function(
+    haplo_obj,
+    colors = c("#A01FF0", "#A7A8AA"),
+    pos_type = c("midpoint", "start")){
+
+  .effects_plot_engine(
+    haplo_obj = haplo_obj,
+    colors = colors,
+    pos_type = match.arg(pos_type),
+    y_var = "Block_Var",
+    y_label = "Block Variance"
+  )
 }
 
 ######Funnel Plot Creation######
@@ -566,4 +584,73 @@ plot_ld_decay = function(
     )
   }
   return(ld_decay_plot)
+}
+
+
+###### GA Progress Plot ######
+GA_progress_plot <- function(
+    parent_selection_object,
+    max_color = "#A01FF0",
+    mean_color = "#A01FF0",
+    ribbon_color = "#A01FF0",
+    ribbon_alpha = 0.35,
+    max_linewidth = 1.2,
+    mean_linewidth = 0.8
+) {
+
+
+  if (!is.numeric(ribbon_alpha) || length(ribbon_alpha) != 1 || is.na(ribbon_alpha)) {
+    stop("Ribbon alpha must be a single numeric value.", call. = FALSE)
+  }
+
+  if (ribbon_alpha < 0 || ribbon_alpha > 1) {
+    stop("Ribbon alpha must be between 0 and 1.", call. = FALSE)
+  }
+
+  .check_color(max_color)
+  .check_color(mean_color)
+  .check_color(ribbon_color)
+
+  GA_summary <- as.data.frame(parent_selection_object$GA@summary) %>%
+
+
+    dplyr::transmute(
+      Iteration = seq_len(n()),
+      Max = max,
+      Mean = mean,
+      Lower = q1,
+      Upper = q3
+    )
+
+  max_label <- GA_summary %>%
+    dplyr::slice_tail(n = 1) %>%
+    dplyr::mutate(xpos = Iteration)
+
+  ggplot2::ggplot(GA_summary, ggplot2::aes(x = Iteration)) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(ymin = Lower, ymax = Upper),
+      fill = ribbon_color,
+      alpha = ribbon_alpha
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = Mean),
+      colour = mean_color,
+      linewidth = mean_linewidth
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = Max),
+      colour = max_color,
+      linewidth = max_linewidth
+    ) +
+    ggplot2::geom_text(
+      data = max_label,
+      ggplot2::aes(x = xpos, y = Max, label = round(Max, 3)),
+      hjust = 1.1,
+      vjust = -0.5,
+      size = 3
+    ) +
+    ggplot2::labs(
+      x = "Generation",
+      y = "Ultimate GEBV of Populations"
+    ) + theme_cowplot()
 }
