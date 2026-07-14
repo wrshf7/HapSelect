@@ -13,6 +13,11 @@ HapSelect is an R package for haplotype-based genomic selection. It partitions t
 ## Documentation
 The latest documentation for HapSelect is available on the **[HapSelect documentation site](https://wrshf7.github.io/HapSelect-Docs)**.
 
+## Citation
+[Comparison of localGEBV and Optimal Haplotype Stacking Fitness Functions using a Novel R Package: HapSelect](https://doi.org/10.64898/2026.07.08.737160)
+
+<p style="margin-left: 2em; text-indent: -2em;">Shaffer, Will, Victor Papin, Zane Carter, Stephanie M Brunner, Jingyang Tong, Kira Villiers, Hannah Robinson, Kai Voss-Fels, Ben J Hayes, Lee Hickey, and Eric Dinglasan. 2026. Comparison of localGEBV and Optimal Haplotype Stacking fitness functions using a novel R package: HapSelect. BioRxiv. doi:https://doi.org/10.64898/2026.07.08.737160</p>
+
 ## Important Papers
 <strong>localGEBV Method and Haploblock Formation:</strong><br>
 [Shaffer et al. 2025. Local genomic estimates provide a powerful framework for haplotype discovery. bioRxiv (under review).](https://doi.org/10.1101/2025.08.28.672830)
@@ -34,31 +39,46 @@ The latest documentation for HapSelect is available on the **[HapSelect document
 
 | Stage | What it does | Key function |
 |-------|-------------|--------------|
-| Pairwise LD | Compute r² between all marker pairs | `pairwise_ld()` / `plink_pairwise_ld()` |
-| Haploblocking | Partition genome into LD-based haploblocks | `def_blocks()` |
-| Genomic Prediction | Compute marker effects and prediction accuracy | `create_marker_effects_file()`, `cross_validation()` |
-| LocalGEBV | Estimate per-block breeding value per individual | `compute_local_GEBV()` |
-| Visualisation | Explore haploblock structure, localGEBV patterns | `plot_haploblocks()`, `plot_ld_decay()`, … |
-| Parent selection | Optimise founder set using a genetic algorithm | `local_gebv_parent_selection()`, `haplotype_parent_selection()` |
-| Basic Simulation | Compare GA and TS parent performance over time | `localGEBV_vs_TS_simulation()`, `Haplotype_vs_TS_simulation()` |
+| Pairwise LD | Compute r² between all marker pairs | `pairwise_ld()` / `plink_pairwise_ld_geno()` |
+| Haploblocking | Partition genome into LD-based haploblocks | `def_blocks()` / `block_obj_to_df()`|
+| Genomic Prediction | Compute marker effects and prediction accuracy | `create_marker_effects_file()`, `n_fold_cross_validation()`, `cross_validation()` |
+| LocalGEBV/Haplotype Effect | Estimate per-block GEBV or haplotype effects per individual | `compute_local_GEBV()` / `compute_haplotype_effects()` |
+| Visualisation | Explore haploblock structure, localGEBV/haplotype patterns, and more | `plot_haploblocks()`, `plot_ld_decay()`, … |
+| Parent selection | Optimise parent selection using a genetic algorithm | `local_gebv_parent_selection()` / `haplotype_parent_selection()`|
+| Basic Simulation | Compare GA and TS parent performance over time and explore how diversity is captured using the [genomicSimulation](https://github.com/vllrs/genomicSimulation) R package. | `localGEBV_vs_TS_simulation()` / `Haplotype_vs_TS_simulation()` |
+
 
 For full documentation, workflow guides, an in-depth installation guide, and parameter details, see the **[HapSelect documentation site](https://wrshf7.github.io/HapSelect-Docs)**.
 
-## Install
+## Installation
+1. Extract the `.zip` file
+
+2. Ensure [RTools 4.5](https://cran.r-project.org/bin/windows/Rtools/rtools45/rtools.html) (Windows), [genomicSimulation](https://github.com/vllrs/genomicSimulation), and (optionally) [PLINK 1.9](https://www.cog-genomics.org/plink/) are installed.
+   - Non-Windows machines must have a C++ compiler compatible with the Rcpp R package.
+   - This is usually detected automatically and shipped natively with Linux/Unix and macOS systems.
+
+3. Either set the working directory in R with: `setwd("path/to/unzipped/file/HapSelect")` or record the full path to the unzipped directory.
+
+<strong>Install with DevTools:</strong><br>
 
 ```r
 install.packages("devtools")
-devtools::install("path/to/unzipped/HapSelect")
+
+#providing the full directory
+devtools::install("path/to/unzipped/file/HapSelect")
 ```
 
-> **Note:** [genomicSimulation](https://github.com/vllrs/genomicSimulation) and [RTools 4.5](https://cran.r-project.org/) must be installed separately. PLINK 1.9 is optional but recommended for LD computation. See the [installation guide](https://wrshf7.github.io/HapSelect-Docs/installation) for details.
-
-## Run Example Workflow
+<strong>Install with base R command:</strong><br>
 
 ```r
-library(HapSelect)
-source(system.file("examples", "example_workflow_minimal_comments.R", package = "HapSelect"))
+#setting the working directory
+setwd("/path/to/unzipped/file/HapSelect")
+install.packages("HapSelect", type = "source", repos = NULL)
 ```
+
+!!! warning
+    [genomicSimulation](https://github.com/vllrs/genomicSimulation), [PLINK 1.9](https://www.cog-genomics.org/plink/), and [RTools 4.5](https://cran.r-project.org/bin/windows/Rtools/rtools45/rtools.html) (for Windows users) dependencies must be installed separately. Alternatively run the helper installation scripts to install all needed software. The package is usable without PLINK 1.9, but related functions that call PLINK will fail with an error. See [Installation](./installation.md) for more details.
+
 
 ## Contributing
 
