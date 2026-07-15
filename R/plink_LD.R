@@ -14,7 +14,8 @@ find_plink = function() {
 
     stop(
       "PLINK executable not found at the expected Windows location: ", plink_path, "\n",
-      "Run inst/scripts/install/install_windows.ps1, or ensure PLINK is installed in that directory."
+      "Run inst/scripts/install/install_windows.ps1, or ensure PLINK is installed in that directory.", "\n",
+      "You MUST install PLINK as an actual program or create and place the executable in this folder!"
     )
   }
 

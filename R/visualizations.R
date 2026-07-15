@@ -154,8 +154,10 @@ unique_haplo_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA")
 }
 
 unique_localGEBV_effects_plot = function(haplo_obj, colors = c("#A01FF0", "#A7A8AA"), pos_type = c("midpoint", "start")){
-  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique localGEBV Effects", y_var = "localGEBV_Effect")
+  .effects_plot_engine(haplo_obj, colors, match.arg(pos_type), y_label = "Unique localGEBV Effects", y_var = "Haplotype_Effect")
 }
+
+#### Block Variance Plot ####
 
 block_variance_manhattan_plot = function(
     haplo_obj,
