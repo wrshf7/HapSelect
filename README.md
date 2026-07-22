@@ -66,9 +66,8 @@ For full documentation, workflow guides, an in-depth installation guide, and par
 setwd("/path/to/unzipped/file/HapSelect-1.0.1/")
 install.packages("HapSelect-1.0.1", type = "source", repos = NULL)
 ```
-
-!!! warning
-    [genomicSimulation](https://github.com/vllrs/genomicSimulation), [PLINK 1.9](https://www.cog-genomics.org/plink/), and [RTools 4.5](https://cran.r-project.org/bin/windows/Rtools/rtools45/rtools.html) (for Windows users) dependencies must be installed separately. Alternatively run the helper installation scripts to install all needed software. The package is usable without PLINK 1.9, but related functions that call PLINK will fail with an error. See [Installation](./installation.md) for more details.
+> [!IMPORTANT]
+> [genomicSimulation](https://github.com/vllrs/genomicSimulation), [PLINK 1.9](https://www.cog-genomics.org/plink/), and [RTools 4.5](https://cran.r-project.org/bin/windows/Rtools/rtools45/rtools.html) (for Windows users) dependencies must be installed separately. Alternatively run the helper installation scripts to install all needed software. The package is usable without PLINK 1.9, but related functions that call PLINK will fail with an error. See [Installation](./installation.md) for more details.
 
 
 ## Contributing
