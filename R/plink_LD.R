@@ -1,33 +1,226 @@
 #######################################
-##### PLINK-backed LD calculation #####
+### PLINK Installation Verification ###
 #######################################
 
-##### Resolve the PLINK executable path #####
-find_plink = function() {
+##### Name of the PLINK executable on this platform #####
+plink_exe_name = function() {
+  # On Windows, the executable is plink.exe; on other platforms it is just plink.
   if (.Platform$OS.type == "windows") {
-    install_dir = file.path(Sys.getenv("USERPROFILE", unset = ""), "bin")
-    plink_path = file.path(install_dir, "plink.exe")
-
-    if (nzchar(plink_path) && file.exists(plink_path)) {
-      return(plink_path)
-    }
-
-    stop(
-      "PLINK executable not found at the expected Windows location: ", plink_path, "\n",
-      "Run inst/scripts/install/install_windows.ps1, or ensure PLINK is installed in that directory.", "\n",
-      "You MUST install PLINK as an actual program or create and place the executable in this folder!"
-    )
+    return("plink.exe")
+  } else {
+    return("plink")
   }
-
-  plink = Sys.which("plink")
-  if (nzchar(plink)) {
-    return(plink)
-  }
-
-  stop("PLINK executable not found.")
 }
 
-##### Run PLINK with Windows-aware executable resolution #####
+##### Directory the install scripts place PLINK in #####
+# install_linux.sh / install_mac.sh uses $HOME/bin
+# install_windows.ps1 uses %USERPROFILE%\bin.
+plink_default_install_dir = function() {
+  home = if (.Platform$OS.type == "windows") {
+    Sys.getenv("USERPROFILE", unset = Sys.getenv("HOME", unset = ""))
+  } else {
+    Sys.getenv("HOME", unset = "")
+  }
+
+  # If the home directory is not set, return an empty string so the caller can skip this candidate.
+  if (!nzchar(home)) {
+    return("")
+  }
+
+  file.path(home, "bin")
+}
+
+##### Puts a path into a canonical form for comparison and display #####
+# The same file can be reached through different spellings, especially on Windows: mixed
+# / and \ separators, differing case, and short 8.3 components such as PROGRA~1. Paths are
+# normalised before being compared or shown to the user.
+normalize_plink_path = function(path) {
+  # winslash is ignored on non-Windows platforms
+  normalizePath(path, winslash = "\\", mustWork = FALSE)
+}
+
+##### Normalise a user-supplied PLINK location to an executable path #####
+# Accepts either the executable itself or the directory containing it.
+resolve_plink_candidate = function(path) {
+  path = path.expand(path)
+
+  # Add the executable name if the user supplied a directory. 
+  if (dir.exists(path)) {
+    path = file.path(path, plink_exe_name())
+  }
+
+  return(normalize_plink_path(path))
+}
+
+##### Identify an executable by running "plink --version" #####
+# PuTTY's SSH link tool is also called plink, so an executable of the right name is not
+# necessarily PLINK. Checking the version banner distinguishes them and rules out
+# unsupported PLINK versions at the same time:
+#   PLINK 1.9 -> "PLINK v1.90b7.2..."
+#   PLINK 2.0 -> "PLINK v2.00a5.10LM..."
+#   PuTTY     -> "plink: Release 0.83..."
+# Returns a list with the outcome ("ok", "wrong_version" or "not_plink") and the banner
+identify_plink = function(path) {
+  # Get the version output, suppressing warnings and errors
+  version_output = tryCatch(
+    suppressWarnings(
+      system2(path, "--version", stdout = TRUE, stderr = TRUE, timeout = 30)
+    ),
+    error = function(e) character()
+  )
+
+  # Describe whatever was run using its version line, preferring a line that names PLINK
+  # because some versions print a decorative header first
+  banner = version_output[nzchar(trimws(version_output))]
+  named = banner[grepl("PLINK", banner, fixed = TRUE)]
+  # Use the first non-empty line of output as the banner, preferring a line that names PLINK
+  banner = if (length(named) > 0) trimws(named[1]) else if (length(banner) > 0) trimws(banner[1]) else "no output"
+
+  # HapSelect requires PLINK 1.9, whose banners all begin "PLINK v1.9"
+  if (any(grepl("PLINK v1.9", version_output, fixed = TRUE))) {
+    return(list(status = "ok", banner = banner))
+  }
+
+  # Any other PLINK, such as 2.0 or the much older 1.07, is the wrong version
+  if (any(grepl("PLINK", version_output, fixed = TRUE))) {
+    return(list(status = "wrong_version", banner = banner))
+  }
+
+  # Otherwise, the executable is not PLINK at all (e.g. PuTTY's plink.exe)s
+  list(status = "not_plink", banner = banner)
+}
+
+##### Describe a rejected candidate for use in an error or warning #####
+describe_plink_rejection = function(path, identified) {
+  reason = if (identified$status == "wrong_version") {
+    "PLINK version is wrong, HapSelect requires PLINK 1.9"
+  } else {
+    "This may not be PLINK, do you have PuTTY installed?"
+  }
+
+  paste0(path, "\n    ", identified$banner, "\n    ", reason)
+}
+
+##### Resolve an explicitly given PLINK location, or stop trying #####
+# Used for any path the user supplied, set through set_plink_path().
+# path: the plink executable, or the directory containing it.
+# consequence: completes the error message, describing what will not happen as a result.
+verify_plink_path = function(path, consequence) {
+  # Check the path is a single non-empty string
+  if (!is.character(path) || length(path) != 1 || !nzchar(path)) {
+    stop("The PLINK path must be a single non-empty character string.\n", consequence)
+  }
+
+  # Attempt to resolve the path to an executable
+  resolved = resolve_plink_candidate(path)
+
+  # Check the resolved path exists and is a file
+  if (!file.exists(resolved)) {
+    stop("No PLINK executable found at: ", resolved, "\n", consequence)
+  }
+
+  # Attempt to identify the executable
+  identified = identify_plink(resolved)
+
+  # If the identification is not ok, stop with a message describing what was found instead
+  if (identified$status != "ok") {
+    stop("The given PLINK executable is not PLINK 1.9:\n  ",
+         describe_plink_rejection(resolved, identified), "\n", consequence)
+  }
+
+  return(resolved)
+}
+
+##### Set the PLINK executable used by HapSelect for the rest of the session #####
+# path: the plink executable, or the directory containing it. Pass NULL to clear
+# the setting and fall back to automatic detection.
+set_plink_path = function(path = NULL) {
+  # Clear the setting if NULL is passed
+  if (is.null(path)) {
+    options(HapSelect.plink_path = NULL)
+    return(invisible(NULL))
+  }
+
+  # Resolve the path and verify it is a PLINK 1.9 executable, or stop with an error explaining the path was not updated.
+  resolved = verify_plink_path(
+    path,
+    "The PLINK path was not changed. Pass NULL to clear it and detect PLINK automatically."
+  )
+
+  # Set the option for the rest of the session
+  options(HapSelect.plink_path = resolved)
+  invisible(resolved)
+}
+
+##### Resolve the PLINK executable path #####
+# Resolution order, first hit wins:
+#   1. The path given to set_plink_path()
+#   2. The location used by the install scripts (~/bin)
+#   3. Automatic detection across the PATH, confirmed by running "plink --version"
+find_plink = function() {
+  configured = getOption("HapSelect.plink_path")
+
+  # Verified here as well for good measure, in case the installation was changed or upgraded after the path was set.
+  if (!is.null(configured)) {
+    return(verify_plink_path(
+      configured,
+      paste0("This is the PLINK path configured for HapSelect. Point HapSelect at a PLINK 1.9\n",
+             "installation with set_plink_path(), or clear the setting with set_plink_path(NULL)\n",
+             "to search for one automatically.")
+    ))
+  }
+
+  # Search the install location from the install scripts, then the PATH, for any executable named plink or plink.exe.
+  install_dir = plink_default_install_dir()
+  path_dirs = strsplit(Sys.getenv("PATH"), .Platform$path.sep, fixed = TRUE)[[1]]
+  search_dirs = c(install_dir, path_dirs)
+  candidates = file.path(search_dirs[nzchar(search_dirs)], plink_exe_name())
+  candidates = candidates[file.exists(candidates)]
+
+  # Normalize the candidate paths and remove duplicates, ignoring case on Windows.
+  candidates = normalize_plink_path(candidates)
+  keys = if (.Platform$OS.type == "windows") tolower(candidates) else candidates
+  candidates = candidates[!duplicated(keys)]
+
+  # Take the first candidate that identifies itself as PLINK 1.9, recording why the others
+  # were rejected so the error can explain what was found instead.
+  rejected = character()
+  for (candidate in candidates) {
+    identified = identify_plink(candidate)
+
+    # If a valid PLINK 1.9 executable was found, return it immediately.
+    if (identified$status == "ok") {
+      return(candidate)
+    }
+
+    # Add the candidate to the list of rejected executables, along with a description of why it was rejected.
+    rejected = c(rejected, describe_plink_rejection(candidate, identified))
+  }
+
+  # If no valid PLINK 1.9 executable was found, stop with an error message describing what was found instead.
+  stop(
+    if (length(rejected) > 0) {
+      paste0(
+        "No PLINK 1.9 installation was found. Executables named ", plink_exe_name(),
+        " were found,\nbut none of them is PLINK 1.9:\n  ",
+        paste(rejected, collapse = "\n  "), "\n"
+      )
+    } else {
+      paste0(
+        "PLINK executable not found.\n",
+        "Expected it in the install location (", file.path(install_dir, plink_exe_name()), ") or on the PATH.\n"
+      )
+    },
+    "Either run the installer for your platform in inst/scripts/install/, or point HapSelect at an\n",
+    "existing installation with set_plink_path(\"/path/to/", plink_exe_name(), "\")."
+  )
+}
+
+#######################################
+######## PLINK-Based Functions ########
+#######################################
+
+##### Run PLINK with platform-aware executable resolution #####
 call_plink = function(args, stdout = TRUE, stderr = TRUE) {
   system2(find_plink(), args = args, stdout = stdout, stderr = stderr)
 }
