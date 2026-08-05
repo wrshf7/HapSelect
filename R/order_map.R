@@ -3,7 +3,7 @@
 #####################################
 
 ####order_chromo() - function to order the map file for an individual chromosome (called inside of overall map order function)####
-#Given the map of a chromosome (take whole map file and split by chromo), order it based on marker position
+# Given the map of a chromosome (take whole map file and split by chromo), order it based on marker position
 order_chromo = function(chromo){
   #use the position column to order
   chromo = chromo[order(chromo[,3]),]
@@ -24,7 +24,7 @@ order_chromo = function(chromo){
 # x : chromosome column (numeric, character or factor)
 parse_chromosome = function(x){
 
-  # If the column is already numeric, return it as-is.
+  # If the whole column is already numeric, return it as-is.
   if(is.numeric(x)) return(x)
 
   raw = trimws(as.character(x))
