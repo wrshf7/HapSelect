@@ -102,7 +102,7 @@ number_chromosomes = function(x, verbose = TRUE){
 #####check file structure######
 # map     : map file, with SNP ID, chromosome and position in columns 1 to 3
 # verbose : passed to number_chromosomes() to report the chromosome numbering
-check_file = function(map, verbose = TRUE){
+check_file = function(map, verbose = FALSE){
   # Check file structure - make sure it's a data frame with at least 3 columns (SNP, chrom, pos)
   if(!is.data.frame(map) || ncol(map) < 3){
     stop("map must be a data frame with at least 3 columns: SNP ID (column 1), chromosome (column 2, numeric), and position (column 3, numeric).")
