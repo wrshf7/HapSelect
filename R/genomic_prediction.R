@@ -112,7 +112,7 @@ compute_prediction_accuracy = function(geno, marker_effects, BLUE, mean_impute){
   GEBV = (geno_mat - geno_means) %*% marker_effects$u
 
   #accuracy = correlation between pheno and predicted GEBV
-  predict_acc = cor(GEBV, BLUE[,2])
+  predict_acc = cor(GEBV, BLUE[,2], use = "pairwise.complete.obs")
 
   return(predict_acc)
 }
