@@ -74,7 +74,7 @@ number_chromosomes = function(x, verbose = TRUE){
   similar = similar[lengths(similar) > 1]
   if(length(similar)){
     warning("These chromosome labels differ only in case or punctuation and were ",
-            "numbered separately - merge them yourself if they are the same ",
+            "numbered separately. You should merge these yourself if they are the same ",
             "chromosome: ",
             paste(vapply(similar, paste, character(1), collapse = " / "), collapse = ", "), ".")
   }
@@ -91,8 +91,7 @@ number_chromosomes = function(x, verbose = TRUE){
   # If verbose is TRUE, display a message showing the mapping of chromosome labels to integers.
   if(verbose){
     shown = order(number)[seq_len(length(labels))]
-    message("Chromosome labels were mapped to integers",
-            " (apply the same mapping to your genotype and marker effect files):\n",
+    message("Chromosome labels were mapped to integers:",
             paste0("  ", format(labels[shown]), " -> ", number[shown], collapse = "\n"))
   }
 
