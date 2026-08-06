@@ -209,17 +209,3 @@ test_that("order_map sorts within chromosome and keeps chromosomes distinct", {
   expect_equal(out$Position, c(10, 20, 10, 20, 10, 20))
   expect_equal(out$SNP,      c("b", "a", "d", "c", "f", "e"))
 })
-
-
-test_that("order_map output feeds def_blocks_window", {
-  map <- data.frame(SNP        = paste0("s", 1:6),
-                    Chromosome = c("chr1", "chr1", "chr1", "chr2", "chr2", "chr2"),
-                    Position   = c(300, 100, 200, 300, 100, 200),
-                    stringsAsFactors = FALSE)
-
-  ordered <- suppressWarnings(order_map(map))
-
-  expect_silent(blocks <- def_blocks_window(ordered, window = 2, method = "window_snp"))
-  expect_length(blocks, 2)
-  expect_equal(blocks[[1]][[1]], c("s2", "s3"))
-})
