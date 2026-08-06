@@ -84,14 +84,14 @@ number_chromosomes = function(x, verbose = TRUE){
   bad_labels = labels[tolower(labels) %in% bad_label_markers]
   if(length(bad_labels)){
     warning("These chromosome labels look like missing values but were numbered ",
-            "as real chromosomes: ", paste(bad_labels, collapse = ", "),
+            "as real chromosomes: \n", paste(bad_labels, collapse = ", "),
             ". Set them to NA if they are missing.")
   }
 
   # If verbose is TRUE, display a message showing the mapping of chromosome labels to integers.
   if(verbose){
     shown = order(number)[seq_len(length(labels))]
-    message("Chromosome labels were mapped to integers:",
+    message("Chromosome labels were mapped to integers:\n",
             paste0("  ", format(labels[shown]), " -> ", number[shown], collapse = "\n"))
   }
 
