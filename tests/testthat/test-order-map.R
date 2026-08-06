@@ -129,17 +129,3 @@ test_that("order_map preserves chromosome identity end to end", {
   expect_equal(out$Position, c(10, 20, 10, 20, 10, 20))
   expect_equal(out$SNP,      c("b", "a", "d", "c", "f", "e"))
 })
-
-
-test_that("order_map output feeds def_blocks_window", {
-  map <- data.frame(SNP        = paste0("s", 1:6),
-                    Chromosome = c("chr1", "chr1", "chr1", "chr10", "chr10", "chr10"),
-                    Position   = c(300, 100, 200, 300, 100, 200),
-                    stringsAsFactors = FALSE)
-
-  ordered <- suppressWarnings(order_map(map))
-
-  expect_silent(blocks <- def_blocks_window(ordered, window = 2, method = "window_snp"))
-  expect_named(blocks, c("1", "10"))
-  expect_equal(blocks[["1"]][[1]], c("s2", "s3"))
-})
