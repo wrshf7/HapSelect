@@ -39,6 +39,30 @@ test_that("labels with no number of their own are assigned one above the real ch
 })
 
 
+test_that("labels differing only outside the digits stay distinct", {
+  # wheat style: 1A, 1B, 1D are separate chromosomes, not three copies of 1
+  got <- pc(c("1A", "1B", "1D"))
+  expect_equal(length(unique(got)), 3)
+
+  # and they must not steal the number of a real chromosome sharing their digits
+  x   <- c("1", "1A", "1B", "1D")
+  got <- pc(x)
+  expect_equal(got[1], 1)
+  expect_equal(length(unique(got)), 4)
+
+  expect_equal(length(unique(pc(c("chr1", "chr1_random", "chr1_alt")))), 3)
+})
+
+
+test_that("only plain digits count as a label's own number", {
+  # forms as.numeric() would otherwise read: hex, scientific, decimal, signed
+  expect_true(all(pc(c("chr0x1A", "0x1A")) > 0))
+  expect_equal(length(unique(pc(c("1", "0x1A")))), 2)
+  expect_equal(length(unique(pc(c("1e5", "1")))), 2)
+  expect_equal(length(unique(pc(c("10.5", "10")))), 2)
+})
+
+
 test_that("assigned numbers cannot collide with real chromosomes and are deterministic", {
   x <- c("7", "3", "22", "X", "Y", "MT")
   got <- pc(x)

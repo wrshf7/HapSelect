@@ -33,16 +33,20 @@ parse_chromosome = function(x){
 
   # 1. Labels that carry their own number keep it ####
 
-  # Drop any leading non-digit characters, then read the number that remains.
-  # Anything that is not a plain number after stripping, e.g. "X" or "1A", becomes NA.
-  parsed = suppressWarnings(as.numeric(sub("^[^0-9]*", "", raw)))
+  # Keep the number only when nothing follows it: "10", "chr10". 
+  # Anything else - "X", "1A", "chr1_random", "0x1A" - is left NA for step 2,
+  # This keeps 1A, 1B and 1D apart instead of collapsing them all onto 1.
+  has_trailing_numeric_suffix = grepl("^\\D*\\d+$", raw)
+  digits_only = gsub("\\D", "", raw)
+  digits = ifelse(has_trailing_numeric_suffix, digits_only, NA)
+  parsed = suppressWarnings(as.numeric(digits))
 
   # 2. Labels that don't (X, Y, MT, 1A) get spare numbers above the real chromosomes ####
 
-  # The labels carrying no number at all, e.g. X, Y, MT, chrX, scaffold_a
+  # Any label that did not carry its own unique number is NA in parsed. 
   unparsed = is.na(parsed) & !is.na(raw)
 
-  warn_text = paste("Chromosomes were not numeric - parsed to numeric (e.g. 'chr10' -> 10).")
+  warn_text = paste("Some chromosomes were not numeric - parsed to numeric (e.g. 'chr10' -> 10).")
 
   if(any(unparsed)){
     # Seeding the max with 0 covers the case where nothing carried a number at all.
