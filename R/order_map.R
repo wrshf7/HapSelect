@@ -10,82 +10,118 @@ order_chromo = function(chromo){
   return(chromo)
 }
 
-####parse_chromosome() - convert a chromosome column to numbers####
-# A label keeps its own number if it has one; otherwise it is assigned the next spare number.
+####natural_key() - sort key that compares digits as numbers####
+# Left-pads every run of digits so that ordinary string sorting puts "chr2"
+# before "chr10" rather than after it.
 #
-# Examples:
-#   "1", "10"                  -> 1, 10      (kept as-is, never renumbered)
-#   "chr2", "ch9", "Chr03"     -> 2, 9, 3    (leading non-numeric prefix stripped)
-#   "X", "MT", "chrX", "1A"    -> Assigned numbers above the highest real
-#                                 chromosome, in sorted label order, so they are
-#                                 deterministic and cannot collide with a real one
-#   NA, ""                     -> NA
-#
-# x : chromosome column (numeric, character or factor)
-parse_chromosome = function(x){
-
-  # If the whole column is already numeric, return it as-is.
-  if(is.numeric(x)) return(x)
-
-  raw = trimws(as.character(x))
-  # Set empty strings to NA. 
-  raw[!is.na(raw) & raw == ""] = NA
-
-  # 1. Labels that carry their own number keep it ####
-
-  # Keep the number only when nothing follows it: "10", "chr10". 
-  # Anything else - "X", "1A", "chr1_random", "0x1A" - is left NA for step 2,
-  # This keeps 1A, 1B and 1D apart instead of collapsing them all onto 1.
-  has_trailing_numeric_suffix = grepl("^\\D*\\d+$", raw)
-  digits_only = gsub("\\D", "", raw)
-  digits = ifelse(has_trailing_numeric_suffix, digits_only, NA)
-  parsed = suppressWarnings(as.numeric(digits))
-
-  # 2. Labels that don't (X, Y, MT, 1A) get spare numbers above the real chromosomes ####
-
-  # Any label that did not carry its own unique number is NA in parsed. 
-  unparsed = is.na(parsed) & !is.na(raw)
-
-  warn_text = paste("Some chromosomes were not numeric - parsed to numeric (e.g. 'chr10' -> 10).")
-
-  if(any(unparsed)){
-    # Seeding the max with 0 covers the case where nothing carried a number at all.
-    unnumbered = sort(unique(raw[unparsed]))
-    highest    = max(c(0, parsed), na.rm = TRUE)
-    assigned   = setNames(highest + seq_along(unnumbered), unnumbered)
-
-    # Real numbers and assigned numbers now live in the same vector.
-    parsed[unparsed] = assigned[raw[unparsed]]
-
-    warn_text = paste0(warn_text, " Labels with no number of their own were assigned one: ",
-                       paste(names(assigned), assigned, sep = " -> ", collapse = ", "), ".")
-  }
-
-  # If any labels were assigned a number, issue a warning with the message.
-  warning(warn_text)
-  return(parsed)
+# x : character vector
+natural_key = function(x){
+  runs = gregexpr("[0-9]+", x)
+  regmatches(x, runs) = lapply(regmatches(x, runs), function(digits)
+    paste0(strrep("0", pmax(0, 12 - nchar(digits))), digits))
+  return(x)
 }
 
+####number_chromosomes() - map a chromosome column onto integers####
+# Every distinct label is treated as a distinct chromosome.
+#
+# Labels that are already plain numbers keep their value, which leaves a numeric
+# map untouched. Every other label is assigned a number above the highest of
+# them, in natural order so that related names stay in the order their digits
+# imply. Anything ambiguous emits a warning.
+#
+# Examples:
+#   "1", "2", "10"                    -> 1, 2, 10   (kept, never renumbered)
+#   "1", "2", "10", "X"               -> 1, 2, 10, 11
+#   "chr1", "chr2", "chr10"           -> 1, 2, 3
+#   "11", "12", "scaffold_12"         -> 11, 12, 13
+#   NA, ""                            -> NA
+#
+# x       : chromosome column (numeric, character or factor)
+# verbose : report the label to integer mapping
+number_chromosomes = function(x, verbose = TRUE){
+
+  # The column is already a set of numerics, so there is nothing to do.
+  if(is.numeric(x)) return(x)
+
+  # Convert to character and treat empty strings as missing.
+  raw = trimws(as.character(x))
+  raw[!is.na(raw) & raw == ""] = NA
+
+  # Sort the distinct labels in natural order and assign each a number. 
+  labels = unique(raw[!is.na(raw)])
+
+  # There is nothing to do if there are no valid labels, so return the raw column as-is.
+  if(!length(labels)) return(as.numeric(raw))
+
+  # Sort the labels in natural order so that "chr2" comes before "chr10".
+  labels = labels[order(natural_key(labels), method = "radix")]
+  
+  # Whether a label is a plain number is determined by a regular expression that matches only digits.
+  is_number = grepl("^[0-9]+$", labels)
+
+  # Create an empty numeric vector of the same length as the labels, initialized with NA.
+  number = rep(NA_real_, length(labels))
+  # Fill in the numbers for labels that are plain numbers
+  number[is_number] = as.numeric(labels[is_number])
+  # Assign numbers to labels that are not plain numbers, starting from one above the maximum of the existing numbers.
+  max_number = max(c(0, number), na.rm = TRUE)
+  number[!is_number] = max_number + seq_len(sum(!is_number))
+
+  # Warning: Similar spelling of a chromosome label
+  # Finds labels that are very close in spelling (ignoring case and punctuation) and warns the user that they were numbered separately.
+  similar = split(labels, tolower(gsub("[^[:alnum:]]", "", labels)))
+  similar = similar[lengths(similar) > 1]
+  if(length(similar)){
+    warning("These chromosome labels differ only in case or punctuation and were ",
+            "numbered separately - merge them yourself if they are the same ",
+            "chromosome: ",
+            paste(vapply(similar, paste, character(1), collapse = " / "), collapse = ", "), ".")
+  }
+
+  # Warning: Labels that look like missing values
+  bad_label_markers = c("na", "n/a", "nan", "null", ".", "-", "?", "-9", "unknown")
+  bad_labels = labels[tolower(labels) %in% bad_label_markers]
+  if(length(bad_labels)){
+    warning("These chromosome labels look like missing values but were numbered ",
+            "as real chromosomes: ", paste(bad_labels, collapse = ", "),
+            ". Set them to NA if they are missing.")
+  }
+
+  # If verbose is TRUE, display a message showing the mapping of chromosome labels to integers.
+  if(verbose){
+    shown = order(number)[seq_len(length(labels))]
+    message("Chromosome labels were mapped to integers",
+            " (apply the same mapping to your genotype and marker effect files):\n",
+            paste0("  ", format(labels[shown]), " -> ", number[shown], collapse = "\n"))
+  }
+
+  # Return the numeric vector corresponding to the original input, using the mapping from labels to numbers.
+  return(unname(setNames(number, labels)[raw]))
+}
 
 #####check file structure######
-check_file = function(map){
+# map     : map file, with SNP ID, chromosome and position in columns 1 to 3
+# verbose : passed to number_chromosomes() to report the chromosome numbering
+check_file = function(map, verbose = TRUE){
   # Check file structure - make sure it's a data frame with at least 3 columns (SNP, chrom, pos)
   if(!is.data.frame(map) || ncol(map) < 3){
     stop("map must be a data frame with at least 3 columns: SNP ID (column 1), chromosome (column 2, numeric), and position (column 3, numeric).")
   }
 
-  #make sure SNP ID are characters - if not make them characters and give a warning
+  # Make sure SNP ID are characters - if not make them characters and give a warning
   if(!is.character(map[,1])){
     map[,1] = as.character(map[,1])
     warning("SNP ID were not characters - coercing to characters. For proper function, ensure they are characters in other files and they match this output.")
   }
 
-  #check chromosomes are numeric
+  # Make sure chromosomes are numeric
   if(!is.numeric(map[,2])){
-    map[,2] = parse_chromosome(map[,2])
+    # If chromosomes are not numeric, call number_chromosomes() to convert them to integers
+    map[,2] = number_chromosomes(map[,2], verbose = verbose)
   }
 
-  #check positions are numeric
+  # Check that positions are numeric. If not make them numeric and give a warning
   if(!is.numeric(map[,3])){
     map[,3] = as.numeric(as.character(map[,3]))
     warning("Positions were not numeric - attempting to coerce to numeric. Check the output is correct. For proper function, ensure they are numeric in other files and they match this output.")
@@ -96,9 +132,13 @@ check_file = function(map){
 
 ####order_map() - order the entire map file, which calls the order_chromo() function####
 #provide the whole map file with columns "SNP" (name of the snp), "chrom", and "pos"
-order_map = function(map){
+#
+# map     : map file, with SNP ID, chromosome and position in columns 1 to 3
+# verbose : report the chromosome numbering when the chromosome column is not
+#           already numeric
+order_map = function(map, verbose = FALSE){
   #check the files
-  map = check_file(map)
+  map = check_file(map, verbose = verbose)
   colnames(map)[1:3] = c("SNP", "Chromosome", "Position")
 
   #create a progress bar - might not be needed as it's so fast
