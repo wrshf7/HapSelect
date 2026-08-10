@@ -2,24 +2,27 @@
 ##### Map file Check and Order ######
 #####################################
 
-####order_chromo() - function to order the map file for an individual chromosome (called inside of overall map order function)####
-# Given the map of a chromosome (take whole map file and split by chromo), order it based on marker position
-order_chromo = function(chromo){
-  #use the position column to order
-  chromo = chromo[order(chromo[,3]),]
-  return(chromo)
-}
-
 ####natural_key() - sort key that compares digits as numbers####
-# Left-pads every run of digits so that ordinary string sorting puts "chr2"
-# before "chr10" rather than after it.
+# String sorting works one character at a time, so "chr10" sorts before "chr2".
+# Padding every number to the same width lines the digits up and fixes that:
 #
-# x : character vector
-natural_key = function(x){
-  runs = gregexpr("[0-9]+", x)
-  regmatches(x, runs) = lapply(regmatches(x, runs), function(digits)
-    paste0(strrep("0", pmax(0, 12 - nchar(digits))), digits))
-  return(x)
+#   "chr2" -> "chr000000000002",  "chr10" -> "chr000000000010"
+#
+# Rather than measure each number, we add more zeros than any number could need and
+# then trim back to `width`. Labels with no digits ("chrX") pass through untouched
+# and sort after the numbers.
+#
+# x     : character vector
+# width : digits every number is padded to. Longer numbers are left unpadded.
+natural_key = function(x, width = 12){
+
+  # Pad every run of digits, leaving each number at least `width` long. "[0-9]+" is
+  # greedy, so a run is padded once rather than digit by digit.
+  x = gsub("([0-9]+)", paste0(strrep("0", width - 1), "\\1"), x)
+
+  # Trim to the last `width` digits. "0*" sits outside the capture group, so the
+  # zeros it greedily eats - exactly the surplus added above - are the ones dropped.
+  return(gsub(paste0("0*([0-9]{", width, "})"), "\\1", x))
 }
 
 ####number_chromosomes() - map a chromosome column onto integers####
@@ -44,33 +47,35 @@ number_chromosomes = function(x, verbose = TRUE){
   # The column is already a set of numerics, so there is nothing to do.
   if(is.numeric(x)) return(x)
 
-  # Convert to character and treat empty strings as missing.
-  raw = trimws(as.character(x))
-  raw[!is.na(raw) & raw == ""] = NA
+  # Convert to character and treat empty strings as missing. One entry per row.
+  label_per_row = trimws(as.character(x))
+  label_per_row[!is.na(label_per_row) & label_per_row == ""] = NA
 
-  # Sort the distinct labels in natural order and assign each a number. 
-  labels = unique(raw[!is.na(raw)])
+  # Create a vector of distinct labels, duplicates removed and missing values excluded.
+  distinct_labels = unique(label_per_row[!is.na(label_per_row)])
 
-  # There is nothing to do if there are no valid labels, so return the raw column as-is.
-  if(!length(labels)) return(as.numeric(raw))
+  # There is nothing to do if there are no valid labels, so return the column as-is.
+  if(!length(distinct_labels)) return(as.numeric(label_per_row))
 
   # Sort the labels in natural order so that "chr2" comes before "chr10".
-  labels = labels[order(natural_key(labels), method = "radix")]
-  
+  sorted_labels = distinct_labels[order(natural_key(distinct_labels), method = "radix")]
+
   # Whether a label is a plain number is determined by a regular expression that matches only digits.
-  is_number = grepl("^[0-9]+$", labels)
+  is_number = grepl("^[0-9]+$", sorted_labels)
 
   # Create an empty numeric vector of the same length as the labels, initialized with NA.
-  number = rep(NA_real_, length(labels))
+  number_per_label = rep(NA_real_, length(sorted_labels))
+
   # Fill in the numbers for labels that are plain numbers
-  number[is_number] = as.numeric(labels[is_number])
+  number_per_label[is_number] = as.numeric(sorted_labels[is_number])
+  
   # Assign numbers to labels that are not plain numbers, starting from one above the maximum of the existing numbers.
-  max_number = max(c(0, number), na.rm = TRUE)
-  number[!is_number] = max_number + seq_len(sum(!is_number))
+  max_number = max(c(0, number_per_label), na.rm = TRUE)
+  number_per_label[!is_number] = max_number + seq_len(sum(!is_number))
 
   # Warning: Similar spelling of a chromosome label
   # Finds labels that are very close in spelling (ignoring case and punctuation) and warns the user that they were numbered separately.
-  similar = split(labels, tolower(gsub("[^[:alnum:]]", "", labels)))
+  similar = split(sorted_labels, tolower(gsub("[^[:alnum:]]", "", sorted_labels)))
   similar = similar[lengths(similar) > 1]
   if(length(similar)){
     warning("These chromosome labels differ only in case or punctuation and were ",
@@ -81,7 +86,7 @@ number_chromosomes = function(x, verbose = TRUE){
 
   # Warning: Labels that look like missing values
   bad_label_markers = c("na", "n/a", "nan", "null", ".", "-", "?", "-9", "unknown")
-  bad_labels = labels[tolower(labels) %in% bad_label_markers]
+  bad_labels = sorted_labels[tolower(sorted_labels) %in% bad_label_markers]
   if(length(bad_labels)){
     warning("These chromosome labels look like missing values but were numbered ",
             "as real chromosomes: \n", paste(bad_labels, collapse = ", "),
@@ -90,13 +95,13 @@ number_chromosomes = function(x, verbose = TRUE){
 
   # If verbose is TRUE, display a message showing the mapping of chromosome labels to integers.
   if(verbose){
-    shown = order(number)[seq_len(length(labels))]
+    shown = order(number_per_label)[seq_len(length(sorted_labels))]
     message("Chromosome labels were mapped to integers:\n",
-            paste0("  ", format(labels[shown]), " -> ", number[shown], collapse = "\n"))
+            paste0("  ", format(sorted_labels[shown]), " -> ", number_per_label[shown], collapse = "\n"))
   }
 
   # Return the numeric vector corresponding to the original input, using the mapping from labels to numbers.
-  return(unname(setNames(number, labels)[raw]))
+  return(unname(setNames(number_per_label, sorted_labels)[label_per_row]))
 }
 
 #####check file structure######
@@ -129,7 +134,7 @@ check_file = function(map, verbose = FALSE){
   return(map)
 }
 
-####order_map() - order the entire map file, which calls the order_chromo() function####
+####order_map() - order the entire map file by chromosome, then by position####
 #provide the whole map file with columns "SNP" (name of the snp), "chrom", and "pos"
 #
 # map     : map file, with SNP ID, chromosome and position in columns 1 to 3
@@ -140,31 +145,12 @@ order_map = function(map, verbose = FALSE){
   map = check_file(map, verbose = verbose)
   colnames(map)[1:3] = c("SNP", "Chromosome", "Position")
 
-  #create a progress bar - might not be needed as it's so fast
-  handlers("txtprogressbar")
+  #the chromosome column is numeric by this point, so a single sort by chromosome
+  #then position orders the whole map. Markers with a missing chromosome sort last.
+  map = map[order(map[,2], map[,3]), ]
+  rownames(map) = NULL
 
-  #split the map file up by chromosome and order within chromosome
-  map_split = split(map, map[,2])
-
-  #call the progress bar and while it's active do the ordering
-  with_progress({
-    #define how many times the progress bar should update - can also use `along = list_name` which will
-    #automatically define the length based on a list
-    p = progressor(steps = length(map_split))
-
-    #iterate over the chromosomes sequentially and combine individual data frames into rows from the list (dfr part of map)
-    ordered_map = map_dfr(map_split, function(chromo){
-
-      #call the map ordering function on the map of the chromosome
-      chromo = order_chromo(chromo)
-
-      #iterate the progress bar to indicate a step has been completed
-      p()
-
-      #return the ordered chromosome map, which will be row binded
-      return(chromo)
-    })
-  })
+  return(map)
 }
 
 
