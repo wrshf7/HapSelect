@@ -26,18 +26,20 @@ natural_key = function(x, width = 12){
 }
 
 ####number_chromosomes() - map a chromosome column onto integers####
-# Every distinct label is treated as a distinct chromosome.
+# Every distinct label is treated as a distinct chromosome. The labels are sorted
+# into natural order and numbered 1 to n, so the numbers always run in the same
+# order as the labels themselves. Anything ambiguous emits a warning.
 #
-# Labels that are already plain numbers keep their value, which leaves a numeric
-# map untouched. Every other label is assigned a number above the highest of
-# them, in natural order so that related names stay in the order their digits
-# imply. Anything ambiguous emits a warning.
+# A numeric column is returned untouched, exactly as it was given, so this only
+# ever runs on text labels. Note that a text column of plain numbers is renumbered
+# like any other. The numbers reflect the order of the labels, not the labels
+# themselves. Text labels are always mapped onto integers.
 #
 # Examples:
-#   "1", "2", "10"                    -> 1, 2, 10   (kept, never renumbered)
-#   "1", "2", "10", "X"               -> 1, 2, 10, 11
+#   "1", "2", "10"                    -> 1, 2, 3
 #   "chr1", "chr2", "chr10"           -> 1, 2, 3
-#   "11", "12", "scaffold_12"         -> 11, 12, 13
+#   "1", "2_1", "2_2", "3"            -> 1, 2, 3, 4
+#   "11", "12", "scaffold_12"         -> 1, 2, 3
 #   NA, ""                            -> NA
 #
 # x       : chromosome column (numeric, character or factor)
@@ -54,34 +56,19 @@ number_chromosomes = function(x, verbose = TRUE){
   # Create a vector of distinct labels, duplicates removed and missing values excluded.
   distinct_labels = unique(label_per_row[!is.na(label_per_row)])
 
-  # There is nothing to do if there are no valid labels, so return the column as-is.
-  if(!length(distinct_labels)) return(as.numeric(label_per_row))
-
   # Sort the labels in natural order so that "chr2" comes before "chr10".
   sorted_labels = distinct_labels[order(natural_key(distinct_labels), method = "radix")]
 
-  # Whether a label is a plain number is determined by a regular expression that matches only digits.
-  is_number = grepl("^[0-9]+$", sorted_labels)
-
-  # Create an empty numeric vector of the same length as the labels, initialized with NA.
-  number_per_label = rep(NA_real_, length(sorted_labels))
-
-  # Fill in the numbers for labels that are plain numbers
-  number_per_label[is_number] = as.numeric(sorted_labels[is_number])
-  
-  # Assign numbers to labels that are not plain numbers, starting from one above the maximum of the existing numbers.
-  max_number = max(c(0, number_per_label), na.rm = TRUE)
-  number_per_label[!is_number] = max_number + seq_len(sum(!is_number))
-
   # Warning: Similar spelling of a chromosome label
   # Finds labels that are very close in spelling (ignoring case and punctuation) and warns the user that they were numbered separately.
-  similar = split(sorted_labels, tolower(gsub("[^[:alnum:]]", "", sorted_labels)))
-  similar = similar[lengths(similar) > 1]
-  if(length(similar)){
+  label_groups = split(sorted_labels, tolower(gsub("[^[:alnum:]]", "", sorted_labels)))
+  similar_labels = label_groups[lengths(label_groups) > 1]
+
+  if(length(similar_labels)){
     warning("These chromosome labels differ only in case or punctuation and were ",
             "numbered separately. You should merge these yourself if they are the same ",
             "chromosome: ",
-            paste(vapply(similar, paste, character(1), collapse = " / "), collapse = ", "), ".")
+            paste(vapply(similar_labels, paste, character(1), collapse = " / "), collapse = ", "), ".")
   }
 
   # Warning: Labels that look like missing values
@@ -90,18 +77,19 @@ number_chromosomes = function(x, verbose = TRUE){
   if(length(bad_labels)){
     warning("These chromosome labels look like missing values but were numbered ",
             "as real chromosomes: \n", paste(bad_labels, collapse = ", "),
-            ". Set them to NA if they are missing.")
+            ". \nSet them to NA if they are missing.")
   }
 
   # If verbose is TRUE, display a message showing the mapping of chromosome labels to integers.
-  if(verbose){
-    shown = order(number_per_label)[seq_len(length(sorted_labels))]
+  # A column with no usable labels has nothing to report, so it stays silent.
+  if(verbose && length(sorted_labels)){
     message("Chromosome labels were mapped to integers:\n",
-            paste0("  ", format(sorted_labels[shown]), " -> ", number_per_label[shown], collapse = "\n"))
+            paste0("  ", format(sorted_labels), " -> ", seq_along(sorted_labels), collapse = "\n"))
   }
 
-  # Return the numeric vector corresponding to the original input, using the mapping from labels to numbers.
-  return(unname(setNames(number_per_label, sorted_labels)[label_per_row]))
+  # A label's number is its position in the sorted labels, which is what match() returns.
+  # Rows with a missing label are not found, so they stay missing.
+  return(match(label_per_row, sorted_labels))
 }
 
 #####check file structure######
