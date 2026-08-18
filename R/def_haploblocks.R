@@ -83,7 +83,7 @@ def_blocks = function(map, strategy) {
 
   switch(class(strategy)[1],
 
-    ld_strategy = perform_ld_blocking(
+    "ld_strategy" = perform_ld_blocking(
       ld        = strategy$ld,
       map       = map,
       method    = strategy$method,
@@ -94,7 +94,7 @@ def_blocks = function(map, strategy) {
       parallel  = strategy$parallel
     ),
 
-    window_strategy = perform_window_blocking(
+    "window_strategy" = perform_window_blocking(
       map    = map,
       window = strategy$window,
       method = strategy$method
