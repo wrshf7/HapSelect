@@ -81,13 +81,13 @@ test_that("def_blocks returns a named list with one entry per chromosome", {
   ld  <- make_ld_fixture()
   map <- make_map_fixture()
 
-  blocks <- def_blocks(ld, map,
+  blocks <- def_blocks(map, ld_strategy(ld,
                        method    = "flanking",
                        threshold = 0.7,
                        tolerance = 0,
                        tol_reset = FALSE,
                        start     = "LD",
-                       parallel  = FALSE)
+                       parallel  = FALSE))
 
   expect_type(blocks, "list")
   expect_named(blocks, c("1", "2"))
@@ -100,13 +100,13 @@ test_that("def_blocks assigns correct markers to blocks (start = 'LD', flanking,
   ld  <- make_ld_fixture()
   map <- make_map_fixture()
 
-  blocks <- def_blocks(ld, map,
+  blocks <- def_blocks(map, ld_strategy(ld,
                        method    = "flanking",
                        threshold = 0.7,
                        tolerance = 0,
                        tol_reset = FALSE,
                        start     = "LD",
-                       parallel  = FALSE)
+                       parallel  = FALSE))
 
   chr1 <- blocks[["1"]]
   chr2 <- blocks[["2"]]
@@ -126,13 +126,13 @@ test_that("def_blocks produces the same blocks with start = 'beginning' on this 
   ld  <- make_ld_fixture()
   map <- make_map_fixture()
 
-  blocks <- def_blocks(ld, map,
+  blocks <- def_blocks(map, ld_strategy(ld,
                        method    = "flanking",
                        threshold = 0.7,
                        tolerance = 0,
                        tol_reset = FALSE,
                        start     = "beginning",
-                       parallel  = FALSE)
+                       parallel  = FALSE))
 
   chr1 <- blocks[["1"]]
   chr2 <- blocks[["2"]]
@@ -150,13 +150,13 @@ test_that("tolerance = 0 stops extension at a low-LD bridge marker", {
   ld  <- make_tol_ld_fixture()
   map <- make_tol_map_fixture()
 
-  blocks <- def_blocks(ld, map,
+  blocks <- def_blocks(map, ld_strategy(ld,
                        method    = "flanking",
                        threshold = 0.7,
                        tolerance = 0,
                        tol_reset = FALSE,
                        start     = "LD",
-                       parallel  = FALSE)
+                       parallel  = FALSE))
 
   chr1 <- blocks[["1"]]
   expect_length(chr1, 2)
@@ -169,13 +169,13 @@ test_that("tolerance = 1 absorbs a low-LD bridge marker into a single block", {
   ld  <- make_tol_ld_fixture()
   map <- make_tol_map_fixture()
 
-  blocks <- def_blocks(ld, map,
+  blocks <- def_blocks(map, ld_strategy(ld,
                        method    = "flanking",
                        threshold = 0.7,
                        tolerance = 1,
                        tol_reset = TRUE,
                        start     = "LD",
-                       parallel  = FALSE)
+                       parallel  = FALSE))
 
   chr1 <- blocks[["1"]]
   expect_length(chr1, 1)
