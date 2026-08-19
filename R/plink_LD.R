@@ -2,6 +2,8 @@
 ### PLINK Installation Verification ###
 #######################################
 
+# nocov start
+
 ##### Name of the PLINK executable on this platform #####
 plink_exe_name = function() {
   # On Windows, the executable is plink.exe; on other platforms it is just plink.
@@ -215,15 +217,18 @@ find_plink = function() {
     "existing installation with set_plink_path(\"/path/to/", plink_exe_name(), "\")."
   )
 }
+# nocov end
 
 #######################################
 ######## PLINK-Based Functions ########
 #######################################
 
 ##### Run PLINK with platform-aware executable resolution #####
+# nocov start
 call_plink = function(args, stdout = TRUE, stderr = TRUE) {
   system2(find_plink(), args = args, stdout = stdout, stderr = stderr)
 }
+# nocov end
 
 ##### Read a PLINK .bim file and assign per-chromosome locus indices #####
 read_plink_bim = function(path){
@@ -337,6 +342,7 @@ format_plink_ld = function(ld_path, bim){
 }
 
 ##### Runs a plink command given a set of arguments #####
+# nocov start
 run_plink_command = function(args){
   # Run the plink command
   plink_output = call_plink(args, stdout = TRUE, stderr = TRUE)
@@ -354,6 +360,7 @@ run_plink_command = function(args){
 
   invisible(plink_output)
 }
+# nocov end
 
 
 ##### Write PLINK text input files (.ped / .map) from a genotype data frame #####
