@@ -36,6 +36,11 @@ if (-not (Get-Command Rscript -ErrorAction SilentlyContinue)) {
   throw "Rscript is required but was not found. Please ensure R is installed before running this script."
 }
 
+# Check that Java is available to run Beagle.
+if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
+  throw "Java is required to run Beagle but was not found. Install a JRE (8 or later) and rerun this script."
+}
+
 # Check that winget is available for dependency installs.
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
   throw "winget is required for this script. Install App Installer from Microsoft Store or install Rtools and Git manually."
@@ -84,6 +89,12 @@ $NewUserPath = ($PathEntries | Select-Object -Unique) -join ";"
 [Environment]::SetEnvironmentVariable("Path", $NewUserPath, "User")
 $env:Path = "$InstallDir;$env:Path"
 & (Join-Path $InstallDir "plink.exe") --version
+
+# Download and install Beagle (5.5) into the user's bin directory, alongside PLINK.
+$BeagleUrl = "https://faculty.washington.edu/browning/beagle/beagle.27Feb25.75f.jar"
+$BeagleJar = Join-Path $InstallDir "beagle.27Feb25.75f.jar"
+Invoke-WebRequest -Uri $BeagleUrl -OutFile $BeagleJar
+& java -jar $BeagleJar
 
 # Install the R dependencies required by HapSelect.
 Rscript -e "if (!requireNamespace('remotes', quietly = TRUE)) install.packages('remotes', repos = 'https://cloud.r-project.org'); remotes::install_deps('$PackageDirForR', dependencies = TRUE)"
