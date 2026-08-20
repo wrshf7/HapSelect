@@ -1,7 +1,7 @@
 Package: HapSelect
 Type: Package
 Title: Haplotype Block Discovery and localGEBV Analysis
-Version: 0.1.0
+Version: 1.0.1
 Authors@R: c(
     person(
       "Will", "Shaffer",
@@ -37,7 +37,8 @@ Imports:
     progressr,
     purrr,
     Rcpp,
-    rrBLUP
+    rrBLUP,
+    cli
 LinkingTo:
     Rcpp
 Suggests:
