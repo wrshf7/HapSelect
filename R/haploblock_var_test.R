@@ -6,6 +6,8 @@
 
 #head function to export
 haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
+  report_step("block_var_test")
+
   if (
     missing(gen_var) ||
     !is.numeric(gen_var) ||
@@ -28,7 +30,6 @@ haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
 
   null_block_var = gen_var / nrow(haploblock_obj$Haploblocks)
 
-  progressr::handlers("txtprogressbar")
   progressr::with_progress({
     p = progressr::progressor(steps = nrow(haploblock_obj$Haploblocks))
 

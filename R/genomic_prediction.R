@@ -26,6 +26,7 @@ check_BLUE = function(BLUE, geno){
 
 #solve the marker effects
 solve_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
+  report_step("marker_effects")
 
   if(!is.data.frame(BLUE) || ncol(BLUE) < 2){
     stop("BLUE must be a data frame with at least 2 columns: individual ID (column 1, character) and a single adjusted phenotype, BLUE, or de-regressed BLUP (column 2, numeric).")
@@ -139,6 +140,7 @@ create_marker_effects_file = function(geno, BLUE, h2_method = c("VanRaden", "mar
 
 #perform cross-validation to assess prediction accuracy
 n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
+  report_step("n_fold_cross_validation")
   if(nrow(BLUE) <= 200){
     warning("Trying to do CV on a small population size may not work well!\n")
   }
@@ -169,6 +171,7 @@ n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRad
 }
 
 cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
+  report_step("cross_validation")
   if(nrow(BLUE) <= 200){
     warning("Trying to do CV on a small population size may not work well!\n")
   }

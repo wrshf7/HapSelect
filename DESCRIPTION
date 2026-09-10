@@ -36,6 +36,7 @@ Imports:
     ggplot2,
     progressr,
     purrr,
+    jsonlite,
     Rcpp,
     rrBLUP,
     cli
@@ -43,7 +44,6 @@ LinkingTo:
     Rcpp
 Suggests:
     covr,
-    jsonlite,
     testthat (>= 3.0.0)
 Remotes:
     vllrs/genomicSimulation

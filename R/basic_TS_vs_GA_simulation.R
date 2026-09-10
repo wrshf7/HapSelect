@@ -435,6 +435,7 @@ localGEBV_vs_TS_simulation = function(
     colors = c("green", "#d95f02", "#A01FF0", "gray80"),
     alpha = c(1,1,1,0.5)
 ){
+  report_step("local_gebv_simulation")
 
   check_geno_marker_compatibility(geno, marker_effects, map)
 
@@ -598,6 +599,7 @@ Haplotype_vs_TS_simulation = function(
     colors = c("green", "#d95f02", "#A01FF0", "gray80"),
     alpha = c(1,1,1,0.5)
 ){
+  report_step("haplotype_simulation")
 
   check_geno_marker_compatibility(geno_phased, marker_effects, map)
 

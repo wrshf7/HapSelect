@@ -53,6 +53,7 @@ chromo_windows = function(chrom_map, window, method) {
 # method : "window_snp" — fixed number of markers per block
 #          "window_map" — fixed distance per block
 perform_window_blocking = function(map, window, method = c("window_snp", "window_map")) {
+  report_step("window_blocking")
 
   method = match.arg(method)
 

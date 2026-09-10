@@ -22,7 +22,7 @@ base_block_strategy = function(params, class) {
 # threshold : minimum LD (r^2) required to seed or extend a block
 # start     : "LD"        — seed blocks from highest-LD adjacent pairs first;
 #             "beginning" — sweep chromosome left to right from the first marker
-# parallel  : if TRUE, process chromosomes in parallel using all available cores minus one
+# parallel  : if TRUE, process chromosomes in parallel, across the cores cpu_cores() allows
 ld_strategy = function(ld, method = c("flanking", "average"), tolerance = 1,
                         tol_reset = TRUE, threshold = 0.7,
                         start = c("LD", "beginning"), parallel = FALSE) {

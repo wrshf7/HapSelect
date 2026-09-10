@@ -403,6 +403,8 @@ write_plink_ped_map = function(geno, prefix) {
 # prefix should point to a PLINK binary fileset without extension (.bed/.bim/.fam)
 plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
                              ld_window_r2 = 0, extra_args = character()){
+  report_step("plink_ld")
+
   required_files = paste0(prefix, c(".bed", ".bim", ".fam"))
   missing_files  = required_files[!file.exists(required_files)]
 
@@ -440,6 +442,8 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
 #       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
 plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 1000000,
                                   ld_window_r2 = 0, extra_args = character()){
+  report_step("plink_ld_geno")
+
   if(!is.data.frame(geno) || ncol(geno) < 4){
     stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
   }
