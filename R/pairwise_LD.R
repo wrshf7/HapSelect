@@ -55,6 +55,8 @@ ld_func = function(genotypes){
 #requires a genotype matrix with SNP name as the first column, chromosome identifier as the second column, markers as rows, and individuals genotyped as columns 3 onwards
 #genotypes should be dosages: 0,1,2
 pairwise_ld = function(genotype_matrix, parallelize = TRUE){
+  report_step("pairwise_ld")
+
   # Validate the input genotype matrix structure and content before proceeding with LD calculations
   check_ld_matrix(genotype_matrix)
 

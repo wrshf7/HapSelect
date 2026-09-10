@@ -6,6 +6,8 @@
 
 #head function to export
 haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
+  report_step("block_var_test")
+
   if (
     missing(gen_var) ||
     !is.numeric(gen_var) ||
