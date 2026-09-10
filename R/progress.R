@@ -241,4 +241,5 @@ register_handler = function() {
 
   # Otherwise register the handler
   progressr::handlers(handler_hapselect())
+  invisible(TRUE)
 }
