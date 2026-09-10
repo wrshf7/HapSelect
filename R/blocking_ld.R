@@ -15,7 +15,7 @@
 # threshold : minimum LD (r²) required to seed or extend a block
 # start     : "LD"        — seed blocks from highest-LD adjacent pairs first;
 #             "beginning" — sweep chromosome left to right from the first marker
-# parallel  : if TRUE, process chromosomes in parallel using all available cores minus one
+# parallel  : if TRUE, process chromosomes in parallel, across the cores cpu_cores() allows
 perform_ld_blocking = function(ld, map, method = c("flanking", "average"), tolerance = 1,
                       tol_reset = TRUE, threshold = 0.7,
                       start = c("LD", "beginning"), parallel = FALSE) {
@@ -35,13 +35,12 @@ perform_ld_blocking = function(ld, map, method = c("flanking", "average"), toler
   ld          = split(ld, ld$Chrom)
 
   if (parallel == TRUE) {
-    future::plan(multisession, workers = parallel::detectCores() - 1)
+    future::plan(multisession, workers = cpu_cores())
     map_fun = furrr::future_map
   } else {
     map_fun = purrr::map
   }
 
-  handlers("txtprogressbar")
   with_progress({
     p = progressor(steps = length(chromosomes))
 

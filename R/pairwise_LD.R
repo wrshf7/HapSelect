@@ -64,13 +64,10 @@ pairwise_ld = function(genotype_matrix, parallelize = TRUE){
   #split the genotype matrix by chromosome for parallelization
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
 
-  #setup parallelization using future and parallel package and utilize all but 1 core
+  #setup parallelization using future, limited to the cores HapSelect is allowed to use
   if(parallelize){
-    future::plan(multisession, workers = parallel::detectCores() - 1)
+    future::plan(multisession, workers = cpu_cores())
   }
-
-  #setup progress bar
-  handlers("txtprogressbar")
 
   #call progress bar and perform main function
   with_progress({
