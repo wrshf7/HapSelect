@@ -101,7 +101,6 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
   # Process each haploblock to compute local GEBV
   # If in serial mode, use purrr::map with a progress bar to apply the block_mapper to each block ID in haploblocks_df.
   if(!parallel){
-    progressr::handlers("txtprogressbar")
     progressr::with_progress({
       p = progressr::progressor(steps = nrow(haploblocks_df))
       local_GEBV = purrr::map(haploblocks_df$Block_ID, function(haploblock){
@@ -111,10 +110,9 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
   # Otherwise, if in parallel mode, build payloads for each chunk of haploblocks based on estimated computational cost, and use furrr::future_map to process each chunk in parallel.
   # The results from all chunks are then combined back into the final local_GEBV list.
   } else {
-    # Use all cores available except for 1 to avoid overloading the system
-    workers = max(1L, as.integer(future::availableCores()) - 1L)
-
-    progressr::handlers("txtprogressbar")
+    # Ask HapSelect how many cores this session is allowed to use, so that a limit set by
+    # whatever launched this R process is respected.
+    workers = cpu_cores()
 
     # Build payloads for each chunk of haploblocks based on estimated computational cost, and target chunk size. This will determine how the haploblocks are grouped for parallel processing.
     chunk_payloads = build_gebv_chunk_payloads(
