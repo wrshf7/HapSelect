@@ -20,6 +20,8 @@
 compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov,
                               set_missing_NA = TRUE, mean_adjust = TRUE,
                               parallel = FALSE, chunk_size = 100){
+  report_step("local_gebv")
+
   .compute_local_block_effects(
     geno = geno,
     marker_effects = marker_effects,
@@ -52,6 +54,8 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
 compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marker_pecov,
                                      set_missing_NA = TRUE, mean_adjust = TRUE,
                                      parallel = FALSE, chunk_size = 100){
+  report_step("haplotype_effects")
+
   .compute_local_block_effects(
     geno = geno,
     marker_effects = marker_effects,
@@ -504,6 +508,8 @@ allocate_chunk_counts = function(group_costs, group_sizes, target_n_chunks){
 # workers        - integer: number of parallel workers; sets a floor on chunk count (workers * 2)
 # chunk_size     - integer: maximum blocks per chunk; sets a floor on chunk count (ceiling(n_blocks / chunk_size))
 build_gebv_chunk_payloads = function(prep, haploblocks_df, workers, chunk_size){
+  report_step("gebv_chunk_prep")
+
   block_ids = haploblocks_df$Block_ID
   block_costs = estimate_block_costs(
     block_marker_idx = prep$block_marker_idx,

@@ -19,6 +19,8 @@
 perform_ld_blocking = function(ld, map, method = c("flanking", "average"), tolerance = 1,
                       tol_reset = TRUE, threshold = 0.7,
                       start = c("LD", "beginning"), parallel = FALSE) {
+  report_step("ld_blocking")
+
   required_ld_cols = c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD")
   if(!is.data.frame(ld) || !all(required_ld_cols %in% colnames(ld))){
     stop("ld must be a data frame with columns: Chrom, Locus1, Locus2, Name1, Name2, LD. ",
