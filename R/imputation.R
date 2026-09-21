@@ -133,7 +133,9 @@ read_vcf_gt = function(path) {
 
   # VCF is tab-delimited by spec, so a single column means the file is delimited some other way
   if (length(col_names) < 2) {
-    stop("VCF #CHROM header has a single column, so the file does not appear to be tab-delimited: ", path)
+    stop("VCF #CHROM header is not tab-delimited, so no columns could be read: ", path,
+         "\nVCF requires tab separators between columns. Check the file has not been re-saved ",
+         "with spaces or commas, for example by a spreadsheet editor.")
   }
 
   data_lines = lines[-seq_len(header_idx)]
@@ -190,8 +192,12 @@ read_vcf_gt = function(path) {
 read_vcf_geno = function(path) {
   parsed = read_vcf_gt(path)
 
-  # One dosage column per sample, in the original sample order and names
-  dosage_cols = lapply(parsed$gt, gt_to_dosage)
+  # One dosage column per sample, in the original sample order and names.
+  # Any gt_to_dosage() error is combined with the file it was read from.
+  dosage_cols = tryCatch(
+    lapply(parsed$gt, gt_to_dosage),
+    error = function(e) stop("Cannot read ", path, " as dosages: ", conditionMessage(e), call. = FALSE)
+  )
 
   result = data.frame(parsed$map, dosage_cols, stringsAsFactors = FALSE, check.names = FALSE)
   row.names(result) = NULL
@@ -210,7 +216,16 @@ read_vcf_phased = function(path) {
   # Two columns per sample, kept adjacent so the order is S1_1, S1_2, S2_1, S2_2, ...
   hap_cols = list()
   for (s in names(parsed$gt)) {
-    haplotypes = gt_to_haplotypes(parsed$gt[[s]])
+    # Any gt_to_haplotypes() error is combined with the file, the sample and the fix
+    haplotypes = tryCatch(
+      gt_to_haplotypes(parsed$gt[[s]]),
+      error = function(e) stop(
+        "Cannot read ", path, " as phased haplotypes, in sample ", s, ": ", conditionMessage(e),
+        "\nread_vcf_phased() needs a phased VCF such as Beagle output. Use beagle_phase_geno() ",
+        "to phase, or read_vcf_geno() to read this file as dosages.",
+        call. = FALSE
+      )
+    )
     hap_cols[[paste0(s, "_1")]] = haplotypes[, 1]
     hap_cols[[paste0(s, "_2")]] = haplotypes[, 2]
   }

@@ -110,6 +110,53 @@ test_that("gt_to_haplotypes errors on calls a 0/1 haplotype cannot express", {
   expect_error(gt_to_haplotypes(c("0|1", "0|1|1")), "Unrecognised GT call")
 })
 
+# A VCF whose GT calls are whatever is passed in, for the reader error tests
+gt_vcf_fixture <- function(calls) {
+  path <- tempfile(fileext = ".vcf")
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tInd1",
+    paste0("1\t100\tsnp1\tA\tG\t.\tPASS\t.\tGT\t", calls)
+  ), path)
+  path
+}
+
+test_that("read_vcf_phased explains what to do when the VCF is not phased", {
+  # write_vcf_geno() emits unphased calls, so a round-tripped geno file is exactly this mistake
+  geno <- data.frame(
+    SNP = "snp1", Chromosome = 1, Position = 100, Ind1 = 1, Ind2 = 0,
+    stringsAsFactors = FALSE
+  )
+  vcf_path <- tempfile(fileext = ".vcf")
+  on.exit(unlink(vcf_path))
+  HapSelect:::write_vcf_geno(geno, vcf_path)
+
+  # fixed = TRUE throughout: "0/1" as a regex is an alternation that would match anything
+  expect_error(read_vcf_phased(vcf_path), "0/1", fixed = TRUE)
+  expect_error(read_vcf_phased(vcf_path), vcf_path, fixed = TRUE)
+  expect_error(read_vcf_phased(vcf_path), "Ind1", fixed = TRUE)
+  expect_error(read_vcf_phased(vcf_path), "beagle_phase_geno()", fixed = TRUE)
+})
+
+test_that("read_vcf_phased surfaces the offending call for missing and multi-allelic VCFs", {
+  missing_vcf <- gt_vcf_fixture(".|.")
+  multi_vcf <- gt_vcf_fixture("0|2")
+  on.exit(unlink(c(missing_vcf, multi_vcf)))
+
+  expect_error(read_vcf_phased(missing_vcf), ".|.", fixed = TRUE)
+  expect_error(read_vcf_phased(multi_vcf), "0|2", fixed = TRUE)
+  expect_error(read_vcf_phased(multi_vcf), multi_vcf, fixed = TRUE)
+})
+
+test_that("read_vcf_geno names the file when a call cannot be a dosage", {
+  multi_vcf <- gt_vcf_fixture("1/2")
+  on.exit(unlink(multi_vcf))
+
+  expect_error(read_vcf_geno(multi_vcf), "1/2", fixed = TRUE)
+  expect_error(read_vcf_geno(multi_vcf), multi_vcf, fixed = TRUE)
+})
+
 test_that("read_vcf_phased returns the geno_phased layout", {
   vcf_path <- phased_vcf_fixture()
   on.exit(unlink(vcf_path))
