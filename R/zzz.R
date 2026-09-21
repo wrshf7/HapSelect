@@ -1,9 +1,23 @@
 # R/zzz.R
 #
-# Package startup banner. Runs automatically when a user does
-# library(HapSelect) or requireNamespace(HapSelect, ... attach = TRUE).
+# Load and attach hooks. .onLoad registers the progress handler and runs whenever the
+# namespace loads; .onAttach prints the startup banner and runs only when the package is
+# attached, by library(HapSelect) or requireNamespace(..., attach = TRUE).
 #
-# Dependency: needs `cli` listed in DESCRIPTION's Imports field.
+
+.onLoad <- function(libname, pkgname) {
+  # Only runs if progressr's own environment variable is NOT set, as the consumer has already decided
+  if (!nzchar(Sys.getenv("R_PROGRESSR_ENABLE", unset = ""))) {
+    # Set the progressr.enable to true if machine logging is enabled, the session is interactive or a terminal that is unpiped
+    options(progressr.enable = machine_logging() || interactive() || isatty(stderr()))
+  }
+
+  # Register the progress handler, either outputting CLI based progress bars, or machine readable progress JSON if enabled
+  register_handler()
+
+  # Return nothing by convention
+  invisible()
+}
  
 .onAttach <- function(libname, pkgname) {
   version  <- as.character(utils::packageVersion("HapSelect"))

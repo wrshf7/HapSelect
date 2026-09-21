@@ -55,6 +55,8 @@ ld_func = function(genotypes){
 #requires a genotype matrix with SNP name as the first column, chromosome identifier as the second column, markers as rows, and individuals genotyped as columns 3 onwards
 #genotypes should be dosages: 0,1,2
 pairwise_ld = function(genotype_matrix, parallelize = TRUE){
+  report_step("pairwise_ld")
+
   # Validate the input genotype matrix structure and content before proceeding with LD calculations
   check_ld_matrix(genotype_matrix)
 
@@ -64,13 +66,10 @@ pairwise_ld = function(genotype_matrix, parallelize = TRUE){
   #split the genotype matrix by chromosome for parallelization
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
 
-  #setup parallelization using future and parallel package and utilize all but 1 core
+  #setup parallelization using future, limited to the cores HapSelect is allowed to use
   if(parallelize){
-    future::plan(multisession, workers = parallel::detectCores() - 1)
+    future::plan(multisession, workers = cpu_cores())
   }
-
-  #setup progress bar
-  handlers("txtprogressbar")
 
   #call progress bar and perform main function
   with_progress({
