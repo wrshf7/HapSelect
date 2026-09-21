@@ -17,6 +17,7 @@ write_vcf_geno = function(geno, path) {
   # Extract the dosage matrix, stripping out marker/chrom/position
   geno_matrix = as.matrix(geno[, -(1:3), drop = FALSE])
 
+  # Beagle is built for diploid genomes, so dosages must be 0, 1, 2, or NA.
   # Check every dosage is 0, 1, 2, or NA before encoding it as a genotype call
   if (any(!(geno_matrix[!is.na(geno_matrix)] %in% c(0, 1, 2)))) {
     stop("Genotype dosages must be 0, 1, 2, or NA.")
@@ -49,10 +50,53 @@ write_vcf_geno = function(geno, path) {
   utils::write.table(body, con, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 }
 
-##### Read a (optionally gzipped) VCF back into a HapSelect genotype data frame #####
-# Converts the GT (genotype) field of every sample column back to a dosage (0 / 1 / 2 / NA), counting
-# ALT alleles; phased ("|") and unphased ("/") genotypes are both accepted.
-read_vcf_geno = function(path) {
+##### Every diploid biallelic GT call mapped to its ALT-allele dosage #####
+# The decoding half of the gt_calls table in write_vcf_geno(). Beagle returns phased calls while
+# write_vcf_geno() writes unphased ones, so each genotype appears under both separators.
+dosage_lookup = c("0/0" = 0, "0/1" = 1, "1/0" = 1, "1/1" = 2,
+                  "0|0" = 0, "0|1" = 1, "1|0" = 1, "1|1" = 2)
+
+# Missing genotype calls, which become NA rather than an error
+missing_calls = c("./.", ".|.")
+
+##### Convert a vector of VCF GT calls to ALT-allele dosages #####
+# gt: GT field values, one per sample, e.g. c("0/0", "0|1", "./.")
+# Missing calls become NA. Anything else the lookup does not cover - a multi-allelic call such as
+# 1/2, or a non-diploid one such as 0/0/1/1 - is an error rather than a silent NA, since a
+# bagle only supports a diploid/biallelic genotype.
+gt_to_dosage = function(gt) {
+  dosage = dosage_lookup[gt]
+
+  # A missing call is expected and becomes NA; any other unmapped call is not
+  unknown = is.na(dosage) & !(gt %in% missing_calls)
+  if (any(unknown)) {
+    stop("Unrecognised GT call(s): ", paste(unique(gt[unknown]), collapse = ", "),
+         ". HapSelect dosages require diploid biallelic genotypes.")
+  }
+
+  unname(dosage)
+}
+
+##### Convert a vector of phased VCF GT calls to haplotype allele columns #####
+# gt: phased GT values, one per sample, e.g. c("0|0", "0|1")
+# Returns an integer matrix of 0/1 allele presence with one column per haplotype. Beagle output
+# is always phased and complete, so an unphased ("0/1") or missing ("./.") call means something
+# upstream went wrong and is an error rather than an NA.
+gt_to_haplotypes = function(gt) {
+  alleles = strsplit(gt, "|", fixed = TRUE)
+  if (any(lengths(alleles) != 2)) {
+    stop("Expected phased diploid GT calls separated by \"|\", e.g. 0|1.")
+  }
+  matrix(as.integer(unlist(alleles)), ncol = 2, byrow = TRUE)
+}
+
+##### Parse a (optionally gzipped) VCF into map columns and per-sample GT strings #####
+# The shared front half of read_vcf_geno() and read_vcf_phased(): everything up to and including
+# pulling the GT field out of each sample column, which is the same whichever format is wanted.
+# Returns a list of:
+#   map - data frame of SNP / Chromosome / Position
+#   gt  - named list of GT character vectors, one per sample, in VCF column order
+read_vcf_gt = function(path) {
   # Check the file exists
   if (!file.exists(path)) {
     stop("VCF file not found: ", path)
@@ -77,12 +121,13 @@ read_vcf_geno = function(path) {
   # Everything after the fixed VCF columns is a sample
   sample_cols = setdiff(col_names, c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"))
 
-  # If there are no records, return an empty geno data frame with the right columns
+  # If there are no records, hand back an empty map and empty GT vectors
   if (length(data_lines) == 0) {
-    result = data.frame(Marker = character(), Chrom = integer(), Position = numeric(),
-                         stringsAsFactors = FALSE, check.names = FALSE)
-    result[sample_cols] = numeric()
-    return(result)
+    return(list(
+      map = data.frame(SNP = character(), Chromosome = integer(), Position = numeric(),
+                       stringsAsFactors = FALSE, check.names = FALSE),
+      gt = stats::setNames(rep(list(character()), length(sample_cols)), sample_cols)
+    ))
   }
 
   # Split every line into its tab-delimited fields
@@ -96,29 +141,58 @@ read_vcf_geno = function(path) {
     stop("VCF FORMAT field does not include GT for one or more records: ", path)
   }
 
-  # Convert a vector of GT calls (phased or unphased) to dosages, ./. becomes NA
-  gt_to_dosage = function(gt) {
-    alleles = strsplit(gsub("|", "/", gt, fixed = TRUE), "/", fixed = TRUE)
-    vapply(alleles, function(a) if (any(a == ".")) NA_real_ else sum(as.integer(a)), numeric(1))
+  # Pull the GT field out of every sample column
+  gt = lapply(sample_cols, function(s) {
+    sample_fields = strsplit(tab[, s], ":", fixed = TRUE)
+    vapply(seq_along(sample_fields), function(i) sample_fields[[i]][gt_index[i]], character(1))
+  })
+  names(gt) = sample_cols
+
+  list(
+    map = data.frame(
+      SNP = tab[, "ID"],
+      Chromosome = utils::type.convert(tab[, "CHROM"], as.is = TRUE),
+      Position = as.numeric(tab[, "POS"]),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    ),
+    gt = gt
+  )
+}
+
+##### Read a (optionally gzipped) VCF back into a HapSelect genotype data frame #####
+# Converts the GT (genotype) field of every sample column back to a dosage (0 / 1 / 2 / NA), counting
+# ALT alleles; phased ("|") and unphased ("/") genotypes are both accepted.
+# Returns a geno object, so columns are SNP / Chromosome / Position, matching order_map().
+# LD and haploblock tables use Chrom instead - do not align this to those.
+read_vcf_geno = function(path) {
+  parsed = read_vcf_gt(path)
+
+  # One dosage column per sample, in the original sample order and names
+  dosage_cols = lapply(parsed$gt, gt_to_dosage)
+
+  result = data.frame(parsed$map, dosage_cols, stringsAsFactors = FALSE, check.names = FALSE)
+  row.names(result) = NULL
+
+  return(result)
+}
+
+##### Read a (optionally gzipped) VCF back into a HapSelect phased genotype data frame #####
+# Splits each phased GT call into its two haplotypes instead of summing them to a dosage, giving
+# the geno_phased layout: SNP / Chromosome / Position, then <sample>_1 and <sample>_2 columns of
+# 0/1 allele presence. This is the format compute_haplotype_effects() expects.
+read_vcf_phased = function(path) {
+  parsed = read_vcf_gt(path)
+
+  # Two columns per sample, kept adjacent so the order is S1_1, S1_2, S2_1, S2_2, ...
+  hap_cols = list()
+  for (s in names(parsed$gt)) {
+    haplotypes = gt_to_haplotypes(parsed$gt[[s]])
+    hap_cols[[paste0(s, "_1")]] = haplotypes[, 1]
+    hap_cols[[paste0(s, "_2")]] = haplotypes[, 2]
   }
 
-  # Pull out and convert the GT field for every sample column
-  dosage_cols = lapply(sample_cols, function(s) {
-    sample_fields = strsplit(tab[, s], ":", fixed = TRUE)
-    gt = vapply(seq_along(sample_fields), function(i) sample_fields[[i]][gt_index[i]], character(1))
-    gt_to_dosage(gt)
-  })
-  names(dosage_cols) = sample_cols
-
-  # Assemble the final geno-shaped data frame
-  result = data.frame(
-    Marker = tab[, "ID"],
-    Chrom = utils::type.convert(tab[, "CHROM"], as.is = TRUE),
-    Position = as.numeric(tab[, "POS"]),
-    dosage_cols,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
+  result = data.frame(parsed$map, hap_cols, stringsAsFactors = FALSE, check.names = FALSE)
   row.names(result) = NULL
 
   return(result)
@@ -131,6 +205,9 @@ read_vcf_geno = function(path) {
 # nocov start
 
 ##### Impute (and phase) an existing VCF with Beagle #####
+# Beagle always phases, and phasing fills in missing genotypes as it goes, so a single run both
+# phases and imputes. Its impute= argument only controls markers that are absent from the input
+# but present in a reference panel, so it has no effect unless ref= is supplied.
 # vcf_in    : path to the input VCF (.vcf or .vcf.gz) containing the genotypes to impute
 # out_prefix: output file prefix; Beagle writes <out_prefix>.vcf.gz (and <out_prefix>.log)
 # ref       : optional reference panel VCF, for reference-based imputation
@@ -172,14 +249,15 @@ beagle_impute = function(vcf_in, out_prefix, ref = NULL, map = NULL, extra_args 
   paste0(out_prefix, ".vcf.gz")
 }
 
-##### Impute missing genotypes in a genotype data frame using Beagle #####
-# Writes geno out as a temporary VCF, imputes it with Beagle, and reads the result back into
-# the same data frame layout (marker, chromosome, position, then one dosage column per
-# individual, in the original sample order and names).
+##### Run Beagle over a genotype data frame #####
+# Shared by beagle_impute_geno() and beagle_phase_geno(), which differ only in how they read the
+# result back. Writes geno out as a temporary VCF, runs Beagle over it, and hands the output VCF
+# to reader.
 #
-# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
-#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
-beagle_impute_geno = function(geno, ref = NULL, map = NULL, extra_args = character()) {
+# geno  : data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#         cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+# reader: function taking the output VCF path, e.g. read_vcf_geno or read_vcf_phased
+run_beagle_on_geno = function(geno, reader, ref = NULL, map = NULL, extra_args = character()) {
   # Check the geno dataframe is valid
   if (!is.data.frame(geno) || ncol(geno) < 4) {
     stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
@@ -191,8 +269,32 @@ beagle_impute_geno = function(geno, ref = NULL, map = NULL, extra_args = charact
   on.exit(unlink(c(in_vcf, paste0(out_prefix, c(".vcf.gz", ".log"))), force = TRUE), add = TRUE)
   write_vcf_geno(geno, in_vcf)
 
-  # Perform imputation and read the resulting vcf file
+  # Run Beagle and read the resulting vcf file back in the requested format
   out_vcf = beagle_impute(in_vcf, out_prefix, ref = ref, map = map, extra_args = extra_args)
-  read_vcf_geno(out_vcf)
+  reader(out_vcf)
+}
+
+##### Impute missing genotypes in a genotype data frame using Beagle #####
+# Returns the same data frame layout as geno (marker, chromosome, position, then one dosage
+# column per individual, in the original sample order and names).
+#
+# Note that this discards the phasing Beagle produced, since a dosage cannot express which
+# haplotype an allele sits on. Use beagle_phase_geno() for the haplotype pipeline.
+#
+# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+beagle_impute_geno = function(geno, ref = NULL, map = NULL, extra_args = character()) {
+  run_beagle_on_geno(geno, read_vcf_geno, ref = ref, map = map, extra_args = extra_args)
+}
+
+##### Phase (and impute) a genotype data frame using Beagle #####
+# Same Beagle run as beagle_impute_geno(), but keeps the phasing: returns the geno_phased layout
+# of marker, chromosome, position, then <individual>_1 and <individual>_2 columns of 0/1 allele
+# presence, which is what compute_haplotype_effects() expects.
+#
+# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+beagle_phase_geno = function(geno, ref = NULL, map = NULL, extra_args = character()) {
+  run_beagle_on_geno(geno, read_vcf_phased, ref = ref, map = map, extra_args = extra_args)
 }
 # nocov end

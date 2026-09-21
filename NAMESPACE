@@ -15,7 +15,7 @@ import(genomicSimulation)
 
 export(beagle_impute)
 export(beagle_impute_geno)
-export(read_vcf_geno)
+export(beagle_phase_geno)
 export(set_beagle_path)
 export(block_obj_to_df)
 export(block_summary)
