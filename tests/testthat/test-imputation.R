@@ -40,6 +40,18 @@ test_that("read_vcf_geno errors when the file is missing or malformed", {
   expect_error(read_vcf_geno(bad_vcf), "#CHROM header line")
 })
 
+test_that("read_vcf_geno errors when the VCF is not tab-delimited", {
+  space_vcf <- tempfile(fileext = ".vcf")
+  on.exit(unlink(space_vcf))
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "#CHROM POS ID REF ALT QUAL FILTER INFO FORMAT Ind1",
+    "1 100 snp1 A G . PASS . GT 0|0"
+  ), space_vcf)
+
+  expect_error(read_vcf_geno(space_vcf), "tab-delimited")
+})
+
 test_that("beagle_impute errors when the input VCF is missing", {
   expect_error(
     beagle_impute("does_not_exist.vcf", tempfile()),
@@ -77,11 +89,25 @@ test_that("gt_to_haplotypes splits phased calls into haplotype columns", {
     gt_to_haplotypes(c("0|0", "0|1", "1|0", "1|1")),
     matrix(c(0L, 0L, 0L, 1L, 1L, 0L, 1L, 1L), ncol = 2, byrow = TRUE)
   )
+
+  # A valid vector must not warn: a coercion-based implementation would warn here
+  expect_silent(gt_to_haplotypes(c("0|0", "1|1")))
 })
 
 test_that("gt_to_haplotypes rejects unphased and missing calls", {
   expect_error(gt_to_haplotypes(c("0|1", "0/1")), "phased diploid GT calls")
   expect_error(gt_to_haplotypes(c("0|1", "./.")), "phased diploid GT calls")
+
+  # The phased missing form splits into two alleles, so a count-only check would let it through
+  expect_error(gt_to_haplotypes(c("0|1", ".|.")), "phased diploid GT calls")
+})
+
+test_that("gt_to_haplotypes errors on calls a 0/1 haplotype cannot express", {
+  # Valid VCF at a multi-allelic site, but not a biallelic 0/1 allele presence
+  expect_error(gt_to_haplotypes(c("0|1", "0|2")), "Unrecognised GT call")
+  expect_error(gt_to_haplotypes(c("0|1", "A|T")), "Unrecognised GT call")
+  expect_error(gt_to_haplotypes(c("0|1", NA)), "Unrecognised GT call")
+  expect_error(gt_to_haplotypes(c("0|1", "0|1|1")), "Unrecognised GT call")
 })
 
 test_that("read_vcf_phased returns the geno_phased layout", {
