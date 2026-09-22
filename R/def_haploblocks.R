@@ -61,6 +61,144 @@ window_strategy = function(window, method = c("window_snp", "window_map")) {
   )
 }
 
+# graph_strategy ---------------------------------------------------------------
+# Builds a graph-based blocking strategy for use with def_blocks(). Blocks are
+# connected components of a local LD graph, projected back onto the map and cut
+# into non-overlapping segments.
+#
+# theta_core       : minimum r^2 for a core graph edge
+# theta_core_by_chr: named numeric vector of per-chromosome theta_core overrides, named by
+#                    chromosome as it appears in the map, e.g. c("1" = 0.9, "2" = 0.8);
+#                    NULL to use theta_core everywhere
+# theta_extend     : minimum r^2 for attaching an ungrouped marker to a block
+# theta_bridge     : minimum r^2 for a boundary edge merging two adjacent blocks
+# theta_refill     : minimum r^2 for refilling a marker left inside a block's span.
+#                    Recomputed from the genotypes, so window_ld and ld_min_r2 do not cap it
+# ld_min_r2        : floor for the shared LD edge table, below which edges are not stored
+# window_ld        : forward marker window for LD calculation
+# window_core      : maximum marker distance for a core edge
+# window_extend    : maximum distance to the nearest member of a block being extended
+# min_links        : minimum number of supporting edges for an extension
+# max_gap_snps     : maximum intervening markers a bridge may cross. Bridging merges the two
+#                    blocks; it does not absorb what lies between them
+# max_gap_markers  : maximum marker gap within one segment, before it is split
+# max_gap_position : maximum map distance within one segment, or NULL for no distance limit
+# min_block_snps   : minimum markers for a candidate segment to be kept
+graph_strategy = function(theta_core        = 0.80,
+                          theta_core_by_chr = NULL,
+                          theta_extend      = 0.20,
+                          theta_bridge      = 0.20,
+                          theta_refill      = 0.80,
+                          ld_min_r2         = 0.20,
+                          window_ld         = 20,
+                          window_core       = 20,
+                          window_extend     = 50,
+                          min_links         = 1,
+                          max_gap_snps      = 2,
+                          max_gap_markers   = 2,
+                          max_gap_position  = NULL,
+                          min_block_snps    = 2) {
+
+  # Check all thresholds are valid
+  thresholds = list(theta_core = theta_core, theta_extend = theta_extend,
+                    theta_bridge = theta_bridge, theta_refill = theta_refill,
+                    ld_min_r2 = ld_min_r2)
+  for (name in names(thresholds)) {
+    value = thresholds[[name]]
+    if (!is.numeric(value) || length(value) != 1 || is.na(value) || value < 0 || value > 1) {
+      stop(name, " must be a single number between 0 and 1, since it is an r^2 threshold.")
+    }
+  }
+
+  # Three separate ways to get the per-chromosome overrides wrong, so three separate checks
+  if (!is.null(theta_core_by_chr)) {
+    #Check the overrides are numeric
+    if (!is.numeric(theta_core_by_chr) || length(theta_core_by_chr) == 0) {
+      stop("theta_core_by_chr must be a numeric vector of r^2 thresholds, or NULL.")
+    }
+
+    # Check the overrides are named
+    if (is.null(names(theta_core_by_chr)) || any(!nzchar(names(theta_core_by_chr)))) {
+      stop("theta_core_by_chr must be named by chromosome, e.g. c(\"1\" = 0.9, ",
+           "\"2\" = 0.8). Without names there is nothing to match against the map.")
+    }
+
+    # Check all overrides are between 0 and 1
+    if (any(is.na(theta_core_by_chr) | theta_core_by_chr < 0 | theta_core_by_chr > 1)) {
+      stop("Every theta_core_by_chr value must be between 0 and 1, since they are ",
+           "r^2 thresholds.")
+    }
+  }
+
+  # Check all marker indices or distances are valid, and non fractional
+  check_property = function(value, name, minimum) {
+    if (!is.numeric(value) || length(value) != 1 || is.na(value) ||
+        value != round(value) || value < minimum) {
+      stop(name, " must be a single whole number of at least ", minimum,
+           ", since it counts markers.")
+    }
+  }
+  check_property(window_ld, "window_ld", 1)
+  check_property(window_core, "window_core", 1)
+  check_property(window_extend, "window_extend", 1)
+  check_property(min_links, "min_links", 1)
+  check_property(min_block_snps, "min_block_snps", 1)
+  check_property(max_gap_snps, "max_gap_snps", 0)
+  check_property(max_gap_markers, "max_gap_markers", 0)
+
+  # A map distance of zero or less would split a segment at every marker
+  if (!is.null(max_gap_position)) {
+    if (!is.numeric(max_gap_position) || length(max_gap_position) != 1 ||
+        is.na(max_gap_position) || max_gap_position <= 0) {
+      stop("max_gap_position must be a single positive map distance, or NULL.")
+    }
+  }
+
+  # Core blocks are the connected components of the theta_core edges
+  if (ld_min_r2 > theta_core) {
+    stop("ld_min_r2 (", ld_min_r2, ") is above theta_core (", theta_core,
+         "), so core blocks would be called at ld_min_r2 instead.")
+  }
+
+  # An override stands in for theta_core on the chromosomes it names
+  if (!is.null(theta_core_by_chr) && any(ld_min_r2 > theta_core_by_chr)) {
+    below = names(theta_core_by_chr)[ld_min_r2 > theta_core_by_chr]
+    stop("ld_min_r2 (", ld_min_r2, ") is above theta_core_by_chr for chromosome ",
+         paste(below, collapse = ", "), ", so core blocks there would be called at ",
+         "ld_min_r2 instead.")
+  }
+
+  # Ungrouped markers join a block on the strength of the theta_extend edges
+  if (ld_min_r2 > theta_extend) {
+    stop("ld_min_r2 (", ld_min_r2, ") is above theta_extend (", theta_extend,
+         "), so extension would run at ld_min_r2 instead.")
+  }
+
+  # Adjacent blocks merge across a gap on the strength of the theta_bridge edges
+  if (ld_min_r2 > theta_bridge) {
+    stop("ld_min_r2 (", ld_min_r2, ") is above theta_bridge (", theta_bridge,
+         "), so bridging would run at ld_min_r2 instead.")
+  }
+
+  # Not wrong, just a no-op, so it should not stop a parameter sweep
+  if (window_core > window_ld) {
+    warning("window_core (", window_core, ") reaches past window_ld (", window_ld,
+            "), and pairs beyond window_ld are never calculated. The effective core ",
+            "window is window_ld.")
+  }
+
+  base_block_strategy(
+    list(theta_core = theta_core, theta_core_by_chr = theta_core_by_chr,
+         theta_extend = theta_extend, theta_bridge = theta_bridge,
+         theta_refill = theta_refill, ld_min_r2 = ld_min_r2,
+         window_ld = window_ld, window_core = window_core,
+         window_extend = window_extend, min_links = min_links,
+         max_gap_snps = max_gap_snps, max_gap_markers = max_gap_markers,
+         max_gap_position = max_gap_position, min_block_snps = min_block_snps),
+    class = "graph_strategy"
+  )
+}
+
 
 ##################################
 #### Haploblocking Function ######
@@ -69,16 +207,26 @@ window_strategy = function(window, method = c("window_snp", "window_map")) {
 # def_blocks -------------------------------------------------------------------
 # Top-level function. Performs blocking given a particular strategy.
 #
+# strategy : a strategy object built by ld_strategy(), window_strategy(),
+#            graph_strategy(), or another *_strategy() constructor. A strategy
+#            holds how to block, not what to block.
 # map      : marker map table with columns SNP, Chromosome, Position
-# strategy : a strategy object built by ld_strategy(), window_strategy(), or
-#            another *_strategy() constructor. Any data a strategy needs
-#            besides the map (e.g. an LD table) is supplied when building the
-#            strategy itself.
-def_blocks = function(map, strategy) {
+# geno     : genotype data frame in the HapSelect layout - SNP ID, chromosome and
+#            position in columns 1 to 3, one dosage column per individual after
+#            that. Required by graph_strategy(), which computes LD from it directly, and unused by
+#            the other strategies.
+def_blocks = function(strategy, map, geno = NULL) {
 
   if (!inherits(strategy, "block_strategy")) {
     stop("strategy must be built with a strategy constructor, e.g. ",
          "ld_strategy() or window_strategy().")
+  }
+
+  # Quietly accepting genotypes a strategy never reads would hide the mistake until the
+  # blocks came back looking nothing like the data that was passed
+  if (!is.null(geno) && !inherits(strategy, "graph_strategy")) {
+    warning("geno is only used by graph_strategy(), and is ignored by ",
+            class(strategy)[1], ".")
   }
 
   switch(class(strategy)[1],
@@ -98,6 +246,12 @@ def_blocks = function(map, strategy) {
       map    = map,
       window = strategy$window,
       method = strategy$method
+    ),
+
+    "graph_strategy" = perform_graph_blocking(
+      geno     = geno,
+      map      = map,
+      strategy = strategy
     ),
 
     stop("No blocking method defined for strategy class '", class(strategy)[1], "'.")

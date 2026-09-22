@@ -3,6 +3,8 @@ importFrom(Rcpp, sourceCpp)
 importFrom("stats", "as.formula", "ave", "cor", "median", "nls", "pnorm", "predict", "sd", "setNames")
 importFrom("utils", "combn", "type.convert", "write.table")
 import(cowplot)
+importFrom(data.table, ":=", ".N", ".I", "as.data.table", "data.table",
+           "rbindlist", "set", "setcolorder", "setkey", "setorder")
 import(dplyr)
 import(furrr)
 import(future)

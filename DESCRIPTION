@@ -28,6 +28,7 @@ Encoding: UTF-8
 LazyData: true
 Imports:
     cowplot,
+    data.table,
     dplyr,
     furrr,
     future,
@@ -44,6 +45,7 @@ LinkingTo:
 Suggests:
     covr,
     jsonlite,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    vcfR
 Remotes:
     vllrs/genomicSimulation

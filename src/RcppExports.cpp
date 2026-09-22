@@ -10,6 +10,48 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// compute_local_ld_edges_cpp
+DataFrame compute_local_ld_edges_cpp(NumericMatrix geno, CharacterVector snps, NumericVector pos, int W_snp, double min_r2);
+RcppExport SEXP _HapSelect_compute_local_ld_edges_cpp(SEXP genoSEXP, SEXP snpsSEXP, SEXP posSEXP, SEXP W_snpSEXP, SEXP min_r2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type geno(genoSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type snps(snpsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type pos(posSEXP);
+    Rcpp::traits::input_parameter< int >::type W_snp(W_snpSEXP);
+    Rcpp::traits::input_parameter< double >::type min_r2(min_r2SEXP);
+    rcpp_result_gen = Rcpp::wrap(compute_local_ld_edges_cpp(geno, snps, pos, W_snp, min_r2));
+    return rcpp_result_gen;
+END_RCPP
+}
+// has_strong_ld_to_block_cpp
+bool has_strong_ld_to_block_cpp(NumericMatrix geno, int target_col, IntegerVector member_cols, double threshold);
+RcppExport SEXP _HapSelect_has_strong_ld_to_block_cpp(SEXP genoSEXP, SEXP target_colSEXP, SEXP member_colsSEXP, SEXP thresholdSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type geno(genoSEXP);
+    Rcpp::traits::input_parameter< int >::type target_col(target_colSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type member_cols(member_colsSEXP);
+    Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
+    rcpp_result_gen = Rcpp::wrap(has_strong_ld_to_block_cpp(geno, target_col, member_cols, threshold));
+    return rcpp_result_gen;
+END_RCPP
+}
+// connected_components_cpp
+IntegerVector connected_components_cpp(IntegerVector from, IntegerVector to, int n_vertex);
+RcppExport SEXP _HapSelect_connected_components_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP n_vertexSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type to(toSEXP);
+    Rcpp::traits::input_parameter< int >::type n_vertex(n_vertexSEXP);
+    rcpp_result_gen = Rcpp::wrap(connected_components_cpp(from, to, n_vertex));
+    return rcpp_result_gen;
+END_RCPP
+}
 // make_blocks_cpp
 List make_blocks_cpp(NumericVector ld_lookup_r, DataFrame ld_adj_r, CharacterVector marker_names_r, IntegerVector marker_idx_r, LogicalVector assigned_r, std::string method, double threshold, int tolerance, bool tol_reset, std::string start);
 RcppExport SEXP _HapSelect_make_blocks_cpp(SEXP ld_lookup_rSEXP, SEXP ld_adj_rSEXP, SEXP marker_names_rSEXP, SEXP marker_idx_rSEXP, SEXP assigned_rSEXP, SEXP methodSEXP, SEXP thresholdSEXP, SEXP toleranceSEXP, SEXP tol_resetSEXP, SEXP startSEXP) {
@@ -46,6 +88,9 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_HapSelect_compute_local_ld_edges_cpp", (DL_FUNC) &_HapSelect_compute_local_ld_edges_cpp, 5},
+    {"_HapSelect_has_strong_ld_to_block_cpp", (DL_FUNC) &_HapSelect_has_strong_ld_to_block_cpp, 4},
+    {"_HapSelect_connected_components_cpp", (DL_FUNC) &_HapSelect_connected_components_cpp, 3},
     {"_HapSelect_make_blocks_cpp", (DL_FUNC) &_HapSelect_make_blocks_cpp, 10},
     {"_HapSelect_pairwise_ld_cpp", (DL_FUNC) &_HapSelect_pairwise_ld_cpp, 4},
     {NULL, NULL, 0}
