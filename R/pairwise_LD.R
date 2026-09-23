@@ -4,12 +4,11 @@
 
 # ld_func ----------------------------------------------------------------------
 # Calculates r^2 between marker pairs on one chromosome, in R. The compiled
-# equivalent is ld_func_c(); pairwise_ld() and pairwise_ld_c() call these once per
+# equivalent is ld_func_c(); pairwise_ld_r() and pairwise_ld() call these once per
 # chromosome.
 #
-# genotypes : one chromosome's markers, with row names set to the marker names:
-#             SNP ID, chromosome and position in columns 1 to 3, one dosage column
-#             per individual after that
+# genotypes : one chromosome's markers: SNP ID, chromosome and position in
+#             columns 1 to 3, one dosage column per individual after that
 # window,
 # min_r2,
 # min_obs   : as documented on pairwise_ld()
@@ -23,7 +22,7 @@ ld_func = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
   chromo = genotypes[1,2]
 
   #pull the marker names of the chromosome
-  marker_names = row.names(genotypes)
+  marker_names = as.character(genotypes[,1])
 
   #remove chromo and snp name columns, transpose the df so that markers are columns
   genotypes = genotypes[,-(1:3)]
@@ -88,8 +87,7 @@ ld_func = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
 # returns the same result, but delegates to compiled code, which is much faster
 # than building one data frame per marker pair in R.
 #
-# genotypes : as for ld_func(), though the marker names are read from column 1
-#             rather than the row names
+# genotypes : as for ld_func()
 # window,
 # min_r2,
 # min_obs   : as documented on pairwise_ld()
@@ -130,9 +128,24 @@ ld_func_c = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
   )
 }
 
+# chromosome_ld ----------------------------------------------------------------
+# Runs the per-chromosome LD function on one chromosome and ticks the progress bar.
+#
+# genotypes     : one chromosome's markers, as for ld_func()
+# chromosome_fn : ld_func() or ld_func_c()
+# window,
+# min_r2,
+# min_obs       : as documented on pairwise_ld()
+# p             : progressor to tick once the chromosome is done
+chromosome_ld = function(genotypes, chromosome_fn, window, min_r2, min_obs, p){
+  chromo_ld = chromosome_fn(genotypes, window = window, min_r2 = min_r2, min_obs = min_obs)
+  p()
+  chromo_ld
+}
+
 # pairwise_ld_run --------------------------------------------------------------
 # The chromosome splitting, parallelisation and progress reporting shared by
-# pairwise_ld() and pairwise_ld_c(). Only the per-chromosome function differs.
+# pairwise_ld() and pairwise_ld_r(). Only the per-chromosome function differs.
 #
 # chromosome_fn : ld_func() for the R implementation, ld_func_c() for the compiled
 #                 one
@@ -141,9 +154,6 @@ pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs
                            chromosome_fn){
   # Validate the input genotype matrix structure and content before proceeding with LD calculations
   check_ld_matrix(genotype_matrix)
-
-  #set row names to the marker names for the internal loop
-  row.names(genotype_matrix) = genotype_matrix[,1]
 
   #split the genotype matrix by chromosome for parallelization
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
@@ -157,13 +167,6 @@ pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs
   #setup progress bar
   handlers("txtprogressbar")
 
-  chromosome_ld = function(genotypes){
-    chromo_ld = chromosome_fn(genotypes, window = window, min_r2 = min_r2,
-                              min_obs = min_obs)
-    p()
-    chromo_ld
-  }
-
   #call progress bar and perform main function
   with_progress({
 
@@ -175,9 +178,13 @@ pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs
     #numbers, but loading packages on a worker can, and future warns when it does
     all_ld = if(parallelize){
       furrr::future_map_dfr(genotype_matrix, chromosome_ld,
+                            chromosome_fn = chromosome_fn, window = window,
+                            min_r2 = min_r2, min_obs = min_obs, p = p,
                             .options = furrr::furrr_options(seed = TRUE))
     } else {
-      purrr::map_dfr(genotype_matrix, chromosome_ld)
+      purrr::map_dfr(genotype_matrix, chromosome_ld,
+                     chromosome_fn = chromosome_fn, window = window,
+                     min_r2 = min_r2, min_obs = min_obs, p = p)
     }
 
   })
@@ -186,17 +193,72 @@ pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs
   return(all_ld)
 }
 
+# pairwise_ld_r ----------------------------------------------------------------
+# The R implementation of pairwise_ld(), kept unexported as a reference: the tests
+# check the compiled version against it, and the LD benchmark times the two side by
+# side. It builds a data frame per marker pair, so it is far slower than
+# pairwise_ld() on anything but a small dataset.
+#
+# Takes the same arguments as pairwise_ld() and returns the same result, except
+# that parallelize defaults to TRUE, which this implementation is slow enough to
+# benefit from.
+pairwise_ld_r = function(genotype_matrix, parallelize = TRUE, window = NULL,
+                         min_r2 = NULL, min_obs = 2L){
+  pairwise_ld_run(genotype_matrix, parallelize = parallelize, window = window,
+                  min_r2 = min_r2, min_obs = min_obs,
+                  chromosome_fn = ld_func)
+}
+
+# Marker count per chromosome above which an unwindowed run is usually worth
+# parallelising. Starting workers takes time that the work has to earn back, and
+# a window keeps the pair count linear in the marker count while leaving it out
+# makes it quadratic - so the two kinds of run sit on opposite sides of that.
+# A rough threshold rather than a precise one, since machines differ.
+LD_PARALLEL_MARKER_HINT = 1000
+
+# advise_parallel_ld -----------------------------------------------------------
+# Messages when a serial run looks large enough that parallelising would pay, so
+# that a long job does not run serially just because that is the default.
+# Called by pairwise_ld(), which defaults to serial; pairwise_ld_r() defaults to
+# parallel and does not advise.
+#
+# genotype_matrix : as passed to pairwise_ld()
+# window          : forward marker window, or NULL for every pair
+advise_parallel_ld = function(genotype_matrix, window){
+  # Leave a malformed input to check_ld_matrix(), which reports it properly
+  if (!is.data.frame(genotype_matrix) || ncol(genotype_matrix) < 4) return(invisible(NULL))
+
+  # A window is the case parallelising does not pay for, whatever the marker count
+  if (!is.null(window)) return(invisible(NULL))
+
+  per_chromosome = as.vector(table(genotype_matrix[[2]]))
+
+  # Work is split by chromosome, so a single one cannot be spread over workers
+  if (length(per_chromosome) < 2) return(invisible(NULL))
+  if (max(per_chromosome) <= LD_PARALLEL_MARKER_HINT) return(invisible(NULL))
+
+  message("pairwise_ld() is running serially over every within-chromosome pair, ",
+          "with up to\n  ", format(max(per_chromosome), big.mark = ","),
+          " markers on a chromosome. Without a window the pair count grows with ",
+          "the\n  square of the markers, and parallelising is usually worth it ",
+          "from somewhere\n  around ", format(LD_PARALLEL_MARKER_HINT, big.mark = ","),
+          " markers per chromosome upwards. Pass parallelize = TRUE to try\n  it, ",
+          "or parallelize = FALSE to keep it serial without this message.")
+  invisible(NULL)
+}
+
 # pairwise_ld ------------------------------------------------------------------
-# Calculates r^2 between pairs of markers, within each chromosome. Markers on
-# different chromosomes are never compared. pairwise_ld_c() does the same thing in
-# compiled code and is much faster on anything but a small dataset.
+# Calculates r^2 between pairs of markers, within each chromosome, in compiled
+# code. Markers on different chromosomes are never compared.
 #
 # genotype_matrix : marker map and dosages in one data frame, markers as rows:
 #                   SNP ID (character) in column 1, chromosome (numeric) in column
 #                   2, position (numeric) in column 3, and one column per
 #                   individual after that holding dosages of 0, 1, 2 or NA
 # parallelize     : if TRUE, process chromosomes in parallel using all available
-#                   cores minus one
+#                   cores minus one. Defaults to FALSE: starting workers costs time
+#                   that the compiled code is often fast enough not to earn back.
+#                   A run large enough to benefit says so
 # window          : only compare markers at most this many positions apart within
 #                   the chromosome. NULL compares every pair, which is quadratic
 #                   in the marker count and so the expensive choice on dense data
@@ -216,69 +278,8 @@ pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs
 #
 # A pair whose r^2 is undefined - one of its markers monomorphic, or too few
 # individuals observed at both - is left out rather than returned with LD = NA.
-pairwise_ld = function(genotype_matrix, parallelize = TRUE, window = NULL,
+pairwise_ld = function(genotype_matrix, parallelize = FALSE, window = NULL,
                        min_r2 = NULL, min_obs = 2L){
-  pairwise_ld_run(genotype_matrix, parallelize = parallelize, window = window,
-                  min_r2 = min_r2, min_obs = min_obs,
-                  chromosome_fn = ld_func)
-}
-
-# Marker count per chromosome above which an unwindowed run is usually worth
-# parallelising. Starting workers takes time that the work has to earn back, and
-# a window keeps the pair count linear in the marker count while leaving it out
-# makes it quadratic - so the two kinds of run sit on opposite sides of that.
-# A rough threshold rather than a precise one, since machines differ.
-LD_PARALLEL_MARKER_HINT = 1000
-
-# advise_parallel_ld -----------------------------------------------------------
-# Messages when a serial run looks large enough that parallelising would pay, so
-# that a long job does not run serially just because that is the default.
-#
-# genotype_matrix : as passed to pairwise_ld_c()
-# window          : forward marker window, or NULL for every pair
-advise_parallel_ld = function(genotype_matrix, window){
-  # Leave a malformed input to check_ld_matrix(), which reports it properly
-  if (!is.data.frame(genotype_matrix) || ncol(genotype_matrix) < 4) return(invisible(NULL))
-
-  # A window is the case parallelising does not pay for, whatever the marker count
-  if (!is.null(window)) return(invisible(NULL))
-
-  per_chromosome = as.vector(table(genotype_matrix[[2]]))
-
-  # Work is split by chromosome, so a single one cannot be spread over workers
-  if (length(per_chromosome) < 2) return(invisible(NULL))
-  if (max(per_chromosome) <= LD_PARALLEL_MARKER_HINT) return(invisible(NULL))
-
-  message("pairwise_ld_c() is running serially over every within-chromosome pair, ",
-          "with up to\n  ", format(max(per_chromosome), big.mark = ","),
-          " markers on a chromosome. Without a window the pair count grows with ",
-          "the\n  square of the markers, and parallelising is usually worth it ",
-          "from somewhere\n  around ", format(LD_PARALLEL_MARKER_HINT, big.mark = ","),
-          " markers per chromosome upwards. Pass parallelize = TRUE to try\n  it, ",
-          "or parallelize = FALSE to keep it serial without this message.")
-  invisible(NULL)
-}
-
-# pairwise_ld_c ----------------------------------------------------------------
-# Calculates r^2 between pairs of markers within each chromosome, in compiled
-# code. Takes the same arguments as pairwise_ld() and returns the same result,
-# but is much faster, so it is the one to reach for on anything but a small
-# dataset.
-#
-# genotype_matrix,
-# window,
-# min_r2,
-# min_obs         : as documented on pairwise_ld()
-# parallelize     : if TRUE, process chromosomes in parallel using all available
-#                   cores minus one. Defaults to FALSE, unlike pairwise_ld():
-#                   starting workers costs time that the R implementation earns
-#                   back easily but the compiled one often does not, being fast
-#                   enough already. A run large enough to benefit says so
-#
-# Returns the same columns as pairwise_ld(): Chrom, Locus1, Locus2, Name1, Name2
-# and LD.
-pairwise_ld_c = function(genotype_matrix, parallelize = FALSE, window = NULL,
-                         min_r2 = NULL, min_obs = 2L){
   # Only advise when the default was left in place, not when serial was chosen
   if (missing(parallelize) && !parallelize) {
     advise_parallel_ld(genotype_matrix, window)

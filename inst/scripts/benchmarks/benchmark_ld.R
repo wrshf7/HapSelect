@@ -16,7 +16,7 @@ if (sys.nframe() == 0L) {
 #
 # Parameters, all overridable as --name=value or from a batched config:
 #   window        : forward marker window used by the windowed mode
-#   include_r     : time the R pairwise_ld(). It builds a data frame per marker pair, so
+#   include_r     : time pairwise_ld_r(), the R implementation. It builds a data frame per marker pair, so
 #                   turn this off for large marker counts
 #   include_plink : time PLINK --r2. Skipped with a message when PLINK is not found
 #
@@ -54,7 +54,7 @@ ld_expected_pairs = function(chrom, window) {
 # ld_sanity --------------------------------------------------------------------
 # Checks one LD table on its own terms, returning "ok" or the first check it fails.
 #
-# ld             : LD table as returned by pairwise_ld() or plink_pairwise_ld()
+# ld             : LD table as returned by pairwise_ld(), pairwise_ld_r() or plink_pairwise_ld()
 # expected_pairs : the most pairs the run could report
 # window         : forward marker window the run used, or NULL for every pair
 ld_sanity = function(ld, expected_pairs, window) {
@@ -144,14 +144,14 @@ run_benchmark_ld = function(params = list()) {
   }
 
   if (params$include_r) {
-    add_method("R", "serial", function(w) pairwise_ld(geno, parallelize = FALSE, window = w))
+    add_method("R", "serial", function(w) pairwise_ld_r(geno, parallelize = FALSE, window = w))
     if (has_installed_pkg) {
-      add_method("R", "parallel", function(w) quietly(pairwise_ld(geno, parallelize = TRUE, window = w)))
+      add_method("R", "parallel", function(w) quietly(pairwise_ld_r(geno, parallelize = TRUE, window = w)))
     }
   }
-  add_method("C++", "serial", function(w) pairwise_ld_c(geno, parallelize = FALSE, window = w))
+  add_method("C++", "serial", function(w) pairwise_ld(geno, parallelize = FALSE, window = w))
   if (has_installed_pkg) {
-    add_method("C++", "parallel", function(w) quietly(pairwise_ld_c(geno, parallelize = TRUE, window = w)))
+    add_method("C++", "parallel", function(w) quietly(pairwise_ld(geno, parallelize = TRUE, window = w)))
   }
   if (has_plink) {
     # PLINK counts the index marker in its window, so w markers apart is --ld-window w + 1

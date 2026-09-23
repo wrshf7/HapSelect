@@ -3,17 +3,17 @@
 ########################################
 #
 # Reading and writing VCF files, and converting VCF GT calls to and from the
-# HapSelect geno (dosage) and geno_phased (haplotype) layouts. Beagle is the
-# reason these exist - see imputation.R - but nothing here is specific to it,
-# so any part of the package that needs genotypes in or out of a VCF uses
-# these rather than parsing a VCF itself.
+# HapSelect geno (dosage) and geno_phased (haplotype) layouts. Any part of the
+# package that needs genotypes in or out of a VCF uses these rather than parsing
+# a VCF itself.
 
-##### Write a genotype data frame out as a minimal VCF for Beagle #####
+##### Write a genotype data frame out as a minimal diploid VCF #####
 # geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
 #       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
 # path: file path to write the VCF to
-# Dosages are written as unphased calls (0/0, 0/1, 1/1) with missing values as ./.,
+# Dosages are written as unphased diploid calls (0/0, 0/1, 1/1) with missing values as ./.,
 # using placeholder REF/ALT alleles (A/G) since dosage alone does not carry allele identity.
+# Diploid only, since its caller is the Beagle wrapper in imputation.R and Beagle is diploid.
 write_vcf_geno = function(geno, path) {
   # Use the geno column names as VCF sample IDs, falling back to generated names if missing
   sample_names = colnames(geno)[-(1:3)]
@@ -24,10 +24,10 @@ write_vcf_geno = function(geno, path) {
   # Extract the dosage matrix, stripping out marker/chrom/position
   geno_matrix = as.matrix(geno[, -(1:3), drop = FALSE])
 
-  # Beagle is built for diploid genomes, so dosages must be 0, 1, 2, or NA.
-  # Check every dosage is 0, 1, 2, or NA before encoding it as a genotype call
+  # Check every dosage is 0, 1, 2, or NA before encoding it as a diploid genotype call
   if (any(!(geno_matrix[!is.na(geno_matrix)] %in% c(0, 1, 2)))) {
-    stop("Genotype dosages must be 0, 1, 2, or NA.")
+    stop("Genotype dosages must be 0, 1, 2, or NA: write_vcf_geno() writes diploid calls, ",
+         "as Beagle requires.")
   }
 
   # Look up the unphased VCF genotype call for each dosage, missing values become ./.
@@ -46,7 +46,7 @@ write_vcf_geno = function(geno, path) {
   con = file(path, "w")
   on.exit(close(con))
 
-  # Write the minimal VCF header Beagle expects
+  # Write a minimal VCF header: the file format and the GT field
   writeLines(
     c("##fileformat=VCFv4.2",
       "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">"),
@@ -58,8 +58,8 @@ write_vcf_geno = function(geno, path) {
 }
 
 ##### Every diploid biallelic GT call mapped to its ALT-allele dosage #####
-# The decoding half of the gt_calls table in write_vcf_geno(). Beagle returns phased calls while
-# write_vcf_geno() writes unphased ones, so each genotype appears under both separators.
+# The decoding half of the gt_calls table in write_vcf_geno(). A VCF may write any call phased ("|")
+# or unphased ("/"), so each genotype appears under both separators.
 # See haplotype_lookup below for the phase-preserving counterpart.
 dosage_lookup = c("0/0" = 0, "0/1" = 1, "1/0" = 1, "1/1" = 2,
                   "0|0" = 0, "0|1" = 1, "1|0" = 1, "1|1" = 2)
@@ -72,8 +72,8 @@ missing_calls = c("./.", ".|.", ".")
 ##### Convert a vector of VCF GT calls to ALT-allele dosages #####
 # gt: GT field values, one per sample, e.g. c("0/0", "0|1", "./.")
 # Missing calls become NA. Anything else the lookup does not cover - a multi-allelic call such as
-# 1/2, or a non-diploid one such as 0/0/1/1 - is an error rather than a silent NA, since
-# Beagle only supports diploid biallelic genotypes.
+# 1/2, or a non-diploid one such as 0/0/1/1 - is an error rather than a silent NA, since the lookup
+# only covers diploid biallelic calls.
 gt_to_dosage = function(gt) {
   dosage = dosage_lookup[gt]
 
@@ -81,7 +81,7 @@ gt_to_dosage = function(gt) {
   unknown = is.na(dosage) & !(gt %in% missing_calls)
   if (any(unknown)) {
     stop("Unrecognised GT call(s): ", paste(unique(gt[unknown]), collapse = ", "),
-         ". HapSelect dosages require diploid biallelic genotypes.")
+         ". read_vcf_geno() currently reads diploid biallelic GT calls only, e.g. 0/1 or 0|1.")
   }
 
   unname(dosage)
@@ -96,9 +96,10 @@ haplotype_lookup = list("0|0" = c(0L, 0L), "0|1" = c(0L, 1L),
 
 ##### Convert a vector of phased VCF GT calls to haplotype allele columns #####
 # gt: phased GT values, one per sample, e.g. c("0|0", "0|1")
-# Returns an integer matrix of 0/1 allele presence with one column per haplotype. Beagle output
-# is always phased and complete, so an unphased ("0|1" written as "0/1") or missing (".|.") call
-# means something upstream went wrong and is an error rather than an NA.
+# Returns an integer matrix of 0/1 allele presence with one column per haplotype. The haplotype
+# layout needs every allele placed on a haplotype, so an unphased ("0|1" written as "0/1") or
+# missing (".|.") call is an error rather than an NA. Phasing software such as Beagle writes
+# phased, complete calls.
 gt_to_haplotypes = function(gt) {
   haplotypes = haplotype_lookup[gt]
 
@@ -232,7 +233,7 @@ read_vcf_gt = function(path) {
 }
 
 ##### Convert a vector of VCF DS values to ALT-allele dosages #####
-# DS is the imputed ALT allele dosage: a float on the same 0 to 2 scale as a GT-derived dosage, but
+# DS is the imputed ALT allele dosage: a float on the same scale as a GT-derived dosage, but
 # carrying the imputation's uncertainty rather than rounding it away, so 0.83 stays 0.83 instead of
 # becoming the hard call 1. A missing value (".") becomes NA, as it does for GT.
 # ds: DS field values, one per sample, e.g. c("0.00", "0.83", ".")
@@ -243,23 +244,24 @@ ds_to_dosage = function(ds) {
   unknown = is.na(dosage) & !(ds %in% c(".", "") | is.na(ds))
   if (any(unknown)) {
     stop("Unrecognised DS value(s): ", paste(unique(ds[unknown]), collapse = ", "),
-         ". HapSelect dosages require numeric ALT allele dosages.")
+         ". DS must hold numeric ALT allele dosages.")
   }
 
-  # A DS outside 0 to 2 is not a diploid dosage, and usually means the field was misread
+  # Only the diploid range is accepted for now. A DS outside it usually means the field was misread
   out_of_range = !is.na(dosage) & (dosage < 0 | dosage > 2)
   if (any(out_of_range)) {
     stop("DS value(s) outside the 0 to 2 dosage range: ",
          paste(unique(dosage[out_of_range]), collapse = ", "),
-         ". HapSelect dosages require diploid ALT allele dosages.")
+         ". read_vcf_geno() currently reads diploid DS dosages only.")
   }
 
   dosage
 }
 
 ##### Read a (optionally gzipped) VCF back into a HapSelect genotype data frame #####
-# Converts the GT (genotype) field of every sample column back to a dosage (0 / 1 / 2 / NA), counting
-# ALT alleles; phased ("|") and unphased ("/") genotypes are both accepted.
+# Converts the GT (genotype) field of every sample column to a dosage, counting ALT alleles, with
+# missing calls as NA; phased ("|") and unphased ("/") genotypes are both accepted. Only diploid
+# biallelic calls are read for now, giving dosages of 0, 1 or 2.
 # Returns a geno object, so columns are SNP / Chromosome / Position, matching order_map().
 # LD and haploblock tables use Chrom instead - do not align this to those.
 # path     : VCF to read, optionally gzipped

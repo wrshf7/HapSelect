@@ -71,8 +71,8 @@ test_that("R, C++ and PLINK agree on r-squared", {
 
   geno <- plink_agreement_fixture()
 
-  r_ld <- suppressWarnings(pairwise_ld(geno, parallelize = FALSE))
-  c_ld <- pairwise_ld_c(geno, parallelize = FALSE)
+  r_ld <- suppressWarnings(pairwise_ld_r(geno, parallelize = FALSE))
+  c_ld <- pairwise_ld(geno, parallelize = FALSE)
   p_ld <- plink_pairwise_ld_geno(geno)
 
   r_by <- ld_by_pair(r_ld)
@@ -99,7 +99,7 @@ test_that("a window matches PLINK's --ld-window, which counts the index marker",
 
   # PLINK counts the index marker in its window, so a window of w markers apart
   # is --ld-window w + 1. Off by one and the comparison silently narrows.
-  c_ld <- pairwise_ld_c(geno, parallelize = FALSE, window = window)
+  c_ld <- pairwise_ld(geno, parallelize = FALSE, window = window)
   p_ld <- plink_pairwise_ld_geno(geno, ld_window = window + 1L)
 
   expect_setequal(names(ld_by_pair(c_ld)), names(ld_by_pair(p_ld)))
@@ -120,7 +120,7 @@ test_that("an r-squared floor matches PLINK's --ld-window-r2", {
   geno <- plink_agreement_fixture()
   floor <- 0.3
 
-  c_ld <- pairwise_ld_c(geno, parallelize = FALSE, min_r2 = floor)
+  c_ld <- pairwise_ld(geno, parallelize = FALSE, min_r2 = floor)
   p_ld <- plink_pairwise_ld_geno(geno, ld_window_r2 = floor)
 
   expect_true(all(c_ld$LD >= floor))

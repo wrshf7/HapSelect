@@ -72,9 +72,6 @@ test_that("ld_func computes pairwise LD for an in-memory chromosome set", {
     stringsAsFactors = FALSE
   )
 
-  # ld_func uses row names as marker IDs for Name1/Name2 in the output.
-  rownames(genotypes) <- genotypes$marker
-
   observed <- HapSelect:::ld_func(genotypes)
 
   # Enumerate the expected marker pairs for this marker set.
@@ -125,9 +122,9 @@ test_that("ld_func computes pairwise LD for an in-memory chromosome set", {
 })
 
 
-# Tests: pairwise_ld_c, the compiled twin -------------------------------------
+# Tests: pairwise_ld against the R reference, pairwise_ld_r ---------------------
 #
-# pairwise_ld_c() must return exactly what pairwise_ld() returns at the same
+# pairwise_ld() must return exactly what pairwise_ld_r() returns at the same
 # arguments. The compiled routine computes r^2 from sums rather than through
 # cor(), so the two agree to machine precision rather than bit for bit - on the
 # bundled wheat data the largest difference over 1.2 million pairs is 2.2e-16.
@@ -173,11 +170,11 @@ ld_mixed_fixture <- function() {
 }
 
 
-test_that("pairwise_ld_c matches pairwise_ld on every degenerate case", {
+test_that("pairwise_ld matches pairwise_ld_r on every degenerate case", {
   geno <- ld_degenerate_fixture()
 
-  r_ld <- suppressWarnings(pairwise_ld(geno, parallelize = FALSE))
-  c_ld <- pairwise_ld_c(geno, parallelize = FALSE)
+  r_ld <- suppressWarnings(pairwise_ld_r(geno, parallelize = FALSE))
+  c_ld <- pairwise_ld(geno, parallelize = FALSE)
 
   expect_equal(c_ld, r_ld, tolerance = 1e-12)
 
@@ -197,7 +194,7 @@ test_that("pairwise_ld_c matches pairwise_ld on every degenerate case", {
 })
 
 
-test_that("pairwise_ld_c matches pairwise_ld for every argument", {
+test_that("pairwise_ld matches pairwise_ld_r for every argument", {
   geno <- ld_mixed_fixture()
 
   settings <- list(
@@ -211,8 +208,8 @@ test_that("pairwise_ld_c matches pairwise_ld for every argument", {
   )
 
   for (args in settings) {
-    r_ld <- suppressWarnings(do.call(pairwise_ld, c(list(geno, parallelize = FALSE), args)))
-    c_ld <- do.call(pairwise_ld_c, c(list(geno, parallelize = FALSE), args))
+    r_ld <- suppressWarnings(do.call(pairwise_ld_r, c(list(geno, parallelize = FALSE), args)))
+    c_ld <- do.call(pairwise_ld, c(list(geno, parallelize = FALSE), args))
     expect_equal(c_ld, r_ld, tolerance = 1e-12,
                  info = paste(names(args), unlist(args), sep = "=", collapse = ", "))
   }
@@ -222,7 +219,7 @@ test_that("pairwise_ld_c matches pairwise_ld for every argument", {
 test_that("the defaults give every within-chromosome pair with a defined r-squared", {
   geno <- ld_mixed_fixture()
 
-  ld <- suppressWarnings(pairwise_ld(geno, parallelize = FALSE))
+  ld <- suppressWarnings(pairwise_ld_r(geno, parallelize = FALSE))
 
   # the fixture has a monomorphic marker, whose pairs have no r^2 to report
   expect_lt(nrow(ld), choose(nrow(geno), 2))
@@ -234,10 +231,10 @@ test_that("the defaults give every within-chromosome pair with a defined r-squar
 
 test_that("window limits the marker distance compared", {
   geno <- ld_mixed_fixture()
-  unwindowed <- pairwise_ld_c(geno, parallelize = FALSE)
+  unwindowed <- pairwise_ld(geno, parallelize = FALSE)
 
   for (w in 1:3) {
-    ld <- pairwise_ld_c(geno, parallelize = FALSE, window = w)
+    ld <- pairwise_ld(geno, parallelize = FALSE, window = w)
 
     expect_true(all(ld$Locus2 - ld$Locus1 <= w))
     # exactly the pairs of the unwindowed result that fall inside the window,
@@ -251,8 +248,8 @@ test_that("window limits the marker distance compared", {
 test_that("min_r2 drops pairs below the floor", {
   geno <- ld_mixed_fixture()
 
-  unfiltered <- pairwise_ld_c(geno, parallelize = FALSE)
-  ld <- pairwise_ld_c(geno, parallelize = FALSE, min_r2 = 0.5)
+  unfiltered <- pairwise_ld(geno, parallelize = FALSE)
+  ld <- pairwise_ld(geno, parallelize = FALSE, min_r2 = 0.5)
 
   expect_true(all(ld$LD >= 0.5))
   expect_equal(nrow(ld), sum(unfiltered$LD >= 0.5))
@@ -263,8 +260,8 @@ test_that("min_obs refuses pairs with too few shared individuals", {
   geno <- ld_degenerate_fixture()
 
   # m4 and m5 share two individuals: reported as r^2 = 1 by default, NA at 3
-  default_ld <- pairwise_ld_c(geno, parallelize = FALSE)
-  strict_ld <- pairwise_ld_c(geno, parallelize = FALSE, min_obs = 3L)
+  default_ld <- pairwise_ld(geno, parallelize = FALSE)
+  strict_ld <- pairwise_ld(geno, parallelize = FALSE, min_obs = 3L)
 
   pair <- function(d, a, b) d$LD[d$Name1 == a & d$Name2 == b]
   expect_equal(pair(default_ld, "m4", "m5"), 1)
@@ -278,8 +275,8 @@ test_that("min_obs refuses pairs with too few shared individuals", {
 test_that("an undefined r-squared is never reported, by either implementation", {
   geno <- ld_degenerate_fixture()
 
-  r_ld <- suppressWarnings(pairwise_ld(geno, parallelize = FALSE))
-  c_ld <- pairwise_ld_c(geno, parallelize = FALSE)
+  r_ld <- suppressWarnings(pairwise_ld_r(geno, parallelize = FALSE))
+  c_ld <- pairwise_ld(geno, parallelize = FALSE)
 
   expect_false(any(is.na(r_ld$LD)))
   expect_false(any(is.na(c_ld$LD)))
@@ -291,7 +288,6 @@ test_that("an undefined r-squared is never reported, by either implementation", 
 
 test_that("ld_func_c matches ld_func on a single chromosome", {
   geno <- ld_mixed_fixture()
-  row.names(geno) <- geno$SNP
 
   expect_equal(ld_func_c(geno), suppressWarnings(ld_func(geno)), tolerance = 1e-12)
   expect_equal(ld_func_c(geno, window = 2, min_obs = 3L),
@@ -302,7 +298,7 @@ test_that("ld_func_c matches ld_func on a single chromosome", {
 
 # Tests: advising when a serial run should be parallelised -----------------------
 #
-# pairwise_ld_c() defaults to serial because parallelising costs a couple of
+# pairwise_ld() defaults to serial because parallelising costs a couple of
 # seconds of worker startup that a windowed run never earns back. An unwindowed
 # run on dense data does earn it back, several times over, so that case says so.
 
@@ -351,7 +347,7 @@ test_that("choosing serial explicitly is respected without comment", {
 
   # the advice only fires when the default was left in place, so someone who has
   # already decided is not told about it on every call
-  expect_silent(pairwise_ld_c(geno, parallelize = FALSE))
+  expect_silent(pairwise_ld(geno, parallelize = FALSE))
 })
 
 
