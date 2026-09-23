@@ -226,11 +226,11 @@ test_that("graph_strategy needs no data, so it can be built before any is loaded
 })
 
 
-# local_ld_edges ---------------------------------------------------------------
+# ld_func_c, as the graph method calls it ---------------------------------------------------------------
 
-test_that("local_ld_edges returns the package LD column convention", {
-  edges <- local_ld_edges(graph_chr_fixture(1), graph_chr_fixture(1, "map"),
-                          window = 3, min_r2 = 0.20)
+test_that("ld_func_c returns the package LD column convention", {
+  edges <- ld_func_c(graph_chr_fixture(1), window = 3, min_r2 = 0.20,
+                          min_obs = 3L)
 
   expect_equal(colnames(edges), c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD"))
   expect_true(all(edges$Locus1 < edges$Locus2))
@@ -238,9 +238,9 @@ test_that("local_ld_edges returns the package LD column convention", {
 })
 
 
-test_that("local_ld_edges reproduces the reference edge table", {
-  edges <- local_ld_edges(graph_chr_fixture(1), graph_chr_fixture(1, "map"),
-                          window = 3, min_r2 = 0.20)
+test_that("ld_func_c reproduces the reference edge table", {
+  edges <- ld_func_c(graph_chr_fixture(1), window = 3, min_r2 = 0.20,
+                          min_obs = 3L)
   edges <- as.data.frame(edges)
   edges <- edges[order(edges$Locus1, edges$Locus2), ]
 
@@ -253,9 +253,9 @@ test_that("local_ld_edges reproduces the reference edge table", {
 })
 
 
-test_that("local_ld_edges computes r2 as squared pairwise-complete correlation", {
+test_that("ld_func_c computes r2 as squared pairwise-complete correlation", {
   geno <- graph_chr_fixture(1)
-  edges <- local_ld_edges(geno, graph_chr_fixture(1, "map"), window = 3, min_r2 = 0)
+  edges <- ld_func_c(geno, window = 3, min_r2 = 0, min_obs = 3L)
 
   for (i in seq_len(nrow(edges))) {
     x <- as.numeric(geno[edges$Locus1[i], -(1:3)])
@@ -265,11 +265,11 @@ test_that("local_ld_edges computes r2 as squared pairwise-complete correlation",
 })
 
 
-test_that("local_ld_edges only compares markers inside the window", {
+test_that("ld_func_c only compares markers inside the window", {
   same <- c(0, 1, 2, 0, 1, 2)
   geno <- gb_geno_rows(list(same, same, same, same))
 
-  edges <- local_ld_edges(geno, gb_map(4), window = 2, min_r2 = 0.1)
+  edges <- ld_func_c(geno, window = 2, min_r2 = 0.1, min_obs = 3L)
   edges <- as.data.frame(edges)
   edges <- edges[order(edges$Locus1, edges$Locus2), ]
 
@@ -280,37 +280,37 @@ test_that("local_ld_edges only compares markers inside the window", {
 })
 
 
-test_that("local_ld_edges drops pairs below the floor", {
-  edges <- local_ld_edges(graph_chr_fixture(1), graph_chr_fixture(1, "map"),
-                          window = 3, min_r2 = 0.64)
+test_that("ld_func_c drops pairs below the floor", {
+  edges <- ld_func_c(graph_chr_fixture(1), window = 3, min_r2 = 0.64,
+                          min_obs = 3L)
 
   expect_true(all(edges$LD >= 0.64))
   expect_equal(nrow(edges), 3)   # 0.8972, 1.0000 and 1.0000
 })
 
 
-test_that("local_ld_edges skips a pair with fewer than three shared observations", {
+test_that("ld_func_c skips a pair with fewer than three shared observations", {
   # cor() returns r2 = 1 for two complete observations, which would plant perfect LD
   # on a pair that has no evidence behind it at all
   partial <- c(0, 1, NA, NA, NA, NA)
   geno <- gb_geno_rows(list(partial, partial))
 
   expect_equal(cor(partial, partial, use = "pairwise.complete.obs")^2, 1)
-  expect_equal(nrow(local_ld_edges(geno, gb_map(2), window = 2, min_r2 = 0.1)), 0)
+  expect_equal(nrow(ld_func_c(geno, window = 2, min_r2 = 0.1, min_obs = 3L)), 0)
 })
 
 
-test_that("local_ld_edges skips a marker with no variance", {
+test_that("ld_func_c skips a marker with no variance", {
   geno <- gb_geno_rows(list(rep(1, 6), c(0, 1, 2, 0, 1, 2)))
 
-  expect_equal(nrow(local_ld_edges(geno, gb_map(2), window = 2, min_r2 = 0.1)), 0)
+  expect_equal(nrow(ld_func_c(geno, window = 2, min_r2 = 0.1, min_obs = 3L)), 0)
 })
 
 
-test_that("local_ld_edges returns an empty table, with its columns, for a single marker", {
+test_that("ld_func_c returns an empty table, with its columns, for a single marker", {
   geno <- gb_geno_rows(list(c(0, 1, 2, 0, 1, 2)))
 
-  edges <- local_ld_edges(geno, gb_map(1), window = 2, min_r2 = 0.1)
+  edges <- ld_func_c(geno, window = 2, min_r2 = 0.1, min_obs = 3L)
 
   expect_equal(nrow(edges), 0)
   expect_equal(colnames(edges), c("Chrom", "Locus1", "Locus2", "Name1", "Name2", "LD"))
@@ -321,7 +321,7 @@ test_that("local_ld_edges returns an empty table, with its columns, for a single
 
 test_that("core_blocks takes components of at least two markers as blocks", {
   map <- graph_chr_fixture(1, "map")
-  edges <- local_ld_edges(graph_chr_fixture(1), map, window = 3, min_r2 = 0.20)
+  edges <- ld_func_c(graph_chr_fixture(1), window = 3, min_r2 = 0.20, min_obs = 3L)
 
   core <- core_blocks(edges, map, theta_core = 0.80, window_core = 2)
 
@@ -373,7 +373,7 @@ test_that("core_blocks can produce a block that is not contiguous in marker orde
 
 test_that("extend_blocks attaches a marker whose edge was too long for the core step", {
   map <- graph_chr_fixture(1, "map")
-  edges <- local_ld_edges(graph_chr_fixture(1), map, window = 3, min_r2 = 0.20)
+  edges <- ld_func_c(graph_chr_fixture(1), window = 3, min_r2 = 0.20, min_obs = 3L)
   core <- core_blocks(edges, map, theta_core = 0.80, window_core = 2)
 
   ext <- extend_blocks(core$blocks, core$unassigned, edges, map,
@@ -474,7 +474,7 @@ test_that("extend_blocks leaves a marker with no qualifying edge alone", {
 
 test_that("bridge_blocks merges two blocks across a small gap", {
   map <- graph_chr_fixture(1, "map")
-  edges <- local_ld_edges(graph_chr_fixture(1), map, window = 3, min_r2 = 0.20)
+  edges <- ld_func_c(graph_chr_fixture(1), window = 3, min_r2 = 0.20, min_obs = 3L)
   blocks <- list(c("c1_01", "c1_02", "c1_05"), c("c1_07", "c1_08"))
 
   bridged <- bridge_blocks(blocks, edges, map, theta_bridge = 0.20, max_gap_snps = 2)
@@ -717,13 +717,13 @@ test_that("block_ld_support is FALSE when there is nothing to compare against", 
 
 
 test_that("block_ld_support reaches past the LD window", {
-  # It recomputes from the genotypes, so a member local_ld_edges() never compared
+  # It recomputes from the genotypes, so a member ld_func_c() never compared
   # against still counts. This is what lets the refill step find support that
   # Stage I could not see.
   same <- c(0, 0, 1, 1, 2, 2)
   geno <- gb_geno_rows(list(same, c(2, 1, 0, 2, 0, 1), c(1, 0, 2, 1, 0, 2), same))
 
-  expect_equal(nrow(local_ld_edges(geno, gb_map(4), window = 1, min_r2 = 0.8)), 0)
+  expect_equal(nrow(ld_func_c(geno, window = 1, min_r2 = 0.8, min_obs = 3L)), 0)
   expect_true(block_ld_support(geno, "m01", "m04", 0.8))
 })
 

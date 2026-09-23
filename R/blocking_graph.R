@@ -63,7 +63,7 @@ geno_matrix = function(geno_chr) {
 # lookup. Extension and bridging both need this; it adds no evidence, it is only
 # a change of representation.
 #
-# edges : edge table from local_ld_edges()
+# edges : edge table from ld_func_c()
 # min_r2: keep only edges at or above this first
 bidirectional_edges = function(edges, min_r2 = NULL) {
   dt = as.data.table(edges)
@@ -99,61 +99,6 @@ marker_index = function(map_chr) {
 ###### Stage I: LD graph #########
 ##################################
 
-# local_ld_edges ---------------------------------------------------------------
-# Computes r^2 between every pair of markers within a forward window on one
-# chromosome, and keeps the pairs that clear a floor. This is the sparse edge
-# table the whole of Stage I reads from - core blocks, extension and bridging
-# all filter it rather than recomputing LD, so no Stage I operation can reach
-# further than window_ld.
-#
-# Unlike pairwise_ld(), which compares every pair on a chromosome, this only
-# looks ahead window markers and only keeps edges at or above min_r2. The output
-# follows the same column convention, so Locus1 and Locus2 are marker indices
-# within the chromosome, counted from 1 in map order.
-#
-# geno_chr: genotype rows for one chromosome, in the same layout as
-#           def_blocks()'s geno argument, ordered to match map_chr
-# map_chr : map rows for that chromosome, ordered by position. A marker's index
-#           is its row number here, which is what Locus1 and Locus2 report.
-# window  : only pairs at most this many marker positions apart are compared
-# min_r2  : only pairs with r^2 at or above this are returned
-#
-# Returns a data frame of Chrom, Locus1, Locus2, Name1, Name2, LD, with
-# Locus1 < Locus2, and no rows at all when nothing clears min_r2.
-#
-# r^2 is Pearson r squared over the individuals observed at both markers. A pair
-# is skipped, rather than returned as NA, when fewer than three individuals are
-# observed at both markers, or when either marker has no variance among them.
-# The three-observation floor matters: cor() returns exactly 1 or -1 for two
-# complete observations, which would otherwise plant spurious perfect LD.
-local_ld_edges = function(geno_chr, map_chr, window, min_r2) {
-
-  empty = data.table(Chrom = character(), Locus1 = integer(), Locus2 = integer(),
-                     Name1 = character(), Name2 = character(), LD = numeric())
-
-  dosages = geno_matrix(geno_chr)
-  n_snp = ncol(dosages)
-  if (n_snp != nrow(map_chr)) stop("geno_chr and map_chr must hold the same markers.")
-  if (n_snp < 2) return(empty)
-
-  edges = as.data.table(compute_local_ld_edges_cpp(
-    geno = dosages,
-    snps = as.character(map_chr$SNP),
-    pos = as.numeric(map_chr$Position),
-    W_snp = as.integer(window),
-    min_r2 = as.numeric(min_r2)
-  ))
-  if (nrow(edges) == 0) return(empty)
-
-  # The C++ side reports positions as well, but the map is where positions are
-  # read from everywhere else, so only the indices are kept here.
-  edges = edges[, .(Chrom = map_chr$Chromosome[1], Locus1 = idxA, Locus2 = idxB,
-                    Name1 = SNP_A, Name2 = SNP_B, LD = R2)]
-  setkey(edges, Name1, Name2)
-  unique(edges)
-}
-
-
 # core_blocks ------------------------------------------------------------------
 # Takes the connected components of the LD graph as the starting blocks. Every
 # marker on the chromosome is a vertex; an edge joins two markers when their r^2
@@ -164,7 +109,7 @@ local_ld_edges = function(geno_chr, map_chr, window, min_r2) {
 # order - markers 4, 5 and 9 can share a component without marker 6 joining it.
 # Stage II is what turns that back into something linear.
 #
-# edges      : edge table from local_ld_edges()
+# edges      : edge table from ld_func_c()
 # map_chr    : map rows for the chromosome, ordered by position
 # theta_core : minimum r^2 for an edge to count
 # window_core: maximum marker distance for an edge to count
@@ -229,7 +174,7 @@ core_blocks = function(edges, map_chr, theta_core, window_core) {
 #
 # blocks       : blocks so far, as returned by core_blocks()
 # unassigned   : marker names to try to place, in the order they are tried
-# edges        : edge table from local_ld_edges()
+# edges        : edge table from ld_func_c()
 # map_chr      : map rows for the chromosome, ordered by position
 # theta_extend : minimum r^2 for an edge to support an attachment
 # window_extend: maximum distance to the nearest member of a candidate block
@@ -317,7 +262,7 @@ extend_blocks = function(blocks, unassigned, edges, map_chr,
 # is itself a candidate for merging with the block after it.
 #
 # blocks      : blocks so far
-# edges       : edge table from local_ld_edges()
+# edges       : edge table from ld_func_c()
 # map_chr     : map rows for the chromosome, ordered by position
 # theta_bridge: minimum r^2 for a boundary edge
 # max_gap_snps: largest gap, in intervening markers, that can still be bridged
@@ -392,7 +337,10 @@ bridge_blocks = function(blocks, edges, map_chr, theta_bridge, max_gap_snps) {
 # leftovers are carried as one-marker blocks rather than discarded.
 graph_chromosome_blocks = function(geno_chr, map_chr, strategy) {
 
-  edges = local_ld_edges(geno_chr, map_chr, strategy$window_ld, strategy$ld_min_r2)
+  # min_obs = 3 refuses an r^2 of 1 drawn from two shared individuals, which would
+  # otherwise arrive as an edge the graph has no business trusting
+  edges = ld_func_c(geno_chr, window = strategy$window_ld,
+                    min_r2 = strategy$ld_min_r2, min_obs = 3L)
 
   core = core_blocks(edges, map_chr, strategy$theta_core, strategy$window_core)
 
@@ -586,8 +534,8 @@ select_nonoverlapping = function(segments) {
 #
 # Returns TRUE or FALSE. FALSE when the marker is not in geno_chr, and when the
 # block has no members other than the marker itself. r^2 is computed as in
-# local_ld_edges(), so a pair with fewer than three shared observations or no
-# variance does not count as support.
+# ld_func_c(min_obs = 3), so a pair with fewer than three shared observations or
+# no variance does not count as support.
 block_ld_support = function(geno_chr, target_snp, block_snps, threshold) {
 
   if (is.null(geno_chr) || nrow(geno_chr) == 0) return(FALSE)

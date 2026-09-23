@@ -1,16 +1,10 @@
 // Compute-bound routines for the graph-based haploblocking in R/blocking_graph.R.
 //
-// compute_local_ld_edges_cpp and has_strong_ld_to_block_cpp both calculate
-// pairwise-complete Pearson r^2 over a sample-by-marker genotype matrix. They are
-// separate because they are asked different questions: the first builds the sparse
-// LD edge table for a whole chromosome within a forward marker window, while the
-// second answers one yes/no question about a single marker against one block, and
-// so can stop at the first member that clears the threshold.
-//
-// Both skip a pair with fewer than three samples observed at both markers, and a
-// pair where either marker has no variance among those samples. The three-sample
-// floor matters: r is exactly +/-1 for two complete observations, which would
-// otherwise plant perfect LD on a pair with no evidence behind it.
+// The LD calculation these used to sit beside now lives in src/pairwise_ld.cpp,
+// since it is not specific to this method. What remains is: one LD question that
+// is asked differently from a pairwise table - whether any member of a block
+// reaches a threshold against one marker, which can stop at the first member
+// that does - and the connected-component search that reads blocks off the graph.
 
 #include <Rcpp.h>
 #include <cmath>
@@ -18,80 +12,6 @@
 #include <functional>
 using namespace Rcpp;
 
-
-//' compute_local_ld_edges_cpp
-//'
-//' Windowed pairwise r^2 over one chromosome. geno is sample by marker; snps and
-//' pos follow the same column order. For marker i only i+1, ..., i+W_snp are
-//' evaluated, and only pairs reaching min_r2 are returned, with indices converted
-//' back to 1-based R positions. See local_ld_edges in R/blocking_graph.R.
-// [[Rcpp::export]]
-DataFrame compute_local_ld_edges_cpp(NumericMatrix geno,
-                                     CharacterVector snps,
-                                     NumericVector pos,
-                                     int W_snp,
-                                     double min_r2) {
-  int n_sample = geno.nrow();
-  int n_snp = geno.ncol();
-
-  std::vector<std::string> SNP_A;
-  std::vector<std::string> SNP_B;
-  std::vector<int> idxA;
-  std::vector<int> idxB;
-  std::vector<double> bpA;
-  std::vector<double> bpB;
-  std::vector<double> R2;
-
-  int reserve_n = std::max(1000, n_snp * 5);
-  SNP_A.reserve(reserve_n);
-  SNP_B.reserve(reserve_n);
-  idxA.reserve(reserve_n);
-  idxB.reserve(reserve_n);
-  bpA.reserve(reserve_n);
-  bpB.reserve(reserve_n);
-  R2.reserve(reserve_n);
-
-  for (int i = 0; i < n_snp - 1; i++) {
-    int j_end = std::min(n_snp - 1, i + W_snp);
-
-    for (int j = i + 1; j <= j_end; j++) {
-      double sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0;
-      int n = 0;
-
-      for (int k = 0; k < n_sample; k++) {
-        double x = geno(k, i);
-        double y = geno(k, j);
-        if (!NumericVector::is_na(x) && !NumericVector::is_na(y)) {
-          sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; n++;
-        }
-      }
-
-      if (n < 3) continue;
-      double num = n * sxy - sx * sy;
-      double den_x = n * sxx - sx * sx;
-      double den_y = n * syy - sy * sy;
-      if (den_x <= 0.0 || den_y <= 0.0) continue;
-
-      double r = num / std::sqrt(den_x * den_y);
-      double r2 = r * r;
-      if (!std::isnan(r2) && r2 >= min_r2) {
-        SNP_A.push_back(as<std::string>(snps[i]));
-        SNP_B.push_back(as<std::string>(snps[j]));
-        idxA.push_back(i + 1);
-        idxB.push_back(j + 1);
-        bpA.push_back(pos[i]);
-        bpB.push_back(pos[j]);
-        R2.push_back(r2);
-      }
-    }
-  }
-
-  return DataFrame::create(
-    Named("SNP_A") = SNP_A, Named("SNP_B") = SNP_B,
-    Named("idxA") = idxA, Named("idxB") = idxB,
-    Named("bpA") = bpA, Named("bpB") = bpB, Named("R2") = R2
-  );
-}
 
 //' has_strong_ld_to_block_cpp
 //'
