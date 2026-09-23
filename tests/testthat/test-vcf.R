@@ -493,3 +493,110 @@ test_that("a triploid VCF written as dosages reads as dosages but not as haploty
   expect_equal(unlist(read_vcf_geno(path, ploidy = 3L)[, -(1:3)]), unlist(geno[, -(1:3)]))
   expect_error(read_vcf_phased(path, ploidy = 3L), "Phase the genotypes first")
 })
+
+
+# Tests: pulling FORMAT fields -------------------------------------------------
+#
+# read_vcf_field() handles each distinct FORMAT once over whole sample columns, so these
+# pin that files mixing FORMATs, orders and dropped trailing values read as before.
+
+# A parsed-VCF stand-in with the given FORMAT per record and cells per sample
+field_records <- function(format, ...) {
+  cells <- list(...)
+  list(tab = cbind(FORMAT = format, do.call(cbind, cells)), sample_cols = names(cells), path = "test.vcf")
+}
+
+test_that("read_vcf_field finds the field wherever each record's FORMAT puts it", {
+  records <- field_records(
+    format = c("GT:DS", "DS:GT", "GT", "GT:DS:GP"),
+    A = c("0|1:0.9", "1.2:1|0", "1|1", "0|0:0.1:0.9,0.1,0"),
+    B = c("1|1:1.9", "0.1:0|0", "0|1", "1|1:2:0,0,1")
+  )
+
+  expect_equal(read_vcf_field(records, "GT"),
+               list(A = c("0|1", "1|0", "1|1", "0|0"), B = c("1|1", "0|0", "0|1", "1|1")))
+})
+
+test_that("read_vcf_field gives NA where a cell drops the field off its end", {
+  # VCF lets trailing values be dropped, so a missing sample under GT:DS may be just ./.
+  records <- field_records(format = c("GT:DS", "GT:DS", "GT:DS:GP"),
+                           A = c("0|1:0.9", "./.", "1|1:1.8"))
+
+  expect_equal(read_vcf_field(records, "DS")$A, c("0.9", NA, "1.8"))
+})
+
+test_that("read_vcf_field returns empty values as they are", {
+  records <- field_records(format = "GT:DS:GP", A = c("0|1::0.3", "1|1:1.9:"))
+  expect_equal(read_vcf_field(records, "DS")$A, c("", "1.9"))
+  expect_equal(read_vcf_field(records, "GP")$A, c("0.3", ""))
+})
+
+test_that("read_vcf_field is all or nothing for a field some records lack", {
+  records <- field_records(format = c("GT:DS", "GT"), A = c("0|1:0.9", "1|1"))
+
+  expect_null(read_vcf_field(records, "DS", required = FALSE))
+  expect_error(read_vcf_field(records, "DS"), "does not include DS")
+})
+
+test_that("read_vcf_geno reads a dropped trailing DS as a missing dosage", {
+  vcf_path <- ds_vcf_fixture(c("0|1:0.83", "./."))
+  on.exit(unlink(vcf_path))
+
+  expect_equal(read_vcf_geno(vcf_path, prefer_ds = TRUE)$Ind1, c(0.83, NA))
+})
+
+
+# Tests: splitting records ----------------------------------------------------
+#
+# read_vcf_records() checks every record has as many fields as the #CHROM header names
+# before binding them, since rbind() would otherwise pad a short record with its own
+# values. These pin that a short or long record is a clear error instead.
+
+# A one-sample VCF whose record lines are passed in as they are
+record_vcf_fixture <- function(records) {
+  path <- tempfile(fileext = ".vcf")
+  writeLines(c("##fileformat=VCFv4.2",
+               "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tInd1",
+               records), path)
+  path
+}
+
+good_record <- "1\t100\tsnp1\tA\tG\t.\tPASS\t.\tGT\t0/1"
+
+test_that("a record with too few or too many columns is an error naming the file", {
+  short_record <- "1\t200\tsnp2\tA\tG\t.\tPASS\t.\tGT"
+  long_record <- paste0(good_record, "\t1/1")
+
+  cases <- list(
+    short_middle = c(good_record, short_record, good_record),
+    short_last = c(good_record, good_record, short_record),
+    long_middle = c(good_record, long_record, good_record)
+  )
+  for (name in names(cases)) {
+    path <- record_vcf_fixture(cases[[name]])
+    expect_error(read_vcf_geno(path), path, fixed = TRUE, info = name)
+    expect_error(read_vcf_geno(path), "#CHROM header names", info = name)
+    unlink(path)
+  }
+})
+
+test_that("record values are kept as their literal text", {
+  # "NA" is a real ID here, not a missing one, and a quote in INFO is just a character
+  path <- record_vcf_fixture(c(
+    "1\t100\tNA\tA\tG\t.\tPASS\tNOTE=\"a b\"\tGT\t0/1",
+    "1\t200\tsnp2\tA\tG\t.\tPASS\t.\tGT\t1/1"
+  ))
+  on.exit(unlink(path))
+
+  records <- HapSelect:::read_vcf_records(path)
+  expect_identical(records$map$SNP, c("NA", "snp2"))
+  expect_identical(unname(records$tab[1, "INFO"]), "NOTE=\"a b\"")
+  expect_equal(read_vcf_geno(path)$Ind1, c(1, 2))
+})
+
+test_that("a VCF with a single record reads", {
+  path <- record_vcf_fixture(good_record)
+  on.exit(unlink(path))
+
+  expect_equal(read_vcf_geno(path)$Ind1, 1)
+})

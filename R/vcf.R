@@ -157,7 +157,6 @@ gt_to_haplotypes = function(gt, ploidy = 2L) {
 #   tab         - character matrix of data rows, columns named by the #CHROM header, or NULL
 #                 when the file holds no records
 #   sample_cols - sample column names, in VCF column order
-#   format      - per-record FORMAT field names, as a list of character vectors
 read_vcf_records = function(path) {
   # Check the file exists
   if (!file.exists(path)) {
@@ -201,13 +200,19 @@ read_vcf_records = function(path) {
       map = data.frame(SNP = character(), Chromosome = integer(), Position = numeric(),
                        stringsAsFactors = FALSE, check.names = FALSE),
       tab = NULL,
-      sample_cols = sample_cols,
-      format = list()
+      sample_cols = sample_cols
     ))
   }
 
   # Split every line into its tab-delimited fields
-  tab = do.call(rbind, strsplit(data_lines, "\t", fixed = TRUE))
+  fields = strsplit(data_lines, "\t", fixed = TRUE)
+
+  # rbind() would pad a short record by reusing its own values, so check every record first
+  if (any(lengths(fields) != length(col_names))) {
+    stop("VCF records do not all have the ", length(col_names), " tab-separated columns the ",
+         "#CHROM header names: ", path, call. = FALSE)
+  }
+  tab = do.call(rbind, fields)
   colnames(tab) = col_names
 
   list(
@@ -220,14 +225,15 @@ read_vcf_records = function(path) {
     ),
     tab = tab,
     sample_cols = sample_cols,
-    format = strsplit(tab[, "FORMAT"], ":", fixed = TRUE),
     path = path
   )
 }
 
 ##### Pull one FORMAT field out of every sample column of a parsed VCF #####
-# FORMAT can differ from record to record, so the field's position is looked up per record rather
-# than once for the file.
+# Each record's FORMAT (e.g. "GT" or "GT:DS:GP") names the colon-separated values in its sample
+# cells, in order. FORMAT can differ from record to record, but records that share a FORMAT string
+# hold the field at the same position, so each distinct FORMAT is handled once, over all of its
+# records and samples together, rather than cell by cell. A file usually has a single FORMAT.
 # records : output of read_vcf_records()
 # field   : FORMAT field name, e.g. "GT" or "DS"
 # required: TRUE to stop when a record's FORMAT does not list the field, FALSE to return NULL.
@@ -241,18 +247,64 @@ read_vcf_field = function(records, field, required = TRUE) {
                            records$sample_cols))
   }
 
-  # Where the field sits within each record's colon-separated FORMAT
-  field_index = vapply(records$format, function(f) match(field, f), integer(1))
+  format_strings = records$tab[, "FORMAT"]
+  # Unique format strings
+  formats = unique(format_strings)
+  # Each distinct FORMAT split into its field names, e.g. "GT:DS" -> c("GT", "DS")
+  format_fields = strsplit(formats, ":", fixed = TRUE)
+  # Position of the requested field within each distinct FORMAT, NA where it is not listed
+  field_index = vapply(format_fields, function(f) match(field, f), integer(1))
+
+  # A FORMAT that does not list the field: an error, or NULL when the field is optional
   if (any(is.na(field_index))) {
     if (!required) return(NULL)
     stop("VCF FORMAT field does not include ", field, " for one or more records: ", records$path)
   }
 
+  # How many values each distinct FORMAT holds, so a single-field FORMAT can skip the split
+  n_fields = lengths(format_fields)
+
+  # The records under each distinct FORMAT, in file order
+  format_rows = split(seq_along(format_strings),
+                      factor(match(format_strings, formats), levels = seq_along(formats)))
+
+  # For each sample column, pull out the field, giving one character vector per sample
   values = lapply(records$sample_cols, function(s) {
-    sample_fields = strsplit(records$tab[, s], ":", fixed = TRUE)
-    vapply(seq_along(sample_fields), function(i) sample_fields[[i]][field_index[i]], character(1))
+    column = records$tab[, s]
+
+    # Fast path: one FORMAT for the whole file, so the column is taken in one call
+    if (length(formats) == 1) return(extract_format_value(column, field_index, n_fields))
+
+    # Otherwise, one call per FORMAT group, writing each group's values back into its records' positions
+    out = rep(NA_character_, length(column))
+    for (g in seq_along(formats)) {
+      rows = format_rows[[g]]
+      out[rows] = extract_format_value(column[rows], field_index[g], n_fields[g])
+    }
+    out
   })
   stats::setNames(values, records$sample_cols)
+}
+
+##### Pull the k-th colon-separated value out of a set of VCF sample cells #####
+# One vectorised call over every cell, rather than a split and an R function call per cell.
+# cells    : character vector of sample cells that share one FORMAT
+# k        : position of the wanted value within that FORMAT
+# n_fields : number of values that FORMAT holds
+# Returns the values in the same order as cells, NA where a cell stops before position k.
+extract_format_value = function(cells, k, n_fields) {
+  # A FORMAT of a single field means the cell is the value, so there is nothing to split
+  if (n_fields == 1) return(cells)
+
+  # Skip k - 1 values and their colons, keep the next value, drop the rest
+  pattern = paste0("^(?:[^:]*:){", k - 1, "}([^:]*).*$")
+  out = sub(pattern, "\\1", cells, perl = TRUE)
+
+  # sub() returns a cell it cannot match unchanged. Past the first value, a cell that matched has
+  # lost at least one colon, so an unchanged cell is one that stops before position k
+  if (k > 1) out[out == cells] = NA_character_
+
+  out
 }
 
 ##### Parse a (optionally gzipped) VCF into map columns and per-sample GT strings #####
