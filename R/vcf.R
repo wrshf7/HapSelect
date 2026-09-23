@@ -7,14 +7,32 @@
 # package that needs genotypes in or out of a VCF uses these rather than parsing
 # a VCF itself.
 
-##### Write a genotype data frame out as a minimal diploid VCF #####
-# geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
-#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
-# path: file path to write the VCF to
-# Dosages are written as unphased diploid calls (0/0, 0/1, 1/1) with missing values as ./.,
-# using placeholder REF/ALT alleles (A/G) since dosage alone does not carry allele identity.
-# Diploid only, since its caller is the Beagle wrapper in imputation.R and Beagle is diploid.
-write_vcf_geno = function(geno, path) {
+##### Check a ploidy argument #####
+# Every reader and writer here takes the ploidy as declared rather than inferring it from the
+# file, so that a call with the wrong number of alleles is caught instead of read as something else.
+# ploidy: number of allele copies per genotype, a single whole number of at least 1
+# Returns ploidy as an integer.
+check_ploidy = function(ploidy) {
+  if (!is.numeric(ploidy) || length(ploidy) != 1 || !is.finite(ploidy) ||
+      ploidy < 1 || ploidy != round(ploidy)) {
+    stop("ploidy must be a single whole number of at least 1, e.g. 2L for diploid or 4L for tetraploid.")
+  }
+  as.integer(ploidy)
+}
+
+##### Write a genotype data frame out as a minimal VCF #####
+# geno  : data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
+#         cols 4+ = dosage values (0 to ploidy, or NA) per individual
+# path  : file path to write the VCF to
+# ploidy: allele copies per genotype, 2L for diploid
+# Each dosage d is written as an unphased call of ploidy - d REF alleles followed by d ALT alleles,
+# so a tetraploid dosage of 1 is 0/0/0/1, and a missing value as one "." per allele (./././.).
+# An unphased call records only how many copies carry each allele, not which copy carries which,
+# so it holds exactly what a dosage does and nothing is lost by always writing REF first.
+# Placeholder REF/ALT alleles (A/G) are used since dosage alone does not carry allele identity.
+write_vcf_geno = function(geno, path, ploidy = 2L) {
+  ploidy = check_ploidy(ploidy)
+
   # Use the geno column names as VCF sample IDs, falling back to generated names if missing
   sample_names = colnames(geno)[-(1:3)]
   if (is.null(sample_names) || any(!nzchar(sample_names))) {
@@ -24,16 +42,19 @@ write_vcf_geno = function(geno, path) {
   # Extract the dosage matrix, stripping out marker/chrom/position
   geno_matrix = as.matrix(geno[, -(1:3), drop = FALSE])
 
-  # Check every dosage is 0, 1, 2, or NA before encoding it as a diploid genotype call
-  if (any(!(geno_matrix[!is.na(geno_matrix)] %in% c(0, 1, 2)))) {
-    stop("Genotype dosages must be 0, 1, 2, or NA: write_vcf_geno() writes diploid calls, ",
-         "as Beagle requires.")
+  # A GT call can only express a whole number of ALT copies between none and all of them
+  if (any(!(geno_matrix[!is.na(geno_matrix)] %in% 0:ploidy))) {
+    stop("Genotype dosages must be whole numbers from 0 to ", ploidy, ", or NA, for ploidy ",
+         ploidy, ".")
   }
 
-  # Look up the unphased VCF genotype call for each dosage, missing values become ./.
-  gt_calls = c("0" = "0/0", "1" = "0/1", "2" = "1/1")
+  # Look up the unphased VCF genotype call for each dosage, built once for every possible dosage
+  gt_calls = vapply(0:ploidy, function(d) {
+    paste(rep(c("0", "1"), c(ploidy - d, d)), collapse = "/")
+  }, character(1))
+  names(gt_calls) = 0:ploidy
   gt = matrix(gt_calls[as.character(geno_matrix)], nrow = nrow(geno_matrix))
-  gt[is.na(geno_matrix)] = "./."
+  gt[is.na(geno_matrix)] = paste(rep(".", ploidy), collapse = "/")
 
   # Build the VCF body: one row per marker, with placeholder REF/ALT alleles
   body = data.frame(
@@ -57,60 +78,74 @@ write_vcf_geno = function(geno, path) {
   utils::write.table(body, con, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 }
 
-##### Every diploid biallelic GT call mapped to its ALT-allele dosage #####
-# The decoding half of the gt_calls table in write_vcf_geno(). A VCF may write any call phased ("|")
-# or unphased ("/"), so each genotype appears under both separators.
-# See haplotype_lookup below for the phase-preserving counterpart.
-dosage_lookup = c("0/0" = 0, "0/1" = 1, "1/0" = 1, "1/1" = 2,
-                  "0|0" = 0, "0|1" = 1, "1|0" = 1, "1|1" = 2)
-
-# Missing genotype calls, which become NA rather than an error. A bare "." is the
-# VCF spelling for a genotype that was not called at all, as opposed to "./." for
-# a diploid one whose alleles are both unknown; both mean the same thing here.
-missing_calls = c("./.", ".|.", ".")
-
 ##### Convert a vector of VCF GT calls to ALT-allele dosages #####
-# gt: GT field values, one per sample, e.g. c("0/0", "0|1", "./.")
-# Missing calls become NA. Anything else the lookup does not cover - a multi-allelic call such as
-# 1/2, or a non-diploid one such as 0/0/1/1 - is an error rather than a silent NA, since the lookup
-# only covers diploid biallelic calls.
-gt_to_dosage = function(gt) {
-  dosage = dosage_lookup[gt]
+# gt    : GT field values, one per sample, e.g. c("0/0", "0|1", "./.")
+# ploidy: allele copies per genotype, 2L for diploid
+# Each call is split into its alleles on "/" or "|", so phased, unphased and mixed calls are all
+# read, and its dosage is the number of ALT (1) alleles: 0/0/1/1 is 2. A call with any unknown
+# allele - ".", "./.", or a partly missing 0/. - becomes NA, since its count is not known.
+# Anything else is an error rather than a silent NA: an allele other than 0, 1 or . is a second
+# ALT allele (1/2), which one ALT count cannot express, and a call whose allele count differs
+# from ploidy means the file is not the ploidy declared. A bare "." is exempt from the count, being
+# the VCF spelling for a genotype that was not called at all.
+# Only the distinct calls are parsed, then matched back, since a file holds only a handful of them.
+gt_to_dosage = function(gt, ploidy = 2L) {
+  ploidy = check_ploidy(ploidy)
 
-  # A missing call is expected and becomes NA; any other unmapped call is not
-  unknown = is.na(dosage) & !(gt %in% missing_calls)
-  if (any(unknown)) {
-    stop("Unrecognised GT call(s): ", paste(unique(gt[unknown]), collapse = ", "),
-         ". read_vcf_geno() currently reads diploid biallelic GT calls only, e.g. 0/1 or 0|1.")
+  calls = unique(gt)
+  alleles = strsplit(calls, "[/|]")
+
+  # A NA or empty call splits into nothing usable, so it is caught here too
+  recognised = vapply(alleles, function(a) {
+    length(a) > 0 && !anyNA(a) && all(a %in% c("0", "1", "."))
+  }, logical(1))
+  if (any(!recognised)) {
+    stop("Unrecognised GT call(s): ", paste(calls[!recognised], collapse = ", "),
+         ". Alleles must be 0 (REF), 1 (ALT) or . (missing); multi-allelic calls are not supported.")
   }
 
-  unname(dosage)
+  # Check ploidy count
+  wrong_count = lengths(alleles) != ploidy & calls != "."
+  if (any(wrong_count)) {
+    stop("GT call(s) with the wrong number of alleles for ploidy ", ploidy, ": ",
+         paste(calls[wrong_count], collapse = ", "), ". Set ploidy to match the VCF.")
+  }
+
+  dosage = vapply(alleles, function(a) {
+    if (any(a == ".")) NA_real_ else sum(a == "1")
+  }, numeric(1))
+
+  dosage[match(gt, calls)]
 }
 
-##### Every phased biallelic GT call mapped to its two haplotype alleles #####
-# The haplotype counterpart of dosage_lookup. Only phased ("|") calls appear, since an unphased
-# call does not say which allele sits on which haplotype, and no missing form appears, since a
-# haplotype column cannot hold an NA the way a dosage can.
-haplotype_lookup = list("0|0" = c(0L, 0L), "0|1" = c(0L, 1L),
-                        "1|0" = c(1L, 0L), "1|1" = c(1L, 1L))
-
 ##### Convert a vector of phased VCF GT calls to haplotype allele columns #####
-# gt: phased GT values, one per sample, e.g. c("0|0", "0|1")
-# Returns an integer matrix of 0/1 allele presence with one column per haplotype. The haplotype
-# layout needs every allele placed on a haplotype, so an unphased ("0|1" written as "0/1") or
-# missing (".|.") call is an error rather than an NA. Phasing software such as Beagle writes
-# phased, complete calls.
-gt_to_haplotypes = function(gt) {
-  haplotypes = haplotype_lookup[gt]
+# gt    : phased GT values, one per sample, e.g. c("0|0", "0|1")
+# ploidy: allele copies per genotype, 2L for diploid
+# Returns an integer matrix of 0/1 allele presence with one column per haplotype, ploidy columns
+# in all. The haplotype layout needs every allele placed on a haplotype, so each call must be fully
+# phased ("|" between every allele) with exactly ploidy alleles, each 0 or 1. An unphased ("0/1")
+# or missing (".|.") call is an error rather than an NA, since a haplotype column cannot hold one.
+# A haploid call ("0" or "1") has a single allele, so there is nothing to phase.
+# Only the distinct calls are parsed, then matched back, as in gt_to_dosage().
+gt_to_haplotypes = function(gt, ploidy = 2L) {
+  ploidy = check_ploidy(ploidy)
 
-  # Anything the table does not cover: unphased, missing, multi-allelic (0|2) or non-diploid
-  unknown = vapply(haplotypes, is.null, logical(1))
-  if (any(unknown)) {
-    stop("Unrecognised GT call(s): ", paste(unique(gt[unknown]), collapse = ", "),
-         ". Expected phased diploid GT calls separated by \"|\", e.g. 0|1.")
+  calls = unique(gt)
+  alleles = strsplit(calls, "|", fixed = TRUE)
+
+  # "/" is not split on, so an unphased call leaves an allele such as "0/1" that fails here
+  recognised = vapply(alleles, function(a) {
+    length(a) == ploidy && !anyNA(a) && all(a %in% c("0", "1"))
+  }, logical(1))
+  if (any(!recognised)) {
+    example = paste(c(rep("0", ploidy - 1), "1"), collapse = "|")
+    stop("Unrecognised GT call(s): ", paste(calls[!recognised], collapse = ", "),
+         ". Expected phased calls of ", ploidy, " alleles, each 0 or 1, separated by \"|\", e.g. ",
+         example, ".")
   }
 
-  matrix(as.integer(unlist(haplotypes)), ncol = 2, byrow = TRUE)
+  haplotypes = matrix(as.integer(unlist(alleles)), ncol = ploidy, byrow = TRUE)
+  haplotypes[match(gt, calls), , drop = FALSE]
 }
 
 ##### Parse a (optionally gzipped) VCF into its map, sample columns and FORMAT layout #####
@@ -236,8 +271,10 @@ read_vcf_gt = function(path) {
 # DS is the imputed ALT allele dosage: a float on the same scale as a GT-derived dosage, but
 # carrying the imputation's uncertainty rather than rounding it away, so 0.83 stays 0.83 instead of
 # becoming the hard call 1. A missing value (".") becomes NA, as it does for GT.
-# ds: DS field values, one per sample, e.g. c("0.00", "0.83", ".")
-ds_to_dosage = function(ds) {
+# ds    : DS field values, one per sample, e.g. c("0.00", "0.83", ".")
+# ploidy: allele copies per genotype, 2L for diploid, which bounds the dosage from above
+ds_to_dosage = function(ds, ploidy = 2L) {
+  ploidy = check_ploidy(ploidy)
   dosage = suppressWarnings(as.numeric(ds))
 
   # A missing value is expected and becomes NA; anything else that will not parse is not
@@ -247,12 +284,12 @@ ds_to_dosage = function(ds) {
          ". DS must hold numeric ALT allele dosages.")
   }
 
-  # Only the diploid range is accepted for now. A DS outside it usually means the field was misread
-  out_of_range = !is.na(dosage) & (dosage < 0 | dosage > 2)
+  # A dosage counts ALT copies, so it lies between none and all of them. A DS outside that range
+  # usually means the field was misread, or that the file is not the ploidy declared
+  out_of_range = !is.na(dosage) & (dosage < 0 | dosage > ploidy)
   if (any(out_of_range)) {
-    stop("DS value(s) outside the 0 to 2 dosage range: ",
-         paste(unique(dosage[out_of_range]), collapse = ", "),
-         ". read_vcf_geno() currently reads diploid DS dosages only.")
+    stop("DS value(s) outside the 0 to ", ploidy, " dosage range for ploidy ", ploidy, ": ",
+         paste(unique(dosage[out_of_range]), collapse = ", "), ". Set ploidy to match the VCF.")
   }
 
   dosage
@@ -260,18 +297,22 @@ ds_to_dosage = function(ds) {
 
 ##### Read a (optionally gzipped) VCF back into a HapSelect genotype data frame #####
 # Converts the GT (genotype) field of every sample column to a dosage, counting ALT alleles, with
-# missing calls as NA; phased ("|") and unphased ("/") genotypes are both accepted. Only diploid
-# biallelic calls are read for now, giving dosages of 0, 1 or 2.
+# missing calls as NA; phased ("|") and unphased ("/") genotypes are both accepted. See
+# gt_to_dosage() for which calls are read and which are errors.
 # Returns a geno object, so columns are SNP / Chromosome / Position, matching order_map().
 # LD and haploblock tables use Chrom instead - do not align this to those.
 # path     : VCF to read, optionally gzipped
 # prefer_ds: TRUE to read dosages from the DS field instead of GT when every record carries one,
 #            keeping fractional imputed dosages rather than the rounded hard calls. Imputation
-#            software such as Beagle writes DS alongside GT. When any record lacks DS the whole
-#            file falls back to GT, so a file is read one way or the other, never half and half.
+#            software commonly writes DS alongside GT. When any record lacks DS the whole file
+#            falls back to GT, so a file is read one way or the other, never half and half.
 #            The dosage columns are then floats rather than whole numbers, which every LD and
-#            blocking function here accepts but which downstream code expecting 0 / 1 / 2 may not.
-read_vcf_geno = function(path, prefer_ds = FALSE) {
+#            blocking function here accepts but which downstream code expecting whole numbers
+#            may not. Only the DS range is checked against ploidy; GT is not read as well.
+# ploidy   : allele copies per genotype, 2L for diploid. Every GT call must carry this many
+#            alleles, and dosages run from 0 to ploidy
+read_vcf_geno = function(path, prefer_ds = FALSE, ploidy = 2L) {
+  ploidy = check_ploidy(ploidy)
   records = read_vcf_records(path)
 
   # DS when asked for and available, GT otherwise. field_values is one character vector per
@@ -289,7 +330,7 @@ read_vcf_geno = function(path, prefer_ds = FALSE) {
   # One dosage column per sample, in the original sample order and names.
   # Any converter error is combined with the file it was read from.
   dosage_cols = tryCatch(
-    lapply(field_values, converter),
+    lapply(field_values, converter, ploidy = ploidy),
     error = function(e) stop("Cannot read ", path, " as dosages: ", conditionMessage(e), call. = FALSE)
   )
 
@@ -300,28 +341,31 @@ read_vcf_geno = function(path, prefer_ds = FALSE) {
 }
 
 ##### Read a (optionally gzipped) VCF back into a HapSelect phased genotype data frame #####
-# Splits each phased GT call into its two haplotypes instead of summing them to a dosage, giving
-# the geno_phased layout: SNP / Chromosome / Position, then <sample>_1 and <sample>_2 columns of
-# 0/1 allele presence. This is the format compute_haplotype_effects() expects.
-# path: VCF to read, optionally gzipped
-read_vcf_phased = function(path) {
+# Splits each phased GT call into its haplotypes instead of summing them to a dosage, giving the
+# geno_phased layout: SNP / Chromosome / Position, then <sample>_1 to <sample>_<ploidy> columns
+# of 0/1 allele presence. 
+# path  : VCF to read, optionally gzipped
+# ploidy: allele copies per genotype, 2L for diploid. Every GT call must carry this many alleles
+read_vcf_phased = function(path, ploidy = 2L) {
+  ploidy = check_ploidy(ploidy)
   parsed = read_vcf_gt(path)
 
-  # Two columns per sample, kept adjacent so the order is S1_1, S1_2, S2_1, S2_2, ...
+  # ploidy columns per sample, kept adjacent so the order is S1_1, S1_2, S2_1, S2_2, ...
   hap_cols = list()
   for (s in names(parsed$gt)) {
     # Any gt_to_haplotypes() error is combined with the file, the sample and the fix
     haplotypes = tryCatch(
-      gt_to_haplotypes(parsed$gt[[s]]),
+      gt_to_haplotypes(parsed$gt[[s]], ploidy = ploidy),
       error = function(e) stop(
         "Cannot read ", path, " as phased haplotypes, in sample ", s, ": ", conditionMessage(e),
-        "\nread_vcf_phased() needs a phased VCF such as Beagle output. Use beagle_phase_geno() ",
-        "to phase, or read_vcf_geno() to read this file as dosages.",
+        "\nread_vcf_phased() needs a VCF whose calls are all phased. Phase the genotypes first, ",
+        "or use read_vcf_geno() to read this file as dosages.",
         call. = FALSE
       )
     )
-    hap_cols[[paste0(s, "_1")]] = haplotypes[, 1]
-    hap_cols[[paste0(s, "_2")]] = haplotypes[, 2]
+    for (k in seq_len(ploidy)) {
+      hap_cols[[paste0(s, "_", k)]] = haplotypes[, k]
+    }
   }
 
   result = data.frame(parsed$map, hap_cols, stringsAsFactors = FALSE, check.names = FALSE)

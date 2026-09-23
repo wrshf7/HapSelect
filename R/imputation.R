@@ -65,6 +65,12 @@ run_beagle_on_geno = function(geno, reader, ref = NULL, map = NULL, extra_args =
     stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
   }
 
+  # Beagle only handles diploid genotypes, so stop before running it on anything else
+  dosages = as.matrix(geno[, -(1:3), drop = FALSE])
+  if (any(!(dosages[!is.na(dosages)] %in% c(0, 1, 2)))) {
+    stop("Beagle only supports diploid genotypes, so geno dosages must be 0, 1, 2, or NA.")
+  }
+
   # Create a temporary VCF file
   in_vcf = tempfile("hapselect_beagle_in_", fileext = ".vcf")
   out_prefix = tempfile("hapselect_beagle_out_")
