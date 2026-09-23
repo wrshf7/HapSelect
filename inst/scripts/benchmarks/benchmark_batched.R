@@ -10,6 +10,14 @@
 # Config format: JSON array of job objects, each with:
 #   "benchmark" : "ld" | "haploblocks" | "local_gebv"
 #   "params"    : object of parameter overrides (all optional; missing keys use defaults)
+#
+# Parameters by benchmark:
+#   ld          : n_markers, n_individuals, n_chr, missing_rate, seed, n_reps,
+#                 window (for the windowed mode; every-pair mode always runs too),
+#                 include_r, include_plink
+#   haploblocks : threshold, tolerance, tol_reset, window_snp, window_map, n_reps
+#   local_gebv  : n_markers, n_individuals, n_chr, n_blocks, missing_rate, seed,
+#                 n_reps, chunk_size
 
 if (!requireNamespace("jsonlite", quietly = TRUE)) {
   stop('Install jsonlite to run batch benchmarks: install.packages("jsonlite")')
