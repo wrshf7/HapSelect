@@ -30,9 +30,24 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// pairwise_ld_cpp
+DataFrame pairwise_ld_cpp(NumericMatrix geno, int window, double min_r2, int min_obs);
+RcppExport SEXP _HapSelect_pairwise_ld_cpp(SEXP genoSEXP, SEXP windowSEXP, SEXP min_r2SEXP, SEXP min_obsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type geno(genoSEXP);
+    Rcpp::traits::input_parameter< int >::type window(windowSEXP);
+    Rcpp::traits::input_parameter< double >::type min_r2(min_r2SEXP);
+    Rcpp::traits::input_parameter< int >::type min_obs(min_obsSEXP);
+    rcpp_result_gen = Rcpp::wrap(pairwise_ld_cpp(geno, window, min_r2, min_obs));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_HapSelect_make_blocks_cpp", (DL_FUNC) &_HapSelect_make_blocks_cpp, 10},
+    {"_HapSelect_pairwise_ld_cpp", (DL_FUNC) &_HapSelect_pairwise_ld_cpp, 4},
     {NULL, NULL, 0}
 };
 
