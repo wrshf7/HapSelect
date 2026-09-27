@@ -84,6 +84,8 @@ window_strategy = function(window, method = c("window_snp", "window_map")) {
 # max_gap_markers  : maximum marker gap within one segment, before it is split
 # max_gap_position : maximum map distance within one segment, or NULL for no distance limit
 # min_block_snps   : minimum markers for a candidate segment to be kept
+# parallel         : if TRUE, process chromosomes in parallel using all available cores
+#                    minus one, as ld_strategy() does
 graph_strategy = function(theta_core        = 0.80,
                           theta_core_by_chr = NULL,
                           theta_extend      = 0.20,
@@ -97,7 +99,8 @@ graph_strategy = function(theta_core        = 0.80,
                           max_gap_snps      = 2,
                           max_gap_markers   = 2,
                           max_gap_position  = NULL,
-                          min_block_snps    = 2) {
+                          min_block_snps    = 2,
+                          parallel          = FALSE) {
 
   # Check all thresholds are valid
   thresholds = list(theta_core = theta_core, theta_extend = theta_extend,
@@ -194,7 +197,8 @@ graph_strategy = function(theta_core        = 0.80,
          window_ld = window_ld, window_core = window_core,
          window_extend = window_extend, min_links = min_links,
          max_gap_snps = max_gap_snps, max_gap_markers = max_gap_markers,
-         max_gap_position = max_gap_position, min_block_snps = min_block_snps),
+         max_gap_position = max_gap_position, min_block_snps = min_block_snps,
+         parallel = parallel),
     class = "graph_strategy"
   )
 }

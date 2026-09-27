@@ -142,3 +142,100 @@ order_map = function(map, verbose = FALSE){
 }
 
 
+####order_geno() - put a genotype table into the same order as a map####
+# order_map() puts a marker map into the package's canonical order: chromosome
+# labels numbered, markers sorted by chromosome then position. It works on the
+# three map columns alone, so a genotype table whose first three columns are that
+# same map is left behind by it - the dosage columns do not come along.
+#
+# order_geno() is that missing half. It applies the same ordering to a genotype
+# table, keeping every dosage column attached to its marker, so that geno and map
+# describe the same markers in the same order. Blocking needs that: a marker's
+# index is its row in the map, and its dosages are read from the matching row of
+# geno, so the two disagreeing silently pairs each marker with another marker's
+# genotypes.
+#
+# geno    : genotype table, markers as rows: SNP ID, chromosome and position in
+#           columns 1 to 3, one dosage column per individual after that
+# map     : map to order geno by, as returned by order_map(). When NULL, geno is
+#           ordered by its own first three columns, which gives a result whose
+#           first three columns are exactly order_map(geno[, 1:3])
+# verbose : passed to order_map()'s chromosome numbering when map is NULL
+#
+# Returns geno, reordered, with columns 1 to 3 named SNP, Chromosome and Position.
+order_geno = function(geno, map = NULL, verbose = FALSE){
+
+  # A genotype table needs at least one dosage column, where a map needs none
+  if(!is.data.frame(geno) || ncol(geno) < 4){
+    stop("geno must be a data frame with at least 4 columns: SNP ID (column 1), ",
+         "chromosome (column 2), position (column 3), and one or more individual ",
+         "dosage columns.")
+  }
+
+  # Duplicated marker names make the geno to map matching ambiguous: match() takes
+  # the first hit, so a duplicate would quietly pair markers with the wrong dosages
+  geno_snps = as.character(geno[,1])
+  duplicated_geno = unique(geno_snps[duplicated(geno_snps)])
+  if(length(duplicated_geno)){
+    stop("geno has duplicated SNP IDs, so a marker cannot be matched to one row: ",
+         paste(utils::head(duplicated_geno, 5), collapse = ", "),
+         if(length(duplicated_geno) > 5) ", ..." else "", ".")
+  }
+
+  # No map to follow, so geno is ordered by its own map columns. check_file() and
+  # the sort below are the ones order_map() uses, so the first three columns of the
+  # result are what order_map() would have returned for them.
+  if(is.null(map)){
+    geno = check_file(geno, verbose = verbose)
+    colnames(geno)[1:3] = c("SNP", "Chromosome", "Position")
+    geno = geno[order(geno[,2], geno[,3]), ]
+    rownames(geno) = NULL
+    return(geno)
+  }
+
+  if(!is.data.frame(map) || ncol(map) < 3){
+    stop("map must be a data frame with at least 3 columns: SNP ID (column 1), ",
+         "chromosome (column 2), and position (column 3).")
+  }
+
+  # The map's numbering is copied onto geno below, so a map that has not been
+  # numbered would put chromosome labels into geno rather than chromosome numbers.
+  # Numbering it here instead would renumber only our copy, leaving the caller's
+  # map disagreeing with the geno we hand back.
+  if(!is.numeric(map[,2])){
+    stop("The chromosome column of map must be numeric. Run order_map() on it ",
+         "first, which numbers the labels and sorts the markers.")
+  }
+
+  map_snps = as.character(map[,1])
+  duplicated_map = unique(map_snps[duplicated(map_snps)])
+  if(length(duplicated_map)){
+    stop("map has duplicated SNP IDs, so a marker cannot be matched to one row: ",
+         paste(utils::head(duplicated_map, 5), collapse = ", "),
+         if(length(duplicated_map) > 5) ", ..." else "", ".")
+  }
+
+  # Every marker must be on both sides. A marker in only one of them has either no
+  # dosages or no position, and neither can be blocked.
+  missing_from_geno = setdiff(map_snps, geno_snps)
+  missing_from_map  = setdiff(geno_snps, map_snps)
+  if(length(missing_from_geno) || length(missing_from_map)){
+    stop("geno and map must hold the same markers. ",
+         length(missing_from_geno), " marker(s) are in map but not geno",
+         if(length(missing_from_geno)) paste0(" (", paste(utils::head(missing_from_geno, 5), collapse = ", "), ")") else "",
+         ", and ", length(missing_from_map), " are in geno but not map",
+         if(length(missing_from_map)) paste0(" (", paste(utils::head(missing_from_map, 5), collapse = ", "), ")") else "",
+         ".")
+  }
+
+  # Rows follow the map, and so do the chromosome numbers and positions: the map is
+  # the authority for where a marker sits, geno only for its dosages.
+  geno = geno[match(map_snps, geno_snps), , drop = FALSE]
+  geno[,1] = map_snps
+  geno[,2] = map[,2]
+  geno[,3] = map[,3]
+  colnames(geno)[1:3] = c("SNP", "Chromosome", "Position")
+  rownames(geno) = NULL
+
+  return(geno)
+}

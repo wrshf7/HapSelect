@@ -703,19 +703,26 @@ perform_graph_blocking = function(geno, map, strategy) {
     stop("geno must be supplied for a graph_strategy: the method computes LD from ",
          "the genotypes directly. Pass it to def_blocks(strategy, map, geno = ...).")
   }
-  check_ld_matrix(geno)
+  # The map is the authority for where a marker sits: its index is its row, so
+  # every distance, gap and window in the method is measured in map rows. That only
+  # means anything if the map is in order_map()'s order, and sorting it here would
+  # renumber indices the caller may be holding elsewhere, so it is checked instead.
+  if (!is.data.frame(map) || !all(c("SNP", "Chromosome", "Position") %in% names(map))) {
+    stop("map must be a data frame with columns SNP, Chromosome and Position, as ",
+         "order_map() returns.")
+  }
+  if (!identical(order(map$Chromosome, map$Position), seq_len(nrow(map)))) {
+    stop("map must be sorted by chromosome then position, since a marker's index ",
+         "is its row in the map. Run order_map() on it first.")
+  }
 
-  geno_snps = as.character(geno[[1]])
-  map_snps = as.character(map$SNP)
-  if (length(geno_snps) != length(map_snps) || !setequal(geno_snps, map_snps)) {
-    stop("geno and map must hold the same markers.")
-  }
-  if (!identical(geno_snps, map_snps)) {
-    stop("geno and map must hold the same markers in the same order, since a ",
-         "marker's index is its row in the map and its dosages are read from the ",
-         "matching row of geno. order_map() reorders the map, so reorder geno to ",
-         "match it.")
-  }
+  # geno, by contrast, is keyed by marker name, so it is aligned to the map rather
+  # than required to arrive that way. order_geno() reports the two cases it cannot
+  # resolve: a duplicated marker name, and a marker on only one side.
+  geno = order_geno(geno, map)
+
+  # After alignment, so geno has taken the map's numeric chromosome column
+  check_ld_matrix(geno)
 
   chromosomes = unique(map$Chromosome)
 
@@ -728,10 +735,20 @@ perform_graph_blocking = function(geno, map, strategy) {
     }
   }
 
-  blocks_by_chr = list()
-  diagnostics = list()
+  # One chromosome is independent of every other, so they are processed the same way
+  # perform_ld_blocking() processes its own: serially by default, over workers when
+  # the strategy asks for it. The LD calculation sits inside this loop rather than
+  # ahead of it, so it is parallelised along with the rest of the per-chromosome work.
+  if (isTRUE(strategy$parallel)) {
+    future::plan(multisession, workers = parallel::detectCores() - 1)
+    on.exit(future::plan(sequential), add = TRUE)
+  }
 
-  for (chromosome in chromosomes) {
+  handlers("txtprogressbar")
+  with_progress({
+    p = progressor(steps = length(chromosomes))
+
+    blocks_for_chromosome = function(chromosome) {
     key = as.character(chromosome)
     rows = map$Chromosome == chromosome
     map_chr = map[rows, , drop = FALSE]
@@ -771,10 +788,8 @@ perform_graph_blocking = function(geno, map, strategy) {
       n_dropped = nrow(refill$dropped)
     }
 
-    blocks_by_chr[[key]] = blocks
-
     sizes = lengths(blocks)
-    diagnostics[[key]] = data.frame(
+    diagnostics = data.frame(
       chromosome = chromosome,
       theta_core = theta_core,
       n_blocks = length(blocks),
@@ -786,10 +801,29 @@ perform_graph_blocking = function(geno, map, strategy) {
       n_dropped = n_dropped,
       stringsAsFactors = FALSE
     )
-  }
 
-  attr(blocks_by_chr, "graph_diagnostics") =
-    do.call(rbind, c(diagnostics, list(make.row.names = FALSE)))
+    p()
+
+    # Blocks and diagnostics travel together so that a worker returns one value
+    list(key = key, blocks = blocks, diagnostics = diagnostics)
+    }
+
+    # seed = TRUE gives each worker a parallel-safe RNG stream. The method draws no
+    # random numbers, but loading packages on a worker can, and future warns when it does.
+    per_chromosome = if (isTRUE(strategy$parallel)) {
+      furrr::future_map(chromosomes, blocks_for_chromosome,
+                        .options = furrr::furrr_options(seed = TRUE))
+    } else {
+      purrr::map(chromosomes, blocks_for_chromosome)
+    }
+  })
+
+  blocks_by_chr = lapply(per_chromosome, `[[`, "blocks")
+  names(blocks_by_chr) = vapply(per_chromosome, `[[`, character(1), "key")
+
+  attr(blocks_by_chr, "graph_diagnostics") = do.call(
+    rbind, c(lapply(per_chromosome, `[[`, "diagnostics"), list(make.row.names = FALSE))
+  )
 
   blocks_by_chr
 }
