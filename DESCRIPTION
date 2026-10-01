@@ -45,7 +45,6 @@ LinkingTo:
 Suggests:
     covr,
     jsonlite,
-    testthat (>= 3.0.0),
-    vcfR
+    testthat (>= 3.0.0)
 Remotes:
     vllrs/genomicSimulation

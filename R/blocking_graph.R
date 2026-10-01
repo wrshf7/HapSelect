@@ -31,6 +31,10 @@
 #
 # The strategy object that configures all of this is graph_strategy(), which
 # lives in def_haploblocks.R beside the other blocking strategies.
+#
+# The method is Jingyang Tong's (QAAFI, The University of Queensland), presented
+# as "Graph connectivity haploblocking" in August 2026. The code here is a port of
+# the R implementation that accompanied it.
 
 # geno_matrix ------------------------------------------------------------------
 # Turns the HapSelect genotype layout, which has markers as rows, into the

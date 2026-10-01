@@ -1,11 +1,10 @@
 # Tests: graph-based haploblocking ---------------------------------------------
 #
-# Covers R/blocking_graph.R. Every expectation here was taken from the reference
-# implementation in inst/reference/construct_graph_haploblocks_wheat.R, run over these same
-# fixtures, so a failure means the behaviour has moved rather than that the
-# expectation was guessed. Where the prototype does something surprising, the
-# comment says so - the point of these tests is to notice when it changes, not to
-# argue that it is right.
+# Covers R/blocking_graph.R. Every expectation here was taken from the original
+# implementation this one was ported from, run over these same fixtures, so a
+# failure means the behaviour has moved rather than that the expectation was
+# guessed. Where that behaviour is surprising, the comment says so - the point of
+# these tests is to notice when it changes, not to argue that it is right.
 #
 # Table comparisons go through as.data.frame() so the implementation is free to
 # use data.table, dplyr or base R internally.
@@ -1006,8 +1005,6 @@ test_that("perform_graph_blocking rejects a theta_core_by_chr naming no chromoso
 # Reuse of the package's VCF reader --------------------------------------------
 
 test_that("read_vcf_geno and order_map reproduce the prototype's VCF extraction", {
-  skip_if_not_installed("vcfR")
-
   path <- tempfile(fileext = ".vcf")
   on.exit(unlink(path))
   writeLines(c(
