@@ -8,5 +8,11 @@ utils::globalVariables(c(
   "PC1", "PC2", "Pos", "Pos1", "Pos2", "SNP", "Scaled_Block_Var",
   "Start", "Start_Pos", "bin", "chr_len", "chr_start", "dist_bp",
   "dist_kb", "fit", "gen", "group", "method", "se", "xmax", "xmin",
-  "y", "ymax", "ymin"
+  "y", "ymax", "ymin",
+  # data.table columns and symbols in R/blocking_graph.R
+  ".N", ".I",
+  "Locus1", "Locus2", "Position", "R2", "SNP_A", "SNP_B", "block_id", "density",
+  "first_index", "first_position", "from", "idx", "idxA", "idxB", "last_index",
+  "last_position", "max_r2", "mean_r2", "min_dist", "n_links", "n_markers",
+  "score", "seg_id", "span", "to"
 ))

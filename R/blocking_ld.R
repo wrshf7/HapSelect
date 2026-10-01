@@ -335,9 +335,29 @@ chromo_blocking = function(chr, ld, map, method, tolerance, tol_reset,
   ld_chrom = ld[ld$Chrom == chr, ]
   ld_adj   = ld_chrom[ld_chrom$Locus2 == ld_chrom$Locus1 + 1, ]
 
-  marker_names     = unique(c(ld_chrom$Name1, ld_chrom$Name2))
-  marker_positions = map$Position[match(marker_names, map$SNP)]
-  marker_names     = marker_names[order(marker_positions)]
+  # The marker list comes from the map, which holds every marker, rather than from
+  # the LD table, which holds pairs. A marker whose pairs all fall below the r^2
+  # floor the caller used - pairwise_ld(min_r2 = ), PLINK's --ld-window-r2 - is
+  # absent from the table altogether, so reading the list from there drops it from
+  # the blocking entirely instead of leaving it as a block of its own.
+  #
+  # The chromosome and position are read by column rather than by name, as
+  # check_file() and check_ld_matrix() do, since a map reaches here both before and
+  # after order_map(), which renames columns 1 to 3 to SNP, Chromosome, Position.
+  on_chrom = !is.na(map[[2]]) & map[[2]] == chr
+  if (!any(on_chrom)) {
+    stop("The map has no markers on chromosome ", chr, ", which the LD table has ",
+         "pairs for. Check that ld and map describe the same markers, and that the ",
+         "chromosome labels match - order_map() numbers text labels.")
+  }
+
+  marker_names     = as.character(map[[1]][on_chrom])
+  marker_positions = as.numeric(map[[3]][on_chrom])
+
+  # Both are reordered together: they are read positionally from here on
+  marker_order     = order(marker_positions)
+  marker_names     = marker_names[marker_order]
+  marker_positions = marker_positions[marker_order]
 
   first_marker = marker_names[1]
   last_marker  = marker_names[length(marker_names)]
