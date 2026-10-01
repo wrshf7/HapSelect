@@ -367,6 +367,20 @@ run_plink_command = function(args){
 # geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
 #       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
 write_plink_ped_map = function(geno, prefix) {
+
+  # PED stores two discrete alleles per genotype, so a dosage has to be a whole number of
+  # ALT copies. A fractional dosage has no representation here, and the conversion below
+  # would read every one of them as a heterozygote whatever its value, so a dosage just
+  # above zero and one just below two would come out identical.
+  dosages = as.matrix(geno[, -(1:3), drop = FALSE])
+  observed = dosages[!is.na(dosages)]
+  if (length(observed) > 0 && any(observed != round(observed))) {
+    stop("geno holds fractional dosages, which PLINK's text format cannot represent: each ",
+         "one would be written as a heterozygote. read_vcf_geno(prefer_ds = TRUE) returns ",
+         "fractional dosages for imputed data - re-read the VCF with prefer_ds = FALSE to ",
+         "get whole-number calls before passing it to PLINK.")
+  }
+
   utils::write.table(
     data.frame(CHR = geno[[2]], SNP = geno[[1]], CM = 0, BP = geno[[3]],
                stringsAsFactors = FALSE),
@@ -437,7 +451,9 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
 ##### Run PLINK pairwise LD from a genotype data frame #####
 # Writes temporary PLINK text files, delegates to plink_pairwise_ld, then cleans up.
 # geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
-#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
+#       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual. PLINK reads hard calls, so
+#       these must be whole numbers - read a VCF with prefer_ds = FALSE rather than TRUE,
+#       whose fractional imputed dosages PLINK's text format cannot carry.
 plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 1000000,
                                   ld_window_r2 = 0, extra_args = character()){
   if(!is.data.frame(geno) || ncol(geno) < 4){

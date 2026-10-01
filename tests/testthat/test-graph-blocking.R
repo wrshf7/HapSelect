@@ -1,7 +1,7 @@
 # Tests: graph-based haploblocking ---------------------------------------------
 #
 # Covers R/blocking_graph.R. Every expectation here was taken from the reference
-# implementation in inst/examples/blocking_graph_prototype.R, run over these same
+# implementation in inst/reference/construct_graph_haploblocks_wheat.R, run over these same
 # fixtures, so a failure means the behaviour has moved rather than that the
 # expectation was guessed. Where the prototype does something surprising, the
 # comment says so - the point of these tests is to notice when it changes, not to
@@ -950,17 +950,27 @@ test_that("perform_graph_blocking rejects genotypes not in the HapSelect layout"
 })
 
 
+test_that("perform_graph_blocking aligns genotypes that arrive in another order", {
+  # A marker's index is its row in the map, and its dosages are read from the
+  # matching row of geno. Rather than demand the caller line them up, the two are
+  # matched by marker name here, which is what the reference implementation does
+  # when it builds both from the same VCF.
+  geno <- graph_geno_fixture()
+  map  <- graph_map_fixture()
+
+  shuffled <- geno[rev(seq_len(nrow(geno))), ]
+  rownames(shuffled) <- NULL
+
+  expect_equal(perform_graph_blocking(shuffled, map, graph_test_strategy()),
+               perform_graph_blocking(geno, map, graph_test_strategy()))
+})
+
+
 test_that("perform_graph_blocking rejects a map that disagrees with the genotypes", {
   geno <- graph_geno_fixture()
   map  <- graph_map_fixture()
 
-  # A marker's index is its row in the map, and dosages are read by row from geno.
-  # Reorder one of them and every r2 is computed between the wrong pair of markers,
-  # with a full set of plausible-looking blocks coming back regardless.
-  reordered <- map[c(2, 1, seq(3, nrow(map))), ]
-  expect_error(perform_graph_blocking(geno, reordered, graph_test_strategy()),
-               "same order")
-
+  # Matching by name resolves a different row order, but not a different marker set
   expect_error(perform_graph_blocking(geno, map[-1, ], graph_test_strategy()),
                "same markers")
 
@@ -968,6 +978,18 @@ test_that("perform_graph_blocking rejects a map that disagrees with the genotype
   renamed$SNP[1] <- "somewhere_else"
   expect_error(perform_graph_blocking(geno, renamed, graph_test_strategy()),
                "same markers")
+})
+
+
+test_that("perform_graph_blocking rejects a map that is not in order_map order", {
+  # Aligning geno to the map cannot rescue a map that is out of order: the index
+  # every gap and window is measured in is the map row itself.
+  geno <- graph_geno_fixture()
+  map  <- graph_map_fixture()
+
+  reordered <- map[c(2, 1, seq(3, nrow(map))), ]
+  expect_error(perform_graph_blocking(geno, reordered, graph_test_strategy()),
+               "order_map")
 })
 
 
@@ -1013,4 +1035,83 @@ test_that("read_vcf_geno and order_map reproduce the prototype's VCF extraction"
   map <- order_map(geno[, 1:3])
   expect_equal(map$SNP, c("snpA", "snpB", "snpC"))
   expect_equal(map$Chromosome, c(1, 1, 2))
+})
+
+
+test_that("a VCF reaches def_blocks through order_map and order_geno", {
+  # The path the reference implementation had built in: it read a VCF and produced
+  # the genotypes and the map together, from the one source. Here the reader, the
+  # map and the alignment are three separate package functions, so this is the test
+  # that they still compose into that path.
+  path <- tempfile(fileext = ".vcf")
+  on.exit(unlink(path))
+
+  set.seed(4)
+  n_ind   <- 30
+  samples <- paste0("I", seq_len(n_ind))
+  calls   <- function(k) {
+    g <- c("0|0", "0|1", "1|1")[sample(3, n_ind, TRUE)]
+    if (k > 0) g[sample(n_ind, k)] <- "./."
+    paste(g, collapse = "\t")
+  }
+
+  # Deliberately out of position order within chr1A, as a VCF may well be
+  rows <- c(
+    paste("chr1A", 500, "s5", "A", "G", ".", "PASS", ".", "GT", calls(1), sep = "\t"),
+    paste("chr1A", 100, "s1", "A", "G", ".", "PASS", ".", "GT", calls(0), sep = "\t"),
+    paste("chr1A", 300, "s3", "A", "G", ".", "PASS", ".", "GT", calls(0), sep = "\t"),
+    paste("chr1A", 200, "s2", "A", "G", ".", "PASS", ".", "GT", calls(0), sep = "\t"),
+    paste("chr1A", 400, "s4", "A", "G", ".", "PASS", ".", "GT", calls(2), sep = "\t"),
+    paste("chr1B", 100, "t1", "A", "G", ".", "PASS", ".", "GT", calls(0), sep = "\t"),
+    paste("chr1B", 200, "t2", "A", "G", ".", "PASS", ".", "GT", calls(0), sep = "\t"),
+    paste("chr1B", 300, "t3", "A", "G", ".", "PASS", ".", "GT", calls(0), sep = "\t")
+  )
+  writeLines(c(
+    "##fileformat=VCFv4.2",
+    "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+    paste(c("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            samples), collapse = "\t"),
+    rows
+  ), path)
+
+  geno <- read_vcf_geno(path)
+
+  # As read, the genotypes are in file order with the VCF's text chromosome labels,
+  # so they are not yet something the blocking functions accept
+  expect_equal(geno$SNP[1], "s5")
+  expect_type(geno$Chromosome, "character")
+  expect_error(check_ld_matrix(geno), "numeric chromosome")
+
+  map     <- order_map(geno[, 1:3], verbose = FALSE)
+  aligned <- order_geno(geno, map)
+
+  expect_equal(map$SNP, c("s1", "s2", "s3", "s4", "s5", "t1", "t2", "t3"))
+  expect_equal(aligned$SNP, map$SNP)
+  expect_silent(check_ld_matrix(aligned))
+
+  blocks <- def_blocks(graph_strategy(window_ld = 3, window_core = 3),
+                       map, geno = aligned)
+
+  expect_named(blocks, c("1", "2"))
+
+  # Every marker is accounted for, either in a block or deliberately dropped by the
+  # refill step, and nothing is invented
+  placed <- unlist(blocks, use.names = FALSE)
+  expect_true(all(placed %in% map$SNP))
+  expect_false(anyDuplicated(placed) > 0)
+})
+
+
+test_that("def_blocks takes the genotypes as read, without pre-alignment", {
+  # order_geno() is preparation a caller may reasonably forget, and forgetting it
+  # used to be an error. perform_graph_blocking() aligns by marker name itself, so
+  # the unaligned genotypes give the same answer as the aligned ones.
+  geno <- graph_geno_fixture()
+  map  <- graph_map_fixture()
+
+  shuffled <- geno[sample(nrow(geno)), ]
+  rownames(shuffled) <- NULL
+
+  expect_equal(def_blocks(graph_test_strategy(), map, geno = shuffled),
+               def_blocks(graph_test_strategy(), map, geno = geno))
 })

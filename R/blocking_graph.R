@@ -29,18 +29,8 @@
 #             to any member, and is otherwise dropped. Markers outside every
 #             selected span are kept as one-marker blocks.
 #
-# This is a port of the reference implementation kept in
-# inst/examples/blocking_graph_prototype.R, following it closely enough that the
-# two can be compared stage by stage, which is what
-# tests/testthat/test-graph-blocking.R does. Where the prototype duplicated
-# something the package already had - its own GT to dosage conversion, its own
-# VCF reader, its own block summaries - the package's version is used instead.
-# The one algorithm swapped out is the connected-component search, which used
-# igraph and now uses connected_components_cpp().
-#
 # The strategy object that configures all of this is graph_strategy(), which
 # lives in def_haploblocks.R beside the other blocking strategies.
-
 
 # geno_matrix ------------------------------------------------------------------
 # Turns the HapSelect genotype layout, which has markers as rows, into the
@@ -739,8 +729,23 @@ perform_graph_blocking = function(geno, map, strategy) {
   # perform_ld_blocking() processes its own: serially by default, over workers when
   # the strategy asks for it. The LD calculation sits inside this loop rather than
   # ahead of it, so it is parallelised along with the rest of the per-chromosome work.
+  # Each chromosome's rows are cut out here, ahead of the loop, so that a parallel run
+  # hands a worker only the chromosome it is about to work on. Taking the slice inside the
+  # loop instead would leave the whole genotype table referenced by the function, and
+  # future copies what a function refers to to every worker - on a genome-sized dataset
+  # that is hundreds of megabytes per worker, sent before any work starts.
+  chromosome_data = lapply(chromosomes, function(chromosome) {
+    rows = map$Chromosome == chromosome
+    list(key      = as.character(chromosome),
+         map_chr  = map[rows, , drop = FALSE],
+         geno_chr = geno[rows, , drop = FALSE])
+  })
+
   if (isTRUE(strategy$parallel)) {
-    future::plan(multisession, workers = parallel::detectCores() - 1)
+    # The split is by chromosome, so more workers than chromosomes cannot help: the extra
+    # ones would sit idle having already been sent a copy of their share of the data.
+    workers = max(1L, min(parallel::detectCores() - 1L, length(chromosome_data)))
+    future::plan(multisession, workers = workers)
     on.exit(future::plan(sequential), add = TRUE)
   }
 
@@ -748,11 +753,11 @@ perform_graph_blocking = function(geno, map, strategy) {
   with_progress({
     p = progressor(steps = length(chromosomes))
 
-    blocks_for_chromosome = function(chromosome) {
-    key = as.character(chromosome)
-    rows = map$Chromosome == chromosome
-    map_chr = map[rows, , drop = FALSE]
-    geno_chr = geno[rows, , drop = FALSE]
+    blocks_for_chromosome = function(chr_data) {
+    key = chr_data$key
+    map_chr = chr_data$map_chr
+    geno_chr = chr_data$geno_chr
+    chromosome = map_chr$Chromosome[1]
     snp2idx = marker_index(map_chr)
 
     # A per-chromosome override stands in for theta_core on this chromosome only
@@ -811,10 +816,10 @@ perform_graph_blocking = function(geno, map, strategy) {
     # seed = TRUE gives each worker a parallel-safe RNG stream. The method draws no
     # random numbers, but loading packages on a worker can, and future warns when it does.
     per_chromosome = if (isTRUE(strategy$parallel)) {
-      furrr::future_map(chromosomes, blocks_for_chromosome,
+      furrr::future_map(chromosome_data, blocks_for_chromosome,
                         .options = furrr::furrr_options(seed = TRUE))
     } else {
-      purrr::map(chromosomes, blocks_for_chromosome)
+      purrr::map(chromosome_data, blocks_for_chromosome)
     }
   })
 
