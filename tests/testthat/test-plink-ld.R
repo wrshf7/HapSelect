@@ -61,3 +61,46 @@ test_that("plink_pairwise_ld_geno errors when geno is not a valid data frame", {
     "geno must be a data frame"
   )
 })
+
+
+# Progress reporting ------------------------------------------------------------
+#
+# Both entry points report the one plink_ld step, so a call shows one step whichever
+# input it starts from, and the genotype path's own preparation falls inside it.
+
+test_that("plink_pairwise_ld_geno reports a single plink_ld step", {
+  skip_if(
+    inherits(tryCatch(HapSelect:::find_plink(), error = function(e) e), "error"),
+    "PLINK executable not found"
+  )
+
+  genotypes <- data.frame(
+    marker = paste0("m", 1:4),
+    chrom = rep(1, 4),
+    pos = seq(100, 400, by = 100),
+    ind1 = c(0, 0, 2, 0),
+    ind2 = c(0, 1, 2, 0),
+    ind3 = c(1, 1, 1, 0),
+    ind4 = c(1, 2, 1, 1),
+    ind5 = c(2, 2, 0, 1),
+    stringsAsFactors = FALSE
+  )
+
+  events <- with_machine_logging(function() plink_pairwise_ld_geno(genotypes))
+
+  expect_equal(kinds(events), c("step_started", "step_finished"))
+  expect_equal(steps(events), c("plink_ld", "plink_ld"))
+  expect_equal(events[[2]]$status, "succeeded")
+})
+
+
+test_that("plink_pairwise_ld_geno reports a rejected input as a failed plink_ld step", {
+  events <- with_machine_logging(function() {
+    expect_error(plink_pairwise_ld_geno("not_a_data_frame"), "geno must be a data frame")
+  })
+
+  expect_equal(kinds(events), c("step_started", "step_finished"))
+  expect_equal(steps(events), c("plink_ld", "plink_ld"))
+  expect_equal(events[[2]]$status, "failed")
+  expect_match(events[[2]]$message, "geno must be a data frame")
+})

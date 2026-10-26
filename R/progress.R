@@ -18,9 +18,9 @@
 HS_STEPS = c(
   pairwise_ld              = "Pairwise LD",
   plink_ld                 = "PLINK Pairwise LD",
-  plink_ld_geno            = "PLINK Pairwise LD",
   ld_blocking              = "LD Blocking",
   window_blocking          = "Window Blocking",
+  graph_blocking           = "Graph Blocking",
   marker_effects           = "Solving Marker Effects",
   cross_validation         = "Cross Validation",
   n_fold_cross_validation  = "N-Fold Cross Validation",

@@ -413,12 +413,10 @@ write_plink_ped_map = function(geno, prefix) {
   )
 }
 
-##### Run PLINK pairwise LD and return the result in HapSelect format #####
-# prefix should point to a PLINK binary fileset without extension (.bed/.bim/.fam)
-plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
-                             ld_window_r2 = 0, extra_args = character()){
-  report_step("plink_ld")
-
+##### Run PLINK pairwise LD on a binary fileset and return it in HapSelect format #####
+# Shared by plink_pairwise_ld() and plink_pairwise_ld_geno(), which each report the
+# plink_ld step themselves, so a call reports one step whichever input it starts from
+plink_pairwise_ld_run = function(prefix, ld_window, ld_window_kb, ld_window_r2, extra_args){
   required_files = paste0(prefix, c(".bed", ".bim", ".fam"))
   missing_files  = required_files[!file.exists(required_files)]
 
@@ -450,15 +448,27 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
   format_plink_ld(paste0(out_prefix, ".ld"), paste0(prefix, ".bim"))
 }
 
+##### Run PLINK pairwise LD and return the result in HapSelect format #####
+# prefix should point to a PLINK binary fileset without extension (.bed/.bim/.fam)
+plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
+                             ld_window_r2 = 0, extra_args = character()){
+  report_step("plink_ld")
+
+  plink_pairwise_ld_run(prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
+                        ld_window_r2 = ld_window_r2, extra_args = extra_args)
+}
+
 ##### Run PLINK pairwise LD from a genotype data frame #####
-# Writes temporary PLINK text files, delegates to plink_pairwise_ld, then cleans up.
+# Writes temporary PLINK text files, delegates to plink_pairwise_ld_run, then cleans up.
 # geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
 #       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual. PLINK reads hard calls, so
 #       these must be whole numbers - read a VCF with prefer_ds = FALSE rather than TRUE,
 #       whose fractional imputed dosages PLINK's text format cannot carry.
 plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 1000000,
                                   ld_window_r2 = 0, extra_args = character()){
-  report_step("plink_ld_geno")
+  # The same step as plink_pairwise_ld(), opened here so it also covers writing and
+  # converting the input
+  report_step("plink_ld")
 
   if(!is.data.frame(geno) || ncol(geno) < 4){
     stop("geno must be a data frame with columns: marker, chromosome, position, and at least one genotype column.")
@@ -473,11 +483,11 @@ plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 10000
 
   write_plink_ped_map(geno, in_prefix)
 
-  # Convert text files to binary so plink_pairwise_ld can consume them
+  # Convert text files to binary so plink_pairwise_ld_run can consume them
   run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix, "--chr-set", as.character(chr_num)))
 
   extra_args = c("--chr-set", as.character(chr_num), extra_args)
 
-  plink_pairwise_ld(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
-                    ld_window_r2 = ld_window_r2, extra_args = extra_args)
+  plink_pairwise_ld_run(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
+                        ld_window_r2 = ld_window_r2, extra_args = extra_args)
 }
