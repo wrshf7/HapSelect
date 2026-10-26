@@ -94,8 +94,27 @@ run_beagle_on_geno = function(geno, reader, ref = NULL, map = NULL, extra_args =
 # ref       : optional reference panel VCF, for reference-based imputation
 # map       : optional PLINK-format genetic map, passed through to Beagle's map= argument
 # extra_args: additional Beagle key=value arguments, e.g. c("ne=100", "window=40")
-beagle_impute_geno = function(geno, ref = NULL, map = NULL, extra_args = character()) {
-  run_beagle_on_geno(geno, read_vcf_geno, ref = ref, map = map, extra_args = extra_args)
+# prefer_ds : TRUE to read Beagle's DS field back instead of hard-calling its GT, keeping the
+#             imputation's uncertainty as a fractional dosage. Off by default because it changes
+#             the return type: the whole numbers this function otherwise promises become floats,
+#             which the LD and blocking functions accept but which PLINK's text format, for one,
+#             cannot represent at all.
+#
+#             Beagle only writes DS when it is imputing against a reference panel. A run without
+#             ref= produces a GT-only VCF whatever flags it is given, so prefer_ds has nothing to
+#             act on there and warns rather than quietly returning hard calls.
+beagle_impute_geno = function(geno, ref = NULL, map = NULL, extra_args = character(),
+                              prefer_ds = FALSE) {
+  if (isTRUE(prefer_ds) && is.null(ref)) {
+    warning("prefer_ds = TRUE has no effect without a reference panel: Beagle writes the DS ",
+            "field only when imputing against ref=, so a gt=-only run produces a GT-only VCF ",
+            "and the dosages returned here will be whole-number hard calls.")
+  }
+
+  # A closure rather than another argument through run_beagle_on_geno(), whose other caller
+  # reads haplotypes and has no dosage field to choose.
+  reader = function(path) read_vcf_geno(path, prefer_ds = prefer_ds)
+  run_beagle_on_geno(geno, reader, ref = ref, map = map, extra_args = extra_args)
 }
 
 ##### Phase (and impute) a genotype data frame using Beagle #####
