@@ -148,10 +148,11 @@ order_map = function(map, verbose = FALSE){
 # three map columns alone, so a genotype table whose first three columns are that
 # same map is left behind by it - the dosage columns do not come along.
 #
-# order_geno() is that missing half. It reorders a genotype table to follow a map,
-# matching rows on SNP ID rather than on position, so geno can arrive in any row
-# order and every genotype column stays attached to its own marker. Once it
-# returns, geno and map describe the same markers in the same order.
+# Only the markers on both sides are kept. A marker in just one of them has either
+# no genotypes or no position, so it is dropped with a warning naming it. That also
+# makes a map a way of extracting markers: hand a large geno a smaller map and the
+# result is just the map's markers. Map-only markers are dropped from geno only, so
+# the map may still hold markers the returned geno does not.
 #
 # Blocking needs that. Within the blocking code a marker's index is its row in the
 # map, and the LD routines read genotypes from geno by row as well, so the rows of
@@ -168,6 +169,7 @@ order_map = function(map, verbose = FALSE){
 # verbose : passed to order_map()'s chromosome numbering when map is NULL
 #
 # Returns geno, reordered, with columns 1 to 3 named SNP, Chromosome and Position.
+# With a map, only the markers in both geno and map are returned, in map order.
 order_geno = function(geno, map = NULL, verbose = FALSE){
 
   # A genotype table needs at least one genotype column, where a map needs none
@@ -220,25 +222,33 @@ order_geno = function(geno, map = NULL, verbose = FALSE){
          if(length(duplicated_map) > 5) ", ..." else "", ".")
   }
 
-  # Every marker must be on both sides. A marker in only one of them has either no
-  # dosages or no position, and neither can be blocked.
+  # Only markers on both sides can be used. A marker in only one of them has either
+  # no dosages or no position, so it is dropped rather than blocked.
   missing_from_geno = setdiff(map_snps, geno_snps)
   missing_from_map  = setdiff(geno_snps, map_snps)
+  shared = map_snps %in% geno_snps
+
+  if(!any(shared)){
+    stop("geno and map share no markers, so there is nothing to align. Check that ",
+         "both use the same SNP IDs.")
+  }
+
   if(length(missing_from_geno) || length(missing_from_map)){
-    stop("geno and map must hold the same markers. ",
-         length(missing_from_geno), " marker(s) are in map but not geno",
-         if(length(missing_from_geno)) paste0(" (", paste(utils::head(missing_from_geno, 5), collapse = ", "), ")") else "",
-         ", and ", length(missing_from_map), " are in geno but not map",
-         if(length(missing_from_map)) paste0(" (", paste(utils::head(missing_from_map, 5), collapse = ", "), ")") else "",
-         ".")
+    warning("geno and map do not hold the same markers, so only the ", sum(shared),
+            " they share are used. ",
+            length(missing_from_geno), " marker(s) are in map but not geno",
+            if(length(missing_from_geno)) paste0(" (", paste(utils::head(missing_from_geno, 5), collapse = ", "), if(length(missing_from_geno) > 5) ", ..." else "", ")") else "",
+            ", and ", length(missing_from_map), " are in geno but not map",
+            if(length(missing_from_map)) paste0(" (", paste(utils::head(missing_from_map, 5), collapse = ", "), if(length(missing_from_map) > 5) ", ..." else "", ")") else "",
+            ".")
   }
 
   # Rows follow the map, and so do the chromosome numbers and positions: the map is
   # the authority for where a marker sits, geno only for its dosages.
-  geno = geno[match(map_snps, geno_snps), , drop = FALSE]
-  geno[,1] = map_snps
-  geno[,2] = map[,2]
-  geno[,3] = map[,3]
+  geno = geno[match(map_snps[shared], geno_snps), , drop = FALSE]
+  geno[,1] = map_snps[shared]
+  geno[,2] = map[shared, 2]
+  geno[,3] = map[shared, 3]
   colnames(geno)[1:3] = c("SNP", "Chromosome", "Position")
   rownames(geno) = NULL
 

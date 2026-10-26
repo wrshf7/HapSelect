@@ -667,7 +667,7 @@ refill_internal_markers = function(selected, map_chr, geno_chr, theta_refill) {
 # geno and map arrive as separate arguments, so this is where they have to be
 # checked against each other. Required:
 #   - geno must be supplied, and must satisfy check_ld_matrix()
-#   - geno and map must hold the same markers in the same order
+#   - geno and map must describe the same markers in the same order
 #   - every name in strategy$theta_core_by_chr must match a chromosome in map
 #
 # The second of those is the one that matters. A marker's index is its row in the
@@ -676,6 +676,10 @@ refill_internal_markers = function(selected, map_chr, geno_chr, theta_refill) {
 # finishes and returns a full set of blocks built from nonsense. order_map()
 # reorders rows, so handing this an ordered map with an unordered geno is an easy
 # mistake to make and an invisible one to debug.
+#
+# It is resolved here rather than required of the caller: geno is aligned to the
+# map by marker name, and both are cut down to the markers they share. Markers on
+# only one side are dropped with a warning and appear in no block.
 #
 # The third is a silent no-op rather than a wrong answer - an override naming a
 # chromosome that is not there simply never fires - but it fails the same way,
@@ -715,9 +719,15 @@ perform_graph_blocking = function(geno, map, strategy) {
   }
 
   # geno, by contrast, is keyed by marker name, so it is aligned to the map rather
-  # than required to arrive that way. order_geno() reports the two cases it cannot
-  # resolve: a duplicated marker name, and a marker on only one side.
+  # than required to arrive that way. order_geno() refuses a duplicated marker name,
+  # and keeps only the markers on both sides, warning about the rest.
   geno = order_geno(geno, map)
+
+  # order_geno() can drop markers from geno but not from our map, so the map-only
+  # markers go here. Dropping rows keeps the map sorted, so the indices simply
+  # renumber over the shared markers and stay in step with geno's rows.
+  map = map[as.character(map$SNP) %in% geno$SNP, , drop = FALSE]
+  rownames(map) = NULL
 
   # After alignment, so geno has taken the map's numeric chromosome column
   check_ld_matrix(geno)

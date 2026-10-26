@@ -134,13 +134,38 @@ test_that("duplicated SNP IDs are refused on either side", {
 })
 
 
-test_that("a marker on only one side is refused, and named", {
+test_that("a marker on only one side is dropped with a warning naming it", {
   geno <- geno_fixture()
   map  <- order_map(geno[, 1:3], verbose = FALSE)
 
-  expect_error(order_geno(geno, map[-1, ]),       "same markers")
-  expect_error(order_geno(geno[-1, ], map),       "same markers")
-  expect_error(order_geno(geno[-1, ], map),       "snpB")
+  # map[-1, ] lacks snpA; geno[-1, ] lacks snpB
+  expect_warning(order_geno(geno, map[-1, ]), "snpA")
+  expect_warning(order_geno(geno[-1, ], map), "snpB")
+  expect_warning(order_geno(geno[-1, ], map), "only the 2 they share")
+})
+
+
+test_that("only the shared markers are returned, in map order", {
+  geno <- geno_fixture()
+  map  <- order_map(geno[, 1:3], verbose = FALSE)
+
+  # A smaller map extracts its markers from a larger geno
+  extracted <- suppressWarnings(order_geno(geno, map[-1, ]))
+  expect_equal(extracted$SNP, c("snpB", "snpC"))
+  expect_equal(extracted$Ind1, geno$Ind1[match(c("snpB", "snpC"), geno$SNP)])
+
+  # A smaller geno keeps the map's order over what it has
+  partial <- suppressWarnings(order_geno(geno[-1, ], map))
+  expect_equal(partial$SNP, c("snpA", "snpC"))
+  expect_equal(partial$Position, map$Position[map$SNP %in% c("snpA", "snpC")])
+})
+
+
+test_that("geno and map with no markers in common are refused", {
+  geno <- geno_fixture()
+  map  <- order_map(geno_fixture(snp = c("x1", "x2", "x3"))[, 1:3], verbose = FALSE)
+
+  expect_error(order_geno(geno, map), "share no markers")
 })
 
 

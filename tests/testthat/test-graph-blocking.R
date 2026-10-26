@@ -965,18 +965,23 @@ test_that("perform_graph_blocking aligns genotypes that arrive in another order"
 })
 
 
-test_that("perform_graph_blocking rejects a map that disagrees with the genotypes", {
+test_that("perform_graph_blocking blocks only the markers geno and map share", {
   geno <- graph_geno_fixture()
   map  <- graph_map_fixture()
+  shared_markers <- function(blocks) unlist(blocks, use.names = FALSE)
 
-  # Matching by name resolves a different row order, but not a different marker set
-  expect_error(perform_graph_blocking(geno, map[-1, ], graph_test_strategy()),
-               "same markers")
+  # A map missing a marker geno has: that marker is dropped from geno
+  expect_warning(blocks <- perform_graph_blocking(geno, map[-1, ], graph_test_strategy()),
+                 "same markers")
+  expect_false(as.character(map$SNP[1]) %in% shared_markers(blocks))
+  expect_true(all(shared_markers(blocks) %in% map$SNP[-1]))
 
+  # A map marker geno lacks, plus the geno marker it replaced: both are dropped
   renamed <- map
   renamed$SNP[1] <- "somewhere_else"
-  expect_error(perform_graph_blocking(geno, renamed, graph_test_strategy()),
-               "same markers")
+  expect_warning(blocks <- perform_graph_blocking(geno, renamed, graph_test_strategy()),
+                 "same markers")
+  expect_false(any(c("somewhere_else", as.character(map$SNP[1])) %in% shared_markers(blocks)))
 })
 
 
