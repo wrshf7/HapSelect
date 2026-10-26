@@ -148,15 +148,20 @@ order_map = function(map, verbose = FALSE){
 # three map columns alone, so a genotype table whose first three columns are that
 # same map is left behind by it - the dosage columns do not come along.
 #
-# order_geno() is that missing half. It applies the same ordering to a genotype
-# table, keeping every dosage column attached to its marker, so that geno and map
-# describe the same markers in the same order. Blocking needs that: a marker's
-# index is its row in the map, and its dosages are read from the matching row of
-# geno, so the two disagreeing silently pairs each marker with another marker's
-# genotypes.
+# order_geno() is that missing half. It reorders a genotype table to follow a map,
+# matching rows on SNP ID rather than on position, so geno can arrive in any row
+# order and every genotype column stays attached to its own marker. Once it
+# returns, geno and map describe the same markers in the same order.
+#
+# Blocking needs that. Within the blocking code a marker's index is its row in the
+# map, and the LD routines read genotypes from geno by row as well, so the rows of
+# the two must agree. Matching on names here is what guarantees it: aligning by row
+# instead would silently pair each marker with another marker's genotypes whenever
+# geno arrived in a different order to the map.
 #
 # geno    : genotype table, markers as rows: SNP ID, chromosome and position in
-#           columns 1 to 3, one dosage column per individual after that
+#           columns 1 to 3, then either one dosage column per individual or two or
+#           more phased chromosome set columns
 # map     : map to order geno by, as returned by order_map(). When NULL, geno is
 #           ordered by its own first three columns, which gives a result whose
 #           first three columns are exactly order_map(geno[, 1:3])
@@ -165,11 +170,11 @@ order_map = function(map, verbose = FALSE){
 # Returns geno, reordered, with columns 1 to 3 named SNP, Chromosome and Position.
 order_geno = function(geno, map = NULL, verbose = FALSE){
 
-  # A genotype table needs at least one dosage column, where a map needs none
+  # A genotype table needs at least one genotype column, where a map needs none
   if(!is.data.frame(geno) || ncol(geno) < 4){
     stop("geno must be a data frame with at least 4 columns: SNP ID (column 1), ",
-         "chromosome (column 2), position (column 3), and one or more individual ",
-         "dosage columns.")
+         "chromosome (column 2), position (column 3), and either one or more ",
+         "dosage columns or two or more phased chromosome set columns.")
   }
 
   # Duplicated marker names make the geno to map matching ambiguous: match() takes

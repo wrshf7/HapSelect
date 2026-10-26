@@ -518,8 +518,12 @@ select_nonoverlapping = function(segments) {
 # best link, not of mean LD across the block, and not of how many members agree.
 #
 # LD is recomputed from the genotypes rather than read from the Stage I edge
-# table, so neither window_ld nor ld_min_r2 constrains it and the marker is
-# compared against every member however far away it sits.
+# table, so neither window_ld nor ld_min_r2 limits which members the marker is
+# compared against: every member of the block counts, including ones further
+# away than window_ld. That widens the comparison, not where the marker can go.
+# refill_internal_markers() only offers a marker to the block whose span already
+# encloses it on the same chromosome, so a refilled block keeps its first and
+# last marker.
 #
 # geno_chr  : genotype rows for the chromosome
 # target_snp: name of the marker being tested
