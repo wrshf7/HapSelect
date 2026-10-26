@@ -569,6 +569,11 @@ block_ld_support = function(geno_chr, target_snp, block_snps, threshold) {
 # blocking does not account for every marker on the chromosome. External markers
 # are returned for the caller to keep as one-marker blocks.
 #
+# Support is tested against the block's members as selected, never against
+# markers refilled into it here. Otherwise a marker could join through one that
+# only just joined itself, and what a block gained would depend on the order its
+# gaps were visited in. The reference implementation tests the same way.
+#
 # selected    : selected segments from select_nonoverlapping()
 # map_chr     : map rows for the chromosome, ordered by position
 # geno_chr    : genotype rows for the chromosome
@@ -602,6 +607,9 @@ refill_internal_markers = function(selected, map_chr, geno_chr, theta_refill) {
   dropped = list()
   external = character()
 
+  # Taken before the loop, since the loop adds refilled markers to blocks$markers
+  selected_members = strsplit(blocks$markers, ";", fixed = TRUE)
+
   for (s in uncovered) {
     s_idx = snp2idx[[s]]
 
@@ -616,11 +624,10 @@ refill_internal_markers = function(selected, map_chr, geno_chr, theta_refill) {
     }
 
     row_i = inside[1]
-    members = unlist(strsplit(blocks$markers[row_i], ";", fixed = TRUE), use.names = FALSE)
     decision = data.frame(SNP = s, block = row_i, index = s_idx,
                           stringsAsFactors = FALSE)
 
-    if (!block_ld_support(geno_chr, s, members, theta_refill)) {
+    if (!block_ld_support(geno_chr, s, selected_members[[row_i]], theta_refill)) {
       # Dropped, meaning it ends up in no block at all
       dropped[[length(dropped) + 1L]] = decision
       next
@@ -628,7 +635,10 @@ refill_internal_markers = function(selected, map_chr, geno_chr, theta_refill) {
 
     refilled[[length(refilled) + 1L]] = decision
 
-    new_members = c(members, s)
+    # Added to the block as it stands, including earlier refills, which only the
+    # support test above leaves out
+    current = unlist(strsplit(blocks$markers[row_i], ";", fixed = TRUE), use.names = FALSE)
+    new_members = c(current, s)
     new_members = new_members[order(snp2idx[new_members])]
     positions = map_chr$Position[match(new_members, as.character(map_chr$SNP))]
 

@@ -793,6 +793,56 @@ test_that("refill_internal_markers tests a marker only against the block enclosi
 })
 
 
+# A selected block of m01 and m05 with m02 to m04 in its gap. m02 reaches theta_refill
+# 0.7 against the members (r^2 0.80); m03 does not (0.60) but does against m02 (0.75);
+# m04 is noise.
+refill_chain_fixture <- function() {
+  core <- c(0, 0, 0, 0, 0, 2, 2, 2, 2, 2)
+  geno <- gb_geno_rows(list(core,
+                            c(0, 0, 0, 0, 1, 1, 2, 2, 2, 2),
+                            c(0, 0, 0, 1, 1, 1, 1, 2, 2, 2),
+                            c(2, 0, 1, 0, 2, 1, 0, 2, 1, 0),
+                            core))
+  selected <- data.table::data.table(
+    chromosome = 1, source_block = 1L, first_index = 1L, last_index = 5L,
+    first_position = 100, last_position = 500, length = 400, n_markers = 2L,
+    span = 5L, density = 2 / 5, score = 0, markers = "m01;m05")
+  list(geno = geno, map = geno[, 1:3], selected = selected)
+}
+
+
+test_that("refill_internal_markers tests support against the selected members only", {
+  # The reference implementation does the same. Testing against the block as it
+  # grows let m03 in through m02, which had only just been refilled itself.
+  f <- refill_chain_fixture()
+
+  res <- refill_internal_markers(f$selected, f$map, f$geno, theta_refill = 0.7)
+
+  expect_equal(res$refilled$SNP, "m02")
+  expect_equal(res$dropped$SNP, c("m03", "m04"))
+  expect_equal(as.data.frame(res$blocks)$markers, "m01;m02;m05")
+  expect_equal(as.data.frame(res$blocks)$n_markers, 3)
+})
+
+
+test_that("refill_internal_markers does not depend on the order gaps are visited in", {
+  # Swapping the genotypes at m02 and m03 changes which one the loop reaches first,
+  # and with it nothing else: each is still judged against m01 and m05 alone. When
+  # the block grew as it went, the chain only ran forwards, so this order refilled
+  # one marker where the original refilled two.
+  f <- refill_chain_fixture()
+  swapped <- f$geno
+  swapped[2:3, -(1:3)] <- f$geno[3:2, -(1:3)]
+
+  original <- refill_internal_markers(f$selected, f$map, f$geno, theta_refill = 0.7)
+  reversed <- refill_internal_markers(f$selected, f$map, swapped, theta_refill = 0.7)
+
+  expect_equal(reversed$refilled$SNP, "m03")
+  expect_equal(reversed$dropped$SNP, c("m02", "m04"))
+  expect_equal(nrow(reversed$refilled), nrow(original$refilled))
+})
+
+
 # perform_graph_blocking -------------------------------------------------------
 
 test_that("perform_graph_blocking returns one entry per chromosome", {
