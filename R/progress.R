@@ -227,7 +227,7 @@ progress_reporter = function() {
 }
 
 # progressr handler that reports HapSelect's named steps 
-# Usses progress_reporteras the core function
+# Uses progress_reporter as the core function
 handler_hapselect = function(...) {
   progressr::make_progression_handler(
     "hapselect", progress_reporter(),
