@@ -254,8 +254,8 @@ advise_parallel_ld = function(genotype_matrix, window){
 #                   SNP ID (character) in column 1, chromosome (numeric) in column
 #                   2, position (numeric) in column 3, and one column per
 #                   individual after that holding dosages of 0, 1, 2 or NA
-# parallelize     : if TRUE, process chromosomes in parallel using all available
-#                   cores minus one. Defaults to FALSE: starting workers costs time
+# parallelize     : if TRUE, process chromosomes in parallel, across the cores
+#                   cpu_cores() allows. Defaults to FALSE: starting workers costs time
 #                   that the compiled code is often fast enough not to earn back.
 #                   A run large enough to benefit says so
 # window          : only compare markers at most this many positions apart within

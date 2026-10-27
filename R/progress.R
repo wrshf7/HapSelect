@@ -18,6 +18,8 @@
 HS_STEPS = c(
   pairwise_ld              = "Pairwise LD",
   plink_ld                 = "PLINK Pairwise LD",
+  beagle_impute            = "Beagle Imputation",
+  beagle_phase             = "Beagle Phasing",
   ld_blocking              = "LD Blocking",
   window_blocking          = "Window Blocking",
   graph_blocking           = "Graph Blocking",

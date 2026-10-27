@@ -20,6 +20,11 @@
 }
  
 .onAttach <- function(libname, pkgname) {
+  # Skip the banner in parallel workers. Each worker attaches HapSelect when it runs package
+  # code, and future relays the worker's output to the main session, so the banner would be
+  # printed again once per worker
+  if (in_parallel_worker()) return(invisible())
+
   version  <- as.character(utils::packageVersion("HapSelect"))
   docs_url <- sprintf(
     "https://wrshf7.github.io/HapSelect-Docs/%s/",
@@ -53,32 +58,43 @@
     version_line,
     "           Will Shaffer, Zane Carter & Victor Papin"
   )
-  packageStartupMessage(paste(banner, collapse = "\n"))
- 
-  cli::cat_line()
+
+  # cli prints straight away, and not as a startup message, so its lines are captured as text
+  # and sent with the art in one packageStartupMessage().
   old_width <- options(cli.width = 64)
-  cli::cli_h1("")
+  details <- cli::cli_fmt({
+    cli::cli_h1("")
+    cli::cli_text(
+      "{.emph Haplotype-based selection and genomic prediction}"
+    )
+  })
   options(old_width)
-  cli::cli_text(
-    "{.emph Haplotype-based selection and genomic prediction}"
-  )
-  cli::cat_line()
-  cli::cli_alert_success("Welcome to HapSelect!")
-  cli::cli_text(
-    "Documentation: {.url {docs_url}}"
-  )
-  cli::cli_alert_warning(paste(
-    "Please use the documentation for your installed version.",
-    "Features and functions may differ between versions."
-  ))
-  cli::cat_line()
-  cli::cli_text(
-    "{.strong Questions & discussion:} ",
-    "{.url https://github.com/wrshf7/HapSelect/discussions}"
-  )
-  cli::cli_text(
-    "{.strong Report bugs:} ",
-    "{.url https://github.com/wrshf7/HapSelect/issues}"
-  )
-  cli::cat_line()
+
+  details <- c(details, "", cli::cli_fmt({
+    cli::cli_alert_success("Welcome to HapSelect!")
+    cli::cli_text(
+      "Documentation: {.url {docs_url}}"
+    )
+    cli::cli_alert_warning(paste(
+      "Please use the documentation for your installed version.",
+      "Features and functions may differ between versions."
+    ))
+  }), "", cli::cli_fmt({
+    cli::cli_text(
+      "{.strong Questions & discussion:} ",
+      "{.url https://github.com/wrshf7/HapSelect/discussions}"
+    )
+    cli::cli_text(
+      "{.strong Report bugs:} ",
+      "{.url https://github.com/wrshf7/HapSelect/issues}"
+    )
+  }), "")
+
+  packageStartupMessage(paste(c(banner, "", details), collapse = "\n"))
+}
+
+# If this process is a paralell worker, rather than the main R process
+in_parallel_worker <- function() {
+  args <- commandArgs(trailingOnly = TRUE)
+  any(startsWith(args, "MASTER=")) && any(startsWith(args, "PORT="))
 }

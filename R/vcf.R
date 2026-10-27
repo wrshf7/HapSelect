@@ -56,9 +56,11 @@ write_vcf_geno = function(geno, path, ploidy = 2L) {
   gt = matrix(gt_calls[as.character(geno_matrix)], nrow = nrow(geno_matrix))
   gt[is.na(geno_matrix)] = paste(rep(".", ploidy), collapse = "/")
 
-  # Build the VCF body: one row per marker, with placeholder REF/ALT alleles
+  # Build the VCF body: one row per marker, with placeholder REF/ALT alleles. Positions are
+  # written out in full, since R would otherwise write a round one like 500000 as 5e+05,
+  # which Beagle cannot read
   body = data.frame(
-    geno[[2]], geno[[3]], geno[[1]], "A", "G", ".", "PASS", ".", "GT", gt,
+    geno[[2]], format(geno[[3]], scientific = FALSE, trim = TRUE), geno[[1]], "A", "G", ".", "PASS", ".", "GT", gt,
     stringsAsFactors = FALSE, check.names = FALSE
   )
   colnames(body) = c("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", sample_names)
@@ -317,6 +319,41 @@ extract_format_value = function(cells, k, n_fields) {
 read_vcf_gt = function(path) {
   records = read_vcf_records(path)
   list(map = records$map, gt = read_vcf_field(records, "GT"))
+}
+
+##### Read just the chromosome and position of every record in a (optionally gzipped) VCF #####
+# For when only where the markers sit is needed, e.g. to follow Beagle's progress along the genome.
+# Reads in chunks and keeps only the first two columns, so the sample columns, which are most of
+# the file, are never held in memory.
+# path: VCF to read, optionally gzipped
+# Returns a data frame of Chromosome (as written in the file) and Position, in file order.
+read_vcf_positions = function(path) {
+  # Check the file exists
+  if (!file.exists(path)) {
+    stop("VCF file not found: ", path)
+  }
+
+  con = gzfile(path, "rt")
+  on.exit(close(con), add = TRUE)
+
+  chroms = list()
+  positions = list()
+  repeat {
+    lines = readLines(con, n = 100000L)
+    if (length(lines) == 0) break
+
+    # Header and meta lines all start with #
+    lines = lines[nzchar(lines) & !startsWith(lines, "#")]
+    if (length(lines) == 0) next
+
+    # The first two tab-separated fields, without splitting the rest of the line
+    chroms[[length(chroms) + 1]] = sub("\t.*$", "", lines)
+    positions[[length(positions) + 1]] = as.numeric(sub("^[^\t]*\t([^\t]*).*$", "\\1", lines))
+  }
+
+  data.frame(Chromosome = as.character(unlist(chroms)),
+             Position = as.numeric(unlist(positions)),
+             stringsAsFactors = FALSE)
 }
 
 ##### Convert a vector of VCF DS values to ALT-allele dosages #####

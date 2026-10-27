@@ -36,6 +36,23 @@ test_that("write_vcf_geno and read_vcf_geno round-trip a genotype data frame", {
   expect_true(all(c("SNP", "Chromosome", "Position") %in% colnames(observed)))
 })
 
+test_that("write_vcf_geno writes round positions in full", {
+  # R writes 500000 as 5e+05 by default, which Beagle cannot parse as a position
+  geno <- data.frame(SNP = c("a", "b", "c"), Chromosome = 1,
+                     Position = c(500000, 1000000, 1234567), Ind1 = c(0, 1, 2),
+                     stringsAsFactors = FALSE)
+
+  vcf_path <- tempfile(fileext = ".vcf")
+  on.exit(unlink(vcf_path))
+  HapSelect:::write_vcf_geno(geno, vcf_path)
+
+  records <- grep("^#", readLines(vcf_path), value = TRUE, invert = TRUE)
+  expect_equal(vapply(strsplit(records, "\t"), `[`, character(1), 2),
+               c("500000", "1000000", "1234567"))
+  expect_equal(read_vcf_geno(vcf_path)$Position, geno$Position)
+})
+
+
 test_that("read_vcf_geno errors when the file is missing or malformed", {
   expect_error(read_vcf_geno("does_not_exist.vcf"), "VCF file not found")
 

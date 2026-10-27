@@ -225,8 +225,8 @@ find_plink = function() {
 
 ##### Run PLINK with platform-aware executable resolution #####
 # nocov start
-call_plink = function(args, stdout = TRUE, stderr = TRUE) {
-  system2(find_plink(), args = args, stdout = stdout, stderr = stderr)
+call_plink = function(args) {
+  run_tool_command(find_plink(), args)
 }
 # nocov end
 
@@ -240,8 +240,10 @@ read_plink_bim = function(path){
     stop("PLINK .bim file is empty: ", path)
   }
 
-  # Read file
-  bim = utils::read.table(path, header = FALSE, stringsAsFactors = FALSE)
+  # Read file. Marker names are read as text, as format_plink_ld() reads them from the .ld
+  # file, so a name that looks like a number (e.g. 007) still matches between the two
+  bim = utils::read.table(path, header = FALSE, stringsAsFactors = FALSE,
+                          colClasses = c(V2 = "character"))
 
   # Check bim has the required columns
   if(ncol(bim) < 4){
@@ -291,14 +293,18 @@ format_plink_ld = function(ld_path, bim){
     ))
   }
 
-  # Read the ld output file
-  ld = utils::read.table(ld_path, header = TRUE, stringsAsFactors = FALSE)
-
-  # Ensure columns are valid
+  # Ensure columns are valid, from the header alone
   required_cols = c("SNP_A", "SNP_B", "R2")
-  if(!all(required_cols %in% names(ld))){
+  if(!all(required_cols %in% names(data.table::fread(ld_path, nrows = 0)))){
     stop("PLINK .ld output must contain the columns SNP_A, SNP_B, and R2.")
   }
+
+  # Read the ld output file. fread rather than read.table, since a genome-wide table runs to
+  # gigabytes, and only the three columns used below are read. Marker names are always read
+  # as text, so a name that looks like a number keeps its exact spelling.
+  ld = data.table::fread(ld_path, select = required_cols,
+                         colClasses = list(character = c("SNP_A", "SNP_B")),
+                         data.table = FALSE, showProgress = FALSE)
 
   # Find the position of each SNP in the bim table
   idx1 = match(ld$SNP_A, bim$SNP)
@@ -345,20 +351,18 @@ format_plink_ld = function(ld_path, bim){
 # nocov start
 run_plink_command = function(args){
   # Run the plink command
-  plink_output = call_plink(args, stdout = TRUE, stderr = TRUE)
-  # Get the output code
-  plink_status = attr(plink_output, "status")
+  result = call_plink(args)
 
-  # If the command failed or outputted a non-zero status code, something went wrong
-  if(!is.null(plink_status) && plink_status != 0){
+  # If the command outputted a non-zero status code, something went wrong
+  if(result$status != 0){
     # Stop execution, plink failed
     stop(
       "PLINK LD calculation failed.\n",
-      paste(plink_output, collapse = "\n")
+      paste(result$output, collapse = "\n")
     )
   }
 
-  invisible(plink_output)
+  invisible(result$output)
 }
 # nocov end
 
@@ -382,7 +386,9 @@ write_plink_ped_map = function(geno, prefix) {
   }
 
   utils::write.table(
-    data.frame(CHR = geno[[2]], SNP = geno[[1]], CM = 0, BP = geno[[3]],
+    # Positions in full, as write_vcf_geno() writes them, rather than e.g. 5e+05
+    data.frame(CHR = geno[[2]], SNP = geno[[1]], CM = 0,
+               BP = format(geno[[3]], scientific = FALSE, trim = TRUE),
                stringsAsFactors = FALSE),
     file      = paste0(prefix, ".map"),
     quote     = FALSE,
@@ -415,8 +421,10 @@ write_plink_ped_map = function(geno, prefix) {
 
 ##### Run PLINK pairwise LD on a binary fileset and return it in HapSelect format #####
 # Shared by plink_pairwise_ld() and plink_pairwise_ld_geno(), which each report the
-# plink_ld step themselves, so a call reports one step whichever input it starts from
-plink_pairwise_ld_run = function(prefix, ld_window, ld_window_kb, ld_window_r2, extra_args){
+# plink_ld step themselves, so a call reports one step whichever input it starts from.
+# p: the caller's progressor, ticked once PLINK has run and once its output is read
+plink_pairwise_ld_run = function(prefix, ld_window, ld_window_kb, ld_window_r2, extra_args,
+                                 p = NULL){
   required_files = paste0(prefix, c(".bed", ".bim", ".fam"))
   missing_files  = required_files[!file.exists(required_files)]
 
@@ -444,8 +452,12 @@ plink_pairwise_ld_run = function(prefix, ld_window, ld_window_kb, ld_window_r2, 
   )
 
   run_plink_command(args)
+  if (!is.null(p)) p()
 
-  format_plink_ld(paste0(out_prefix, ".ld"), paste0(prefix, ".bim"))
+  ld = format_plink_ld(paste0(out_prefix, ".ld"), paste0(prefix, ".bim"))
+  if (!is.null(p)) p()
+
+  ld
 }
 
 ##### Run PLINK pairwise LD and return the result in HapSelect format #####
@@ -454,8 +466,15 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
                              ld_window_r2 = 0, extra_args = character()){
   report_step("plink_ld")
 
-  plink_pairwise_ld_run(prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
-                        ld_window_r2 = ld_window_r2, extra_args = extra_args)
+  # PLINK reports little of its own progress on --r2, so this ticks at each stage instead:
+  # running PLINK, then reading its output, which on a large table is the longer of the two
+  with_progress({
+    p = progressor(steps = 2L)
+    ld = plink_pairwise_ld_run(prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
+                               ld_window_r2 = ld_window_r2, extra_args = extra_args, p = p)
+  })
+
+  ld
 }
 
 ##### Run PLINK pairwise LD from a genotype data frame #####
@@ -481,13 +500,23 @@ plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 10000
   on.exit(unlink(paste0(in_prefix, c(".ped", ".map", ".bed", ".bim", ".fam", ".log", ".nosex")),
                  force = TRUE), add = TRUE)
 
-  write_plink_ped_map(geno, in_prefix)
+  # Ticks at each stage, as plink_pairwise_ld() does, with writing and converting the input
+  # ahead of the two stages they share
+  with_progress({
+    p = progressor(steps = 4L)
 
-  # Convert text files to binary so plink_pairwise_ld_run can consume them
-  run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix, "--chr-set", as.character(chr_num)))
+    write_plink_ped_map(geno, in_prefix)
+    p()
 
-  extra_args = c("--chr-set", as.character(chr_num), extra_args)
+    # Convert text files to binary so plink_pairwise_ld_run can consume them
+    run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix, "--chr-set", as.character(chr_num)))
+    p()
 
-  plink_pairwise_ld_run(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
-                        ld_window_r2 = ld_window_r2, extra_args = extra_args)
+    extra_args = c("--chr-set", as.character(chr_num), extra_args)
+
+    ld = plink_pairwise_ld_run(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
+                               ld_window_r2 = ld_window_r2, extra_args = extra_args, p = p)
+  })
+
+  ld
 }

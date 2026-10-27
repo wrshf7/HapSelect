@@ -18,8 +18,9 @@ haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
     stop("Please provide a valid value for the additive genetic variance (single positive numeric). This should be the estimate from GBLUP or computed as a function of the additive marker variance from a marker model.")
   }
 
+  # No missing() check here, unlike gen_var: threshold has a default, and missing() is TRUE
+  # whenever the argument is left out, default or not
   if (
-    missing(threshold) ||
     !is.numeric(threshold) ||
     length(threshold) != 1 ||
     is.na(threshold) ||

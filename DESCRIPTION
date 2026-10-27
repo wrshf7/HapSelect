@@ -35,6 +35,7 @@ Imports:
     GA,
     genomicSimulation,
     ggplot2,
+    processx,
     progressr,
     purrr,
     jsonlite,
