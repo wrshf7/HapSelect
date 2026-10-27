@@ -94,27 +94,19 @@ validate_strategy <- function(strategy, type = c("localGEBV", "Haplotype")) {
 #custom monitoring function - if sign is flipped for fitness calculation, then flip the sign here too
 #had to use this because there was no straight forward way to get the GA to minimize, so it's all in custom functions
 #this means that reporting needed to be conducted in custom functions too
+#returns a one line summary of the generation, shown as the progress bar's status
+#printing it with cat() instead would be held back by progressr until the GA finished
 custom_monitor <- function(obj, maximize = TRUE){
 
   best <- max(obj@fitness, na.rm = TRUE)
   mean_fit <- mean(obj@fitness, na.rm = TRUE)
-  sd_fit <- sd(obj@fitness, na.rm = TRUE)
 
   if(!maximize){
     best <- -best
     mean_fit <- -mean_fit
-    sd_fit <- -sd_fit
   }
 
-  cat(
-    sprintf(
-      "Iter %4d | Best = %.3f | Mean = %.3f | SD = %.3f\n",
-      obj@iter,
-      best,
-      mean_fit,
-      sd_fit
-    )
-  )
+  sprintf("Best = %.3f | Mean = %.3f", best, mean_fit)
 }
 
 get_effect_matrix <- function(obj) {
@@ -170,11 +162,6 @@ build_haplotype_row_metadata <- function(effect_matrix){
     maximize = maximize,
     monitor = monitor
 ){
-
-  monitor_fn <- FALSE
-  if(monitor) {
-    monitor_fn <- function(obj) custom_monitor(obj, maximize = maximize)
-  }
 
   # population initializer
   # create the initial populations by random sampling
@@ -478,21 +465,43 @@ build_haplotype_row_metadata <- function(effect_matrix){
   }
 
   # run GA
-  GA::ga(
-    type = "real-valued",
-    fitness = fitness_fn,
-    lower = rep(1, n_founders),
-    upper = rep(n_individuals, n_founders),
-    popSize = popSize,
-    maxiter = maxiter,
-    run = run,
-    pcrossover = pcrossover,
-    pmutation = pmutation,
-    population = custom_population,
-    mutation = custom_mutation,
-    crossover = custom_crossover,
-    monitor = monitor_fn
-  )
+  # GA calls the monitor once per iteration, so the progress bar ticks once per iteration
+  # With monitor on, each tick also carries the generation's fitness summary as the bar's status
+  progressr::with_progress({
+    p <- progressr::progressor(steps = maxiter)
+
+    monitor_fn <- function(obj){
+      if(monitor){
+        p(message = custom_monitor(obj, maximize = maximize))
+      } else {
+        p()
+      }
+    }
+
+    ga_result <- GA::ga(
+      type = "real-valued",
+      fitness = fitness_fn,
+      lower = rep(1, n_founders),
+      upper = rep(n_individuals, n_founders),
+      popSize = popSize,
+      maxiter = maxiter,
+      run = run,
+      pcrossover = pcrossover,
+      pmutation = pmutation,
+      population = custom_population,
+      mutation = custom_mutation,
+      crossover = custom_crossover,
+      monitor = monitor_fn
+    )
+
+    # GA can stop early, usually once the best fitness has not improved for `run` iterations
+    # Report the remaining iterations so the bar finishes at maxiter rather than part way
+    if(ga_result@iter < maxiter){
+      p(amount = maxiter - ga_result@iter)
+    }
+  })
+
+  ga_result
 }
 
 ########################################################
@@ -876,6 +885,7 @@ local_gebv_parent_selection <- function(
     maximize = TRUE,
     monitor = TRUE
 ){
+  report_step("local_gebv_parent_selection")
 
   strategy <- match.arg(strategy)
 
@@ -960,6 +970,7 @@ haplotype_parent_selection <- function(
     maximize = TRUE,
     monitor = TRUE
 ){
+  report_step("haplotype_parent_selection")
 
   strategy <- match.arg(strategy)
 

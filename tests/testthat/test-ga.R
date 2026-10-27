@@ -292,3 +292,102 @@ test_that("haplotype_parent_selection runs without error for all three strategie
     )
   }
 })
+
+
+# Tests: progress reporting ---------------------------------------------------
+
+# Run body and keep every progress update it signals, with the amount and message it ticked with
+collect_updates <- function(body) {
+  updates <- list()
+  withCallingHandlers(body(), progression = function(c) {
+    if (identical(c$type, "update")) {
+      updates[[length(updates) + 1L]] <<- list(amount = c$amount, message = c$message)
+    }
+  })
+  updates
+}
+
+run_lgebv_selection <- function(maxiter = 50, run = 5, monitor = FALSE) {
+  set.seed(42)
+  local_gebv_parent_selection(
+    haploblock_obj = make_lgebv_obj(),
+    strategy       = "no_selfing",
+    n_founders     = 3,
+    popSize        = 20,
+    maxiter        = maxiter,
+    run            = run,
+    monitor        = monitor
+  )
+}
+
+test_that("custom_monitor summarises a generation on the scale the user asked for", {
+  obj <- methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(-1, -2, -3))
+
+  expect_equal(custom_monitor(obj, maximize = TRUE),  "Best = -1.000 | Mean = -2.000")
+  # Minimising flips the sign for the GA, so the summary flips it back
+  expect_equal(custom_monitor(obj, maximize = FALSE), "Best = 1.000 | Mean = 2.000")
+})
+
+test_that("parent selection reports its step, ticking through to maxiter", {
+  events <- with_machine_logging(function() run_lgebv_selection(maxiter = 50))
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_equal(kinds(events)[1], "step_started")
+  expect_equal(steps(events)[1], "local_gebv_parent_selection")
+  expect_equal(events[[length(events)]]$event, "step_finished")
+  expect_equal(events[[length(events)]]$status, "succeeded")
+
+  expect_gt(length(ticks), 0)
+  for (tick in ticks) expect_equal(tick$step, "local_gebv_parent_selection")
+  expect_equal(ticks[[length(ticks)]]$current, 50)
+  expect_equal(ticks[[length(ticks)]]$total, 50)
+})
+
+test_that("a GA that stops early still ticks the full maxiter", {
+  updates <- NULL
+  result <- NULL
+  with_machine_logging(function() {
+    updates <<- collect_updates(function() result <<- run_lgebv_selection(maxiter = 500, run = 5))
+  })
+
+  # Five individuals choose three founders, so the best is found long before 500 iterations
+  expect_lt(result$GA@iter, 500)
+  amounts <- vapply(updates, function(u) u$amount, numeric(1))
+  expect_equal(sum(amounts), 500)
+  # One tick per iteration, then one more covering the iterations that never ran. Sorted
+  # because with_progress() holds conditions back, so they can reach this handler out of order
+  expect_equal(sort(amounts), sort(c(rep(1, result$GA@iter), 500 - result$GA@iter)))
+})
+
+test_that("monitor = TRUE carries the fitness summary on each tick instead of printing it", {
+  updates <- NULL
+  out <- NULL
+  with_machine_logging(function() {
+    out <<- capture.output(updates <<- collect_updates(function() run_lgebv_selection(monitor = TRUE)))
+  })
+
+  expect_length(out, 0)
+  messages <- unlist(lapply(updates, function(u) u$message))
+  expect_true(any(grepl("^Best = -?[0-9.]+ \\| Mean = -?[0-9.]+$", messages)))
+})
+
+test_that("monitor = FALSE ticks without a fitness summary", {
+  updates <- NULL
+  with_machine_logging(function() {
+    updates <<- collect_updates(function() run_lgebv_selection(monitor = FALSE))
+  })
+
+  expect_gt(length(updates), 0)
+  expect_length(unlist(lapply(updates, function(u) u$message)), 0)
+})
+
+test_that("haplotype parent selection reports its own step", {
+  events <- with_machine_logging(function() {
+    set.seed(42)
+    haplotype_parent_selection(make_haplotype_obj(), strategy = "OHS", n_founders = 3,
+                               popSize = 20, maxiter = 20, run = 5, monitor = FALSE)
+  })
+
+  expect_equal(unique(steps(events)), "haplotype_parent_selection")
+  expect_equal(events[[length(events)]]$status, "succeeded")
+})

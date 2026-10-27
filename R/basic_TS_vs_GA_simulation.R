@@ -105,50 +105,54 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
   mean_BV_TS = list()
 
 
-  #run it for the GA parents
-  cat("\nRunning simulation for GA selected parents:\n\n")
+  # One tick per simulated generation, across every rep of both sets of parents
+  # The tick's message names which parents and rep are running, shown as the bar's status
+  progressr::with_progress({
+    p = progressr::progressor(steps = 2L * num_sim_reps * num_gen)
 
-  #initiate populations
-  init = genomicSimulation::load.data(allele.file = temp_files[[2]],
-                                      map.file = temp_files[[1]],
-                                      effect.file = temp_files[[4]])
-  g0 = init$groupNum
+    #run it for the GA parents
+    #initiate populations
+    init = genomicSimulation::load.data(allele.file = temp_files[[2]],
+                                        map.file = temp_files[[1]],
+                                        effect.file = temp_files[[4]])
+    g0 = init$groupNum
 
-  #simulate across reps
-  for(rep in seq_len(num_sim_reps)){
-    current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
-    mean_BV_GA[[rep]] = sim_gens(num_gen = num_gen, init = init,
-                                 num_parents = num_GA_parents, num_cross_per_gen = num_cross_per_gen,
-                                 current_pop = current_pop, maximize = maximize)
-  }
+    #simulate across reps
+    for(rep in seq_len(num_sim_reps)){
+      current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
+      mean_BV_GA[[rep]] = sim_gens(num_gen = num_gen, init = init,
+                                   num_parents = num_GA_parents, num_cross_per_gen = num_cross_per_gen,
+                                   current_pop = current_pop, maximize = maximize,
+                                   p = p, status = sprintf("GA parents | rep %d/%d", rep, num_sim_reps))
+    }
 
-  groups = genomicSimulation::see.existing.groups()$Group
-  for(group in groups){
-    invisible(utils::capture.output(genomicSimulation::delete.group(group)))
+    groups = genomicSimulation::see.existing.groups()$Group
+    for(group in groups){
+      invisible(utils::capture.output(genomicSimulation::delete.group(group)))
 
-  }
+    }
 
-  #run it for the TS parents
-  cat("\nRunning simulation for TS selected parents:\n\n")
+    #run it for the TS parents
+    #initiate populations
+    init = genomicSimulation::load.data(allele.file = temp_files[[3]],
+                                        map.file = temp_files[[1]],
+                                        effect.file = temp_files[[4]])
+    g0 = init$groupNum
 
-  #initiate populations
-  init = genomicSimulation::load.data(allele.file = temp_files[[3]],
-                                      map.file = temp_files[[1]],
-                                      effect.file = temp_files[[4]])
-  g0 = init$groupNum
+    for(rep in seq_len(num_sim_reps)){
+      current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
+      mean_BV_TS[[rep]] = sim_gens(num_gen = num_gen, init = init,
+                                   num_parents = num_TS_parents, num_cross_per_gen = num_cross_per_gen,
+                                   current_pop = current_pop, maximize = maximize,
+                                   p = p, status = sprintf("TS parents | rep %d/%d", rep, num_sim_reps))
+    }
 
-  for(rep in seq_len(num_sim_reps)){
-    current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
-    mean_BV_TS[[rep]] = sim_gens(num_gen = num_gen, init = init,
-                                 num_parents = num_TS_parents, num_cross_per_gen = num_cross_per_gen,
-                                 current_pop = current_pop, maximize = maximize)
-  }
+    groups = genomicSimulation::see.existing.groups()$Group
+    for(group in groups){
+      invisible(utils::capture.output(genomicSimulation::delete.group(group)))
 
-  groups = genomicSimulation::see.existing.groups()$Group
-  for(group in groups){
-    invisible(utils::capture.output(genomicSimulation::delete.group(group)))
-
-  }
+    }
+  })
 
   # GA
   df_GA = do.call(rbind, lapply(seq_along(mean_BV_GA), function(i) {
@@ -183,7 +187,9 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 }
 
 # main function to run the simulation for specified number of generations
-sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, maximize){
+# p      - optional progressr progressor; called once per generation to report progress
+# status - optional text the progressor ticks with, naming what is being simulated
+sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, maximize, p = NULL, status = NULL){
   mean_BV = c()
   for(gen in seq_len(num_gen)){
     # Record mean BV of current population
@@ -207,6 +213,11 @@ sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, 
     )
 
     invisible(utils::capture.output(genomicSimulation::delete.group(selected)))
+
+    # Call the progress function if provided (e.g. to update a progress bar in the caller)
+    if(!is.null(p)){
+      p(message = status)
+    }
   }
 
   invisible(utils::capture.output(genomicSimulation::delete.group(current_pop)))

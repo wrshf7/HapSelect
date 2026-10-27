@@ -16,22 +16,24 @@
 ##### Every step HapSelect can report, and the name to show a person #####
 # The ids go on the wire and are keyed on by whatever is reading, so treat them as interface
 HS_STEPS = c(
-  pairwise_ld              = "Pairwise LD",
-  plink_ld                 = "PLINK Pairwise LD",
-  beagle_impute            = "Beagle Imputation",
-  beagle_phase             = "Beagle Phasing",
-  ld_blocking              = "LD Blocking",
-  window_blocking          = "Window Blocking",
-  graph_blocking           = "Graph Blocking",
-  marker_effects           = "Solving Marker Effects",
-  cross_validation         = "Cross Validation",
-  n_fold_cross_validation  = "N-Fold Cross Validation",
-  gebv_chunk_prep          = "Preparing Chunks",
-  local_gebv               = "Local GEBV",
-  haplotype_effects        = "Haplotype Effects",
-  block_var_test           = "Haploblock Variance Test",
-  haplotype_simulation     = "Haplotype vs Truncation Simulation",
-  local_gebv_simulation    = "Local GEBV vs Truncation Simulation"
+  pairwise_ld                 = "Pairwise LD",
+  plink_ld                    = "PLINK Pairwise LD",
+  beagle_impute               = "Beagle Imputation",
+  beagle_phase                = "Beagle Phasing",
+  ld_blocking                 = "LD Blocking",
+  window_blocking             = "Window Blocking",
+  graph_blocking              = "Graph Blocking",
+  marker_effects              = "Solving Marker Effects",
+  cross_validation            = "Cross Validation",
+  n_fold_cross_validation     = "N-Fold Cross Validation",
+  gebv_chunk_prep             = "Preparing Chunks",
+  local_gebv                  = "Local GEBV",
+  haplotype_effects           = "Haplotype Effects",
+  block_var_test              = "Haploblock Variance Test",
+  haplotype_simulation        = "Haplotype vs Truncation Simulation",
+  local_gebv_simulation       = "Local GEBV vs Truncation Simulation",
+  local_gebv_parent_selection = "Local GEBV Parent Selection",
+  haplotype_parent_selection  = "Haplotype Parent Selection"
 )
 
 # Machine readable progress logging #
@@ -115,7 +117,8 @@ try_cli = function(expr) {
 }
 
 # Update a progress bars state
-bar_update = function(step, current, total) {
+# status is optional text shown beside the bar, taken from the message a progressor ticks with
+bar_update = function(step, current, total, status = NULL) {
   # Get the progress bar id
   bar = .progress_state$bars[[step]]
   # If its null, return
@@ -126,6 +129,8 @@ bar_update = function(step, current, total) {
     id     = bar,
     set    = if (is.na(current)) NULL else current,
     total  = if (is.na(total)) NULL else total,
+    # cli's default format puts the status directly before the ETA, so it carries its own separator
+    status = if (is.null(status)) NULL else paste0(status, " | "),
     .envir = globalenv()
   ))
 }
@@ -213,10 +218,13 @@ report_tick = function(config, state) {
   if (!is.na(total) && !is.na(current)) current = min(current, total)
 
   # Report a tick either in machine readable format, or update the progress bar
+  # Only the bar shows a tick's message; the machine event stays step, current, total
   if (machine_logging()) {
     emit_event("progress", step = id, current = current, total = total)
   } else {
-    bar_update(id, current, total)
+    message = state$message
+    status = if (is.character(message) && length(message) == 1L && nzchar(message)) message else NULL
+    bar_update(id, current, total, status)
   }
 }
 
