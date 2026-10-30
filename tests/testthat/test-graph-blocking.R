@@ -972,6 +972,68 @@ test_that("perform_graph_blocking leaves a chromosome with no LD as one-marker b
 })
 
 
+# perform_graph_blocking: progress reporting -----------------------------------
+#
+# The method reports as one step, ticking once per stage per chromosome, since
+# chromosomes pass through the stages concurrently in a parallel run.
+
+test_that("perform_graph_blocking reports one step that ticks through every stage", {
+  n_ticks <- NULL
+  events <- with_machine_logging(function() {
+    n_ticks <<- count_ticks(function() {
+      perform_graph_blocking(graph_geno_fixture(), graph_map_fixture(),
+                             graph_test_strategy())
+    })
+  })
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_equal(kinds(events)[c(1, length(events))], c("step_started", "step_finished"))
+  expect_true(all(steps(events) == "graph_blocking"))
+  expect_equal(events[[length(events)]]$status, "succeeded")
+
+  # Two chromosomes, three stages each
+  expect_gt(length(ticks), 0)
+  expect_equal(ticks[[length(ticks)]]$total, 6)
+  expect_equal(n_ticks, 6)
+})
+
+
+test_that("perform_graph_blocking still completes its ticks when nothing is refilled", {
+  # No LD means nothing survives linearisation, which skips the refill stage
+  geno <- gb_geno(list(
+    list("x1", 1, 100, gb_base),
+    list("x2", 1, 200, gb_n1),
+    list("x3", 1, 300, gb_b2)
+  ))
+  strategy <- graph_strategy(window_ld = 2, window_core = 2)
+
+  n_ticks <- NULL
+  events <- with_machine_logging(function() {
+    n_ticks <<- count_ticks(function() perform_graph_blocking(geno, geno[, 1:3], strategy))
+  })
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_equal(ticks[[length(ticks)]]$total, 3)
+  expect_equal(n_ticks, 3)
+})
+
+
+test_that("perform_graph_blocking reports a rejected input as a failed step", {
+  map <- graph_map_fixture()
+  unsorted <- map[c(2, 1, 3:nrow(map)), ]
+
+  events <- with_machine_logging(function() {
+    expect_error(perform_graph_blocking(graph_geno_fixture(), unsorted,
+                                        graph_test_strategy()), "sorted")
+  })
+
+  expect_equal(kinds(events), c("step_started", "step_finished"))
+  expect_equal(steps(events), c("graph_blocking", "graph_blocking"))
+  expect_equal(events[[2]]$status, "failed")
+  expect_match(events[[2]]$message, "sorted by chromosome")
+})
+
+
 # perform_graph_blocking: the geno/map boundary --------------------------------
 #
 # Genotypes and map arrive as separate arguments, so this is the only place they

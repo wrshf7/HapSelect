@@ -22,7 +22,7 @@ base_block_strategy = function(params, class) {
 # threshold : minimum LD (r^2) required to seed or extend a block
 # start     : "LD"        — seed blocks from highest-LD adjacent pairs first;
 #             "beginning" — sweep chromosome left to right from the first marker
-# parallel  : if TRUE, process chromosomes in parallel using all available cores minus one
+# parallel  : if TRUE, process chromosomes in parallel, across the cores cpu_cores() allows
 ld_strategy = function(ld, method = c("flanking", "average"), tolerance = 1,
                         tol_reset = TRUE, threshold = 0.7,
                         start = c("LD", "beginning"), parallel = FALSE) {
@@ -84,8 +84,8 @@ window_strategy = function(window, method = c("window_snp", "window_map")) {
 # max_gap_markers  : maximum marker gap within one segment, before it is split
 # max_gap_position : maximum map distance within one segment, or NULL for no distance limit
 # min_block_snps   : minimum markers for a candidate segment to be kept
-# parallel         : if TRUE, process chromosomes in parallel using all available cores
-#                    minus one, as ld_strategy() does
+# parallel         : if TRUE, process chromosomes in parallel, across the cores cpu_cores()
+#                    allows, as ld_strategy() does
 graph_strategy = function(theta_core        = 0.80,
                           theta_core_by_chr = NULL,
                           theta_extend      = 0.20,
