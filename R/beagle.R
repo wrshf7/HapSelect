@@ -240,12 +240,21 @@ find_beagle = function() {
 ######## Beagle-Based Functions ########
 ########################################
 
+##### Add Beagle's thread limit to its arguments #####
+# Beagle uses every core unless told otherwise, so it is held to cpu_cores() like the rest of
+# HapSelect. An nthreads= the caller passed in extra_args is left as it is.
+beagle_thread_args = function(args) {
+  if (any(startsWith(args, "nthreads="))) return(args)
+  c(args, paste0("nthreads=", cpu_cores()))
+}
+
 ##### Run Beagle, automatically finding Java and the Beagle jar #####
 # args   : character vector of Beagle's key=value arguments, e.g. c("gt=in.vcf.gz", "out=imputed")
 # on_line: optional function called with each line of Beagle's output as it arrives
 # The jar path is not quoted: run_tool_command() passes arguments without a shell.
 call_beagle = function(args, on_line = NULL) {
-  run_tool_command(find_java(), c("-jar", find_beagle(), args), on_line = on_line)
+  run_tool_command(find_java(), c("-jar", find_beagle(), beagle_thread_args(args)),
+                   on_line = on_line)
 }
 
 ##### Run a Beagle command and stop with Beagle's own output if it fails #####

@@ -155,7 +155,7 @@ test_that("every emitted line is marked, parseable and self describing", {
 
   expect_gt(length(events), 0)
   for (event in events) {
-    expect_equal(event$v, 1)
+    expect_equal(event$v, as.character(utils::packageVersion("HapSelect")))
     expect_match(event$at, "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")
     expect_true(nzchar(event$event))
   }
@@ -244,4 +244,142 @@ test_that("the handler is installed when nothing is registered", {
   options(progressr.handlers = NULL)
   expect_true(register_handler())
   expect_false(is.null(getOption("progressr.handlers")))
+})
+
+
+test_that("a nested step's bar leaves the bar of the step around it open", {
+  # cli closes a bar when another is started in the same environment, which left the outer
+  # step's bar closed for good once a nested step began
+  on.exit({
+    bar_done("gebv_chunk_prep")
+    bar_done("local_gebv")
+  }, add = TRUE)
+
+  bar_start("local_gebv")
+  outer <- .progress_state$bars$local_gebv$id
+  bar_start("gebv_chunk_prep")
+
+  expect_false(is.null(cli:::clienv$progress[[outer]]))
+})
+
+
+# What events carry ------------------------------------------------------------
+
+test_that("a started step carries the name to show a person", {
+  run <- function() { report_step("ld_blocking"); invisible(NULL) }
+
+  events <- with_machine_logging(run)
+
+  expect_equal(events[[1]]$label, "LD Blocking")
+})
+
+
+test_that("a tick's message travels on the progress event", {
+  run <- function() {
+    report_step("cross_validation")
+    progressr::with_progress({
+      p <- progressr::progressor(steps = 2)
+      p(message = "Fold 1/2")
+      p(message = "Fold 2/2")
+    })
+  }
+
+  old <- options(HapSelect.progress_interval = 0)
+  on.exit(options(old), add = TRUE)
+  events <- with_machine_logging(run)
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_true("Fold 2/2" %in% vapply(ticks, function(e) e$message %||% NA_character_, character(1)))
+})
+
+
+test_that("a metric carries its step, its name and every value in full", {
+  run <- function() {
+    report_step("marker_effects")
+    report_metric("variance_components", marker_variance = 4.0552e-05, h2 = 0.3212345678)
+  }
+
+  events <- with_machine_logging(run)
+  metric <- Filter(function(e) identical(e$event, "metric"), events)[[1]]
+
+  expect_equal(metric$step, "marker_effects")
+  expect_equal(metric$name, "variance_components")
+  # Rounded to a few decimal places, a variance this small would read as zero
+  expect_equal(metric$values$marker_variance, 4.0552e-05)
+  expect_equal(metric$values$h2, 0.3212345678)
+})
+
+
+test_that("a metric is not reported when nobody is reading the machine stream", {
+  old_env <- Sys.getenv("HAPSELECT_MACHINE_LOGGING", unset = NA)
+  on.exit(if (is.na(old_env)) Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+          else Sys.setenv(HAPSELECT_MACHINE_LOGGING = old_env), add = TRUE)
+  Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+
+  emitted <- capture.output(type = "message", reported <- report_metric("cv_fold", fold = 1))
+
+  expect_false(reported)
+  expect_length(emitted, 0)
+})
+
+
+test_that("a status before the step has counted anything carries only its message", {
+  run <- function() { report_step("beagle_impute"); report_status("Writing VCF") }
+
+  events <- with_machine_logging(run)
+  status <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_length(status, 1)
+  expect_equal(status[[1]]$step, "beagle_impute")
+  expect_equal(status[[1]]$message, "Writing VCF")
+  expect_null(status[[1]]$current)
+})
+
+
+test_that("a status after the step has counted repeats its last counts", {
+  run <- function() {
+    report_step("read_vcf")
+    progressr::with_progress({
+      p <- progressr::progressor(steps = 4)
+      for (i in 1:4) p()
+    })
+    report_status("Converting genotypes")
+  }
+
+  events <- with_machine_logging(run)
+  status <- Filter(function(e) identical(e$message, "Converting genotypes"), events)[[1]]
+
+  expect_equal(status$current, 4)
+  expect_equal(status$total, 4)
+})
+
+
+test_that("a status outside any step is dropped", {
+  events <- with_machine_logging(function() report_status("Writing VCF"))
+
+  expect_length(events, 0)
+})
+
+
+test_that("a failed step's bar is closed as failed, a finished one as done", {
+  old_env <- Sys.getenv("HAPSELECT_MACHINE_LOGGING", unset = NA)
+  on.exit({
+    if (is.na(old_env)) Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+    else Sys.setenv(HAPSELECT_MACHINE_LOGGING = old_env)
+    .progress_state$stack <- NULL
+  }, add = TRUE)
+  Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+
+  closed <- list()
+  local_mocked_bindings(bar_done = function(step, failed = FALSE) {
+    closed[[step]] <<- failed
+  })
+
+  ok   <- function() { report_step("pairwise_ld"); invisible(NULL) }
+  fail <- function() { report_step("local_gebv"); stop("no markers") }
+  ok()
+  expect_error(fail(), "no markers")
+
+  expect_false(closed$pairwise_ld)
+  expect_true(closed$local_gebv)
 })

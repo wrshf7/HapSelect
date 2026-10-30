@@ -5,7 +5,11 @@
 
 local_stub_simulation <- function(env = parent.frame()) {
   local_mocked_bindings(
-    load.data            = function(...) list(groupNum = 1L),
+    # Chatty like the real one, which reports every file it parses
+    load.data            = function(...) {
+      cat("(Loading map.txt) 1287 marker(s) with map positions were loaded.\n")
+      list(groupNum = 1L)
+    },
     make.random.crosses  = function(...) 1L,
     see.GEBVs            = function(...) c(1, 2),
     break.group.by.GEBV  = function(...) 1L,
@@ -46,10 +50,22 @@ test_that("the simulation ticks once per generation for both sets of parents", {
   expect_equal(ticks[[length(ticks)]]$total, 12)
 })
 
-test_that("the simulation no longer prints between steps", {
+test_that("the simulation prints nothing, including genomicSimulation's file loading", {
   local_stub_simulation()
   out <- NULL
   with_machine_logging(function() out <<- capture.output(invisible(run_stub_simulation())))
 
   expect_length(out, 0)
+})
+
+test_that("the simulation's input files go in the temporary directory, not the working one", {
+  one <- data.frame(x = 1)
+  files <- write_sim_files(one, one, one, one, temp_string = "test")
+  on.exit(delete_sim_files(files), add = TRUE)
+
+  expect_true(all(file.exists(files)))
+  expect_equal(unique(normalizePath(dirname(files))), normalizePath(tempdir()))
+
+  delete_sim_files(files)
+  expect_false(any(file.exists(files)))
 })

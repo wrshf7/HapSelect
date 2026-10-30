@@ -33,6 +33,19 @@ test_that("run_tool_command hands each line over as it arrives, in order", {
 })
 
 
+test_that("run_tool_command hands over each redraw of a line, and keeps the line as shown", {
+  seen <- character()
+  # A running percentage, redrawn with backspaces as PLINK does, then a line ending with CRLF
+  code <- 'cat("Scanning... 0%\\b\\b1%"); flush(stdout()); Sys.sleep(0.3);
+           cat("\\b\\b2%\\b\\bdone.\\nnext\\r\\n")'
+
+  result <- run_r(code, on_line = function(piece) seen <<- c(seen, piece))
+
+  expect_equal(seen, c("Scanning... 0%", "1%", "2%", "done.", "next"))
+  expect_equal(result$output, c("Scanning... done.", "next"))
+})
+
+
 test_that("run_tool_command merges the tool's errors into its output", {
   # message() writes to stderr, which a failed tool's error message has to include
   result <- run_r('cat("out\\n"); flush(stdout()); Sys.sleep(0.2); message("err")')
@@ -51,4 +64,44 @@ test_that("run_tool_command stops the tool when following its output fails", {
 
   Sys.sleep(2)
   expect_false(file.exists(marker))
+})
+
+
+# Thread limits ----------------------------------------------------------------
+#
+# PLINK and Beagle use every core unless told otherwise, so each is handed the limit
+# cpu_cores() resolves to, unless the caller already set one in extra_args.
+
+with_core_limit <- function(cores, body) {
+  old <- options(HapSelect.cpu_cores = cores)
+  on.exit(options(old), add = TRUE)
+  force(body)
+}
+
+test_that("PLINK is held to the CPU core limit", {
+  with_core_limit(1, {
+    expect_equal(plink_thread_args(c("--bfile", "x", "--r2")),
+                 c("--bfile", "x", "--r2", "--threads", "1"))
+  })
+})
+
+test_that("a --threads the caller passed to PLINK is left alone", {
+  with_core_limit(1, {
+    args <- c("--bfile", "x", "--threads", "8")
+    expect_equal(plink_thread_args(args), args)
+  })
+})
+
+test_that("Beagle is held to the CPU core limit", {
+  with_core_limit(1, {
+    expect_equal(beagle_thread_args(c("gt=in.vcf", "out=x")),
+                 c("gt=in.vcf", "out=x", "nthreads=1"))
+  })
+})
+
+test_that("an nthreads= the caller passed to Beagle is left alone", {
+  with_core_limit(1, {
+    args <- c("gt=in.vcf", "nthreads=8")
+    expect_equal(beagle_thread_args(args), args)
+  })
 })

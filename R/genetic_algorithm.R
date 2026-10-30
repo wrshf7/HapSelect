@@ -94,9 +94,10 @@ validate_strategy <- function(strategy, type = c("localGEBV", "Haplotype")) {
 #custom monitoring function - if sign is flipped for fitness calculation, then flip the sign here too
 #had to use this because there was no straight forward way to get the GA to minimize, so it's all in custom functions
 #this means that reporting needed to be conducted in custom functions too
-#returns a one line summary of the generation, shown as the progress bar's status
-#printing it with cat() instead would be held back by progressr until the GA finished
-custom_monitor <- function(obj, maximize = TRUE){
+#returns a one line summary of the generation: the progress bar's status when a bar is drawn,
+#otherwise a printed line, which also carries the SD as it always has
+#a generation's fitness on the user's scale: best and mean, plus the spread
+ga_fitness_summary <- function(obj, maximize = TRUE){
 
   best <- max(obj@fitness, na.rm = TRUE)
   mean_fit <- mean(obj@fitness, na.rm = TRUE)
@@ -106,7 +107,21 @@ custom_monitor <- function(obj, maximize = TRUE){
     mean_fit <- -mean_fit
   }
 
-  sprintf("Best = %.3f | Mean = %.3f", best, mean_fit)
+  #the spread of fitness does not change sign when the fitness does
+  list(best = best, mean = mean_fit, sd = stats::sd(obj@fitness, na.rm = TRUE))
+}
+
+custom_monitor <- function(obj, maximize = TRUE, sd = FALSE){
+
+  fitness <- ga_fitness_summary(obj, maximize = maximize)
+
+  summary <- sprintf("Best = %.3f | Mean = %.3f", fitness$best, fitness$mean)
+
+  if(sd){
+    summary <- sprintf("%s | SD = %.3f", summary, fitness$sd)
+  }
+
+  summary
 }
 
 get_effect_matrix <- function(obj) {
@@ -466,14 +481,23 @@ build_haplotype_row_metadata <- function(effect_matrix){
 
   # run GA
   # GA calls the monitor once per iteration, so the progress bar ticks once per iteration
-  # With monitor on, each tick also carries the generation's fitness summary as the bar's status
+  # With monitor on, each tick also carries the generation's fitness summary as the bar's status.
+  # With no bar to carry it (machine logging, or a batch run) the summary is printed instead
   progressr::with_progress({
     p <- progressr::progressor(steps = maxiter)
 
     monitor_fn <- function(obj){
-      if(monitor){
+      #each generation's fitness also goes on the machine readable stream, for a live chart
+      fitness <- ga_fitness_summary(obj, maximize = maximize)
+      report_metric("ga_generation", iter = obj@iter, best = fitness$best,
+                    mean = fitness$mean, sd = fitness$sd)
+
+      if(monitor && progress_drawn()){
         p(message = custom_monitor(obj, maximize = maximize))
       } else {
+        if(monitor){
+          cat(sprintf("Iter %4d | %s\n", obj@iter, custom_monitor(obj, maximize = maximize, sd = TRUE)))
+        }
         p()
       }
     }

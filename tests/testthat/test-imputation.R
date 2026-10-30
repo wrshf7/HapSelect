@@ -241,11 +241,15 @@ test_that("beagle_phase_geno reports its progress as Beagle runs", {
   events <- with_machine_logging(function() {
     beagle_phase_geno(geno, extra_args = c("window=4", "overlap=1"))
   })
-  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+  # Reading Beagle's output back in is a step of its own, nested inside this one
+  # Statuses sent before Beagle starts counting, such as writing its input, carry no counts
+  ticks <- Filter(function(e) identical(e$event, "progress") && identical(e$step, "beagle_phase") &&
+                    !is.null(e$current), events)
   current <- vapply(ticks, function(e) e$current, numeric(1))
 
   expect_equal(kinds(events)[c(1, length(events))], c("step_started", "step_finished"))
-  expect_true(all(steps(events) == "beagle_phase"))
+  expect_equal(steps(events)[c(1, length(events))], c("beagle_phase", "beagle_phase"))
+  expect_setequal(unique(steps(events)), c("beagle_phase", "read_vcf"))
   expect_equal(events[[length(events)]]$status, "succeeded")
 
   expect_equal(ticks[[length(ticks)]]$total, nrow(geno))

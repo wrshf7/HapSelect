@@ -15,6 +15,9 @@ using namespace Rcpp;
 //'           count for every pair
 //' min_r2  : drop pairs below this r^2; pass a negative value to keep all
 //' min_obs : samples that must be observed at both markers for a pair to be kept
+//' progress: optional R function, called now and then with the number of markers
+//'           finished since its last call, so a long chromosome can move a progress bar.
+//'           Over the whole run it is passed n_snp in total. NULL reports nothing
 //'
 //' Returns Locus1, Locus2 (1-based marker positions) and LD. Pairs with an
 //' undefined r^2 are left out.
@@ -22,7 +25,8 @@ using namespace Rcpp;
 DataFrame pairwise_ld_cpp(NumericMatrix geno,
                           int window,
                           double min_r2,
-                          int min_obs) {
+                          int min_obs,
+                          Nullable<Function> progress = R_NilValue) {
   int n_sample = geno.nrow();
   int n_snp = geno.ncol();
 
@@ -37,7 +41,23 @@ DataFrame pairwise_ld_cpp(NumericMatrix geno,
   idxB.reserve(std::max(1000, reserve_n));
   R2.reserve(std::max(1000, reserve_n));
 
+  // Report about every 1% of the chromosome, but no more often than every 64 markers, so a
+  // small window is not slowed down by calls back into R
+  bool reporting = progress.isNotNull();
+  Function report = reporting ? Function(progress) : Function("invisible");
+  int report_every = std::max(64, n_snp / 100);
+  int reported = 0;
+
   for (int i = 0; i < n_snp - 1; i++) {
+    // Without a window one chromosome can run for minutes, so let Ctrl-C stop it. Every 64
+    // markers keeps the check cheap when a small window makes each marker quick
+    if ((i & 63) == 0) Rcpp::checkUserInterrupt();
+
+    if (reporting && i > 0 && i % report_every == 0) {
+      report(i - reported);
+      reported = i;
+    }
+
     int j_end = std::min(n_snp - 1, i + window);
 
     for (int j = i + 1; j <= j_end; j++) {
@@ -73,6 +93,9 @@ DataFrame pairwise_ld_cpp(NumericMatrix geno,
       R2.push_back(r2);
     }
   }
+
+  // The last marker has no pairs of its own to start, but it is counted, so the total is n_snp
+  if (reporting && n_snp > reported) report(n_snp - reported);
 
   return DataFrame::create(
     Named("Locus1") = idxA,

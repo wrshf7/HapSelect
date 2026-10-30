@@ -150,9 +150,58 @@ gt_to_haplotypes = function(gt, ploidy = 2L) {
   haplotypes[match(gt, calls), , drop = FALSE]
 }
 
+##### Size of a (optionally gzipped) VCF's text, in bytes #####
+# Reading progress is measured in bytes of text, so a gzipped file needs its size once decompressed.
+# BGZF, which bgzip, htslib and Beagle write, is a run of small gzip members, each giving its
+# compressed length up front and its decompressed length at the end, so walking the members sums
+# the size exactly without decompressing anything. Plain gzip ends with the decompressed size,
+# modulo 2^32, so beyond 4GB it reads short and the bar fills early.
+# path: VCF to size
+# Returns the size in bytes, or NA when the file is gzipped in some form neither of these covers.
+vcf_text_size = function(path) {
+  size = file.size(path)
+  con = file(path, "rb")
+  on.exit(close(con), add = TRUE)
+
+  # Not gzipped, so the file is the text
+  if (!identical(readBin(con, "raw", 2L), as.raw(c(0x1f, 0x8b)))) return(size)
+
+  # Read the decompressed size from the four bytes ending at end, little endian and unsigned
+  isize_before = function(end) {
+    seek(con, end - 4)
+    isize = readBin(con, "integer", size = 4L, endian = "little")
+    if (isize < 0) isize + 2^32 else isize
+  }
+
+  # Walk the BGZF members. Each header is 18 bytes: the gzip magic, FLG with FEXTRA set, then
+  # the "BC" extra subfield holding the member's total length minus one
+  total = 0
+  offset = 0
+  while (offset < size) {
+    seek(con, offset)
+    header = readBin(con, "raw", 18L)
+    bgzf = length(header) == 18L && header[1] == as.raw(0x1f) && header[2] == as.raw(0x8b) &&
+      bitwAnd(as.integer(header[4]), 4L) != 0L &&
+      header[13] == as.raw(0x42) && header[14] == as.raw(0x43)
+
+    if (!bgzf) {
+      # Plain gzip from the start: its one member's size is the file's
+      if (offset == 0) return(isize_before(size))
+      return(NA_real_)
+    }
+
+    block = as.integer(header[17]) + 256L * as.integer(header[18]) + 1L
+    total = total + isize_before(offset + block)
+    offset = offset + block
+  }
+  total
+}
+
 ##### Parse a (optionally gzipped) VCF into its map, sample columns and FORMAT layout #####
 # The shared front half of every reader below: everything up to but not including pulling a
 # particular FORMAT field out of the sample columns, which is the same whichever field is wanted.
+# Reads in chunks, ticking progress by the kilobytes of text read, as reading and splitting the
+# lines is most of the time spent reading a VCF.
 # path: VCF to read, optionally gzipped
 # Returns a list of:
 #   map         - data frame of SNP / Chromosome / Position
@@ -165,39 +214,99 @@ read_vcf_records = function(path) {
     stop("VCF file not found: ", path)
   }
 
+  # Progress is counted in KiB rather than bytes, which would overflow an integer count past 2GB.
+  # A size that cannot be worked out falls back to the file's own, and the bar fills at the end
+  text_size = vcf_text_size(path)
+  if (is.na(text_size)) text_size = file.size(path)
+  total_kib = max(1, ceiling(text_size / 1024))
+
   # Read the VCF file
   con = gzfile(path, "rt")
-  lines = readLines(con)
-  close(con)
+  on.exit(close(con), add = TRUE)
 
   # Line endings need no handling here: readLines() accepts LF, CRLF or CR as the
   # terminator whatever mode the connection was opened in, so a VCF written on
   # Windows arrives with its carriage returns already removed.
 
-  # Find the #CHROM header line, it names every column including the samples
-  header_idx = which(startsWith(lines, "#CHROM"))
-  if (length(header_idx) != 1) {
+  col_names = NULL
+  n_headers = 0L
+  fields = list()
+
+  progressr::with_progress({
+    p = progressr::progressor(steps = total_kib)
+    bytes_read = 0
+    lines_read = 0
+    ticked = 0
+    # Lines per read. A line's length depends on how many samples the file holds, so a fixed
+    # count could be most of a wide file at once; after the first read it is sized to about 1%
+    chunk_lines = 1000L
+
+    repeat {
+      lines = readLines(con, n = chunk_lines)
+      if (length(lines) == 0) break
+
+      # Each line's text plus the newline readLines() strips
+      bytes_read = bytes_read + sum(nchar(lines, type = "bytes")) + length(lines)
+      lines_read = lines_read + length(lines)
+      chunk_lines = as.integer(min(100000, max(1000, ceiling(text_size / 100 / (bytes_read / lines_read)))))
+      kib = min(total_kib, floor(bytes_read / 1024))
+      if (kib > ticked) {
+        p(amount = kib - ticked)
+        ticked = kib
+      }
+
+      # Find the #CHROM header line, it names every column including the samples
+      header_idx = which(startsWith(lines, "#CHROM"))
+      n_headers = n_headers + length(header_idx)
+      if (n_headers > 1) {
+        stop("VCF file must contain exactly one #CHROM header line: ", path)
+      }
+
+      # Lines before the #CHROM header are ## meta-information (file format, contigs, INFO and
+      # FORMAT definitions), which nothing here uses, so a chunk read before it is skipped
+      if (is.null(col_names)) {
+        if (length(header_idx) == 0) next
+
+        # Extract the column names, then drop the header/meta lines to leave just the data rows
+        col_names = strsplit(sub("^#", "", lines[header_idx]), "\t")[[1]]
+
+        # VCF is tab-delimited by spec, so a single column means the file is delimited some other way
+        if (length(col_names) < 2) {
+          stop("VCF #CHROM header is not tab-delimited, so no columns could be read: ", path,
+               "\nVCF requires tab separators between columns. Check the file has not been re-saved ",
+               "with spaces or commas, for example by a spreadsheet editor.")
+        }
+
+        lines = lines[-seq_len(header_idx)]
+      }
+
+      lines = lines[nzchar(lines)]
+      if (length(lines) == 0) next
+
+      # Split every line into its tab-delimited fields
+      chunk = strsplit(lines, "\t", fixed = TRUE)
+
+      # rbind() would pad a short record by reusing its own values, so check every record first
+      if (any(lengths(chunk) != length(col_names))) {
+        stop("VCF records do not all have the ", length(col_names), " tab-separated columns the ",
+             "#CHROM header names: ", path, call. = FALSE)
+      }
+      fields[[length(fields) + 1L]] = chunk
+    }
+
+    # Line endings counted short, or a size read short, leave the bar part way
+    if (ticked < total_kib) p(amount = total_kib - ticked)
+  })
+
+  if (is.null(col_names)) {
     stop("VCF file must contain exactly one #CHROM header line: ", path)
   }
-
-  # Extract the column names, then drop the header/meta lines to leave just the data rows
-  col_names = strsplit(sub("^#", "", lines[header_idx]), "\t")[[1]]
-
-  # VCF is tab-delimited by spec, so a single column means the file is delimited some other way
-  if (length(col_names) < 2) {
-    stop("VCF #CHROM header is not tab-delimited, so no columns could be read: ", path,
-         "\nVCF requires tab separators between columns. Check the file has not been re-saved ",
-         "with spaces or commas, for example by a spreadsheet editor.")
-  }
-
-  data_lines = lines[-seq_len(header_idx)]
-  data_lines = data_lines[nzchar(data_lines)]
 
   # Everything after the fixed VCF columns is a sample
   sample_cols = setdiff(col_names, c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"))
 
   # If there are no records, hand back an empty map and no rows to pull fields from
-  if (length(data_lines) == 0) {
+  if (length(fields) == 0) {
     return(list(
       map = data.frame(SNP = character(), Chromosome = integer(), Position = numeric(),
                        stringsAsFactors = FALSE, check.names = FALSE),
@@ -206,15 +315,7 @@ read_vcf_records = function(path) {
     ))
   }
 
-  # Split every line into its tab-delimited fields
-  fields = strsplit(data_lines, "\t", fixed = TRUE)
-
-  # rbind() would pad a short record by reusing its own values, so check every record first
-  if (any(lengths(fields) != length(col_names))) {
-    stop("VCF records do not all have the ", length(col_names), " tab-separated columns the ",
-         "#CHROM header names: ", path, call. = FALSE)
-  }
-  tab = do.call(rbind, fields)
+  tab = do.call(rbind, unlist(fields, recursive = FALSE))
   colnames(tab) = col_names
 
   list(
@@ -401,8 +502,12 @@ ds_to_dosage = function(ds, ploidy = 2L) {
 # ploidy   : allele copies per genotype, 2L for diploid. Every GT call must carry this many
 #            alleles, and dosages run from 0 to ploidy
 read_vcf_geno = function(path, prefer_ds = FALSE, ploidy = 2L) {
+  report_step("read_vcf")
+
   ploidy = check_ploidy(ploidy)
   records = read_vcf_records(path)
+  # Reading the text is what the bar counts; turning it into dosages has no ticks of its own
+  report_status("Converting genotypes")
 
   # DS when asked for and available, GT otherwise. field_values is one character vector per
   # sample either way, so only the converter differs.
@@ -436,8 +541,12 @@ read_vcf_geno = function(path, prefer_ds = FALSE, ploidy = 2L) {
 # path  : VCF to read, optionally gzipped
 # ploidy: allele copies per genotype, 2L for diploid. Every GT call must carry this many alleles
 read_vcf_phased = function(path, ploidy = 2L) {
+  report_step("read_vcf")
+
   ploidy = check_ploidy(ploidy)
   parsed = read_vcf_gt(path)
+  # Reading the text is what the bar counts; splitting it into haplotypes has no ticks of its own
+  report_status("Converting genotypes")
 
   # ploidy columns per sample, kept adjacent so the order is S1_1, S1_2, S2_1, S2_2, ...
   hap_cols = list()

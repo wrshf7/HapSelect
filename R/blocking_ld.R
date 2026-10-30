@@ -37,16 +37,19 @@ perform_ld_blocking = function(ld, map, method = c("flanking", "average"), toler
   ld          = split(ld, ld$Chrom)
 
   if (parallel == TRUE) {
-    future::plan(multisession, workers = cpu_cores())
-    map_fun = furrr::future_map
-  } else {
-    map_fun = purrr::map
+    # The split is by chromosome, so more workers than chromosomes cannot help. The plan in
+    # place beforehand is put back afterwards, whether or not the run succeeds
+    workers  = max(1L, min(cpu_cores(), length(ld)))
+    # Starting the workers and sending them their chromosomes counts nothing, and takes seconds
+    report_status(sprintf("Starting %d workers", workers))
+    old_plan = future::plan(multisession, workers = workers)
+    on.exit(future::plan(old_plan), add = TRUE)
   }
 
   with_progress({
     p = progressor(steps = length(chromosomes))
 
-    blocks_list = map_fun(ld, function(chromosome) {
+    block_chromosome = function(chromosome) {
       chr          = unique(chromosome$Chrom)
       chrom_blocks = chromo_blocking(
         chr       = chr,
@@ -58,12 +61,19 @@ perform_ld_blocking = function(ld, map, method = c("flanking", "average"), toler
         start     = start,
         tol_reset = tol_reset
       )
-      p()
+      # Replaces the status shown while the workers started
+      p(message = "Blocking chromosomes")
       return(chrom_blocks)
-    })
-  })
+    }
 
-  if (parallel == TRUE) plan(sequential)
+    # seed = TRUE gives each worker a parallel-safe RNG stream. Blocking draws no random
+    # numbers, but loading packages on a worker can, and future warns when it does
+    blocks_list = if (parallel == TRUE) {
+      furrr::future_map(ld, block_chromosome, .options = furrr::furrr_options(seed = TRUE))
+    } else {
+      purrr::map(ld, block_chromosome)
+    }
+  })
 
   names(blocks_list) = as.character(chromosomes)
   return(blocks_list)

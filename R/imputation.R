@@ -59,7 +59,11 @@ beagle_impute_run = function(vcf_in, out_prefix, ref = NULL, map = NULL, extra_a
 
   # Run the beagle command, ticking as each of its windows completes
   args = c(args, extra_args)
-  if (is.null(markers)) markers = read_vcf_positions(vcf_in)
+  if (is.null(markers)) {
+    report_status("Scanning markers")
+    markers = read_vcf_positions(vcf_in)
+  }
+  report_status("Running Beagle")
   with_progress({
     p = progressor(steps = nrow(markers))
     run_beagle_command(args, on_line = beagle_progress_parser(markers, p))
@@ -95,6 +99,7 @@ run_beagle_on_geno = function(geno, reader, ref = NULL, map = NULL, extra_args =
   in_vcf = tempfile("hapselect_beagle_in_", fileext = ".vcf")
   out_prefix = tempfile("hapselect_beagle_out_")
   on.exit(unlink(c(in_vcf, paste0(out_prefix, c(".vcf.gz", ".log"))), force = TRUE), add = TRUE)
+  report_status("Writing VCF")
   write_vcf_geno(geno, in_vcf)
 
   # Run Beagle and read the resulting vcf file back in the requested format

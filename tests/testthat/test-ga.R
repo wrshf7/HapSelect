@@ -359,7 +359,9 @@ test_that("a GA that stops early still ticks the full maxiter", {
   expect_equal(sort(amounts), sort(c(rep(1, result$GA@iter), 500 - result$GA@iter)))
 })
 
-test_that("monitor = TRUE carries the fitness summary on each tick instead of printing it", {
+test_that("monitor = TRUE carries the fitness summary on the bar when a bar is drawn", {
+  # Ticks still need to be signalled, so machine logging stays on and only the bar is faked
+  local_mocked_bindings(progress_drawn = function() TRUE)
   updates <- NULL
   out <- NULL
   with_machine_logging(function() {
@@ -369,6 +371,36 @@ test_that("monitor = TRUE carries the fitness summary on each tick instead of pr
   expect_length(out, 0)
   messages <- unlist(lapply(updates, function(u) u$message))
   expect_true(any(grepl("^Best = -?[0-9.]+ \\| Mean = -?[0-9.]+$", messages)))
+})
+
+test_that("monitor = TRUE prints the fitness summary when no bar is drawn", {
+  # Machine logging draws no bar, so the line goes to stdout as it did before progress reporting
+  updates <- NULL
+  out <- NULL
+  result <- NULL
+  with_machine_logging(function() {
+    out <<- capture.output(updates <<- collect_updates(function() result <<- run_lgebv_selection(monitor = TRUE)))
+  })
+
+  expect_length(out, result$GA@iter)
+  expect_match(out[1], "^Iter    1 \\| Best = -?[0-9.]+ \\| Mean = -?[0-9.]+ \\| SD = [0-9.]+$")
+  expect_length(unlist(lapply(updates, function(u) u$message)), 0)
+})
+
+test_that("monitor = TRUE prints in a batch run, where progressr is switched off", {
+  old <- options(progressr.enable = FALSE)
+  on.exit(options(old), add = TRUE)
+  result <- NULL
+
+  out <- capture.output(result <- run_lgebv_selection(monitor = TRUE))
+
+  expect_length(out, result$GA@iter)
+})
+
+test_that("the printed SD stays positive when minimising", {
+  obj <- methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(-1, -2, -3))
+
+  expect_match(custom_monitor(obj, maximize = FALSE, sd = TRUE), "SD = 1.000$")
 })
 
 test_that("monitor = FALSE ticks without a fitness summary", {
@@ -390,4 +422,18 @@ test_that("haplotype parent selection reports its own step", {
 
   expect_equal(unique(steps(events)), "haplotype_parent_selection")
   expect_equal(events[[length(events)]]$status, "succeeded")
+})
+
+test_that("each generation's fitness is reported as a metric, on the user's scale", {
+  result <- NULL
+  events <- with_machine_logging(function() result <<- run_lgebv_selection(maxiter = 30))
+  metrics <- Filter(function(e) identical(e$event, "metric"), events)
+
+  # One per generation the GA actually ran, whether or not monitor is on
+  expect_length(metrics, result$GA@iter)
+  expect_equal(unique(vapply(metrics, function(e) e$name, character(1))), "ga_generation")
+  expect_equal(vapply(metrics, function(e) e$values$iter, numeric(1)), seq_len(result$GA@iter))
+  last <- metrics[[length(metrics)]]$values
+  expect_equal(last$best, max(result$GA@fitness, na.rm = TRUE))
+  expect_true(all(c("mean", "sd") %in% names(last)))
 })

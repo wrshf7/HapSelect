@@ -223,10 +223,19 @@ find_plink = function() {
 ######## PLINK-Based Functions ########
 #######################################
 
+##### Add PLINK's thread limit to its arguments #####
+# PLINK uses every core unless told otherwise, so it is held to cpu_cores() like the rest of
+# HapSelect. A --threads the caller passed in extra_args is left as it is.
+plink_thread_args = function(args) {
+  if ("--threads" %in% args) return(args)
+  c(args, "--threads", as.character(cpu_cores()))
+}
+
 ##### Run PLINK with platform-aware executable resolution #####
 # nocov start
-call_plink = function(args) {
-  run_tool_command(find_plink(), args)
+# on_line: optional function called with each piece of PLINK's output as it arrives
+call_plink = function(args, on_line = NULL) {
+  run_tool_command(find_plink(), plink_thread_args(args), on_line = on_line)
 }
 # nocov end
 
@@ -349,9 +358,10 @@ format_plink_ld = function(ld_path, bim){
 
 ##### Runs a plink command given a set of arguments #####
 # nocov start
-run_plink_command = function(args){
+# on_line is passed through to call_plink(), to follow PLINK's progress as it runs
+run_plink_command = function(args, on_line = NULL){
   # Run the plink command
-  result = call_plink(args)
+  result = call_plink(args, on_line = on_line)
 
   # If the command outputted a non-zero status code, something went wrong
   if(result$status != 0){
@@ -366,11 +376,117 @@ run_plink_command = function(args){
 }
 # nocov end
 
+##### Progress through the stages of a PLINK run, on one bar #####
+# Each stage, such as writing the input or running --r2, gets an equal share of the bar
+# whatever it takes, since how long the stages take relative to one another depends on the
+# data. A stage moves through its share as it reports, and is filled to the end of its share
+# when it finishes. The bar only moves forward.
+#
+# p: progressor with PLINK_STAGE_STEPS steps per stage
+# Returns a list of:
+#   within(fraction, message) - the current stage is this far through, from 0 to 1
+#   finish()                  - the current stage is done, so the next one starts
+PLINK_STAGE_STEPS = 100L
+
+plink_stages = function(p) {
+  finished = 0L
+  ticked = 0L
+
+  move_to = function(to, message = NULL) {
+    to = as.integer(floor(to))
+    if (to > ticked) {
+      p(amount = to - ticked, message = message)
+      ticked <<- to
+    } else if (!is.null(message)) {
+      p(amount = 0, message = message)
+    }
+  }
+
+  list(
+    within = function(fraction, message = NULL) {
+      move_to(PLINK_STAGE_STEPS * (finished + min(max(fraction, 0), 1)), message)
+    },
+    finish = function() {
+      finished <<- finished + 1L
+      move_to(PLINK_STAGE_STEPS * finished)
+    }
+  )
+}
+
+##### Follow PLINK's running percentages through one command #####
+# PLINK works through a command in passes, drawing a percentage for each in place:
+#   Scanning .ped file... 0%  1%  ...  100%.ped scan complete (for binary autoconversion).
+#   Performing single-pass .bed write (6070 variants, 444 people).
+#   0%  1%  ...  94%--file: x-temporary.bed + x-temporary.bim + x-temporary.fam written.
+#   --r2 to x.ld ... 0% [processing]  writing]  done.
+# run_tool_command() hands these over a percentage at a time. A pass starts when a
+# percentage follows a "..." or falls back below the last one, and the stage is split
+# equally between the passes the command is expected to make. A command that makes more
+# than expected fills its stage early and stays there, rather than overrunning it.
+#
+# stages : from plink_stages()
+# passes : the passes the command is expected to make
+# Returns a function taking one piece of output, for run_plink_command()'s on_line
+#
+# The passes HapSelect's commands make, each matched by how PLINK starts its line, and what
+# to call it
+PLINK_PASS_NAMES = list(
+  c(plink = "^Scanning \\.ped file",               name = "Reading genotypes"),
+  c(plink = "^Performing .*\\.bed write",           name = "Converting genotypes"),
+  c(plink = "^Calculating allele frequencies",      name = "Calculating allele frequencies"),
+  c(plink = "^--make-bed",                          name = "Writing PLINK files"),
+  c(plink = "^--r2",                                name = "Calculating LD")
+)
+
+plink_progress_parser = function(stages, passes) {
+  pass = -1L
+  last = -1
+  label = NULL
+  text = NULL
+
+  # What a pass does, said for a person rather than in PLINK's words. A pass PLINK names in
+  # some other way, as a new version might, is just PLINK running
+  pass_name = function(x) {
+    x = trimws(x)
+    for (pass in PLINK_PASS_NAMES) {
+      if (grepl(pass[["plink"]], x)) return(pass[["name"]])
+    }
+    "Running PLINK"
+  }
+
+  function(piece) {
+    labelled = regmatches(piece, regexec("^(.*\\S)\\s*\\.\\.\\.\\s*([0-9]{1,3})%", piece))[[1]]
+    bare = regmatches(piece, regexec("^\\s*([0-9]{1,3})%", piece))[[1]]
+
+    if (length(labelled) == 3) {
+      pct = as.numeric(labelled[[3]])
+      pass <<- pass + 1L
+      label <<- pass_name(labelled[[2]])
+    } else if (length(bare) == 2) {
+      pct = as.numeric(bare[[2]])
+      if (pct < last || pass < 0L) {
+        pass <<- pass + 1L
+        label <<- if (is.null(text)) NULL else pass_name(text)
+      }
+    } else {
+      # Text between passes names the pass that follows it when that pass has no name of its own
+      if (nzchar(trimws(piece))) text <<- piece
+      return(invisible(NULL))
+    }
+
+    last <<- pct
+    message = paste0(if (is.null(label)) "Running PLINK" else label, " ", pct, "%")
+    stages$within((pass + pct / 100) / passes, message)
+    invisible(NULL)
+  }
+}
+
 
 ##### Write PLINK text input files (.ped / .map) from a genotype data frame #####
 # geno: data frame with col 1 = marker name, col 2 = chromosome, col 3 = position,
 #       cols 4+ = dosage values (0 / 1 / 2 / NA) per individual
-write_plink_ped_map = function(geno, prefix) {
+# progress: optional function called with the fraction of individuals written so far
+write_plink_ped_map = function(geno, prefix, progress = NULL) {
 
   # PED stores two discrete alleles per genotype, so a dosage has to be a whole number of
   # ALT copies. A fractional dosage has no representation here, and the conversion below
@@ -404,27 +520,39 @@ write_plink_ped_map = function(geno, prefix) {
   }
 
   geno_matrix = as.matrix(geno[, -(1:3)])
-  ped = do.call(rbind, lapply(seq_len(ncol(geno_matrix)), function(i) {
-    c(paste0("F", i), paste0("I", i), "0", "0", "0", "-9",
-      dosage_to_calls(geno_matrix[, i]))
-  }))
 
-  utils::write.table(
-    ped,
-    file      = paste0(prefix, ".ped"),
-    quote     = FALSE,
-    sep       = "\t",
-    row.names = FALSE,
-    col.names = FALSE
-  )
+  # Written a few individuals at a time, which is where the time goes on a large set, so
+  # progress can be reported between them. The file is the same as writing it in one go
+  ped_file = file(paste0(prefix, ".ped"), open = "w")
+  on.exit(close(ped_file), add = TRUE)
+  individuals = seq_len(ncol(geno_matrix))
+  chunks = split(individuals, ceiling(individuals / max(1L, ceiling(length(individuals) / 50))))
+
+  for (chunk in chunks) {
+    ped = do.call(rbind, lapply(chunk, function(i) {
+      c(paste0("F", i), paste0("I", i), "0", "0", "0", "-9",
+        dosage_to_calls(geno_matrix[, i]))
+    }))
+
+    utils::write.table(
+      ped,
+      file      = ped_file,
+      quote     = FALSE,
+      sep       = "\t",
+      row.names = FALSE,
+      col.names = FALSE
+    )
+    if (!is.null(progress)) progress(chunk[length(chunk)] / length(individuals))
+  }
 }
 
 ##### Run PLINK pairwise LD on a binary fileset and return it in HapSelect format #####
 # Shared by plink_pairwise_ld() and plink_pairwise_ld_geno(), which each report the
 # plink_ld step themselves, so a call reports one step whichever input it starts from.
-# p: the caller's progressor, ticked once PLINK has run and once its output is read
+# stages: the caller's plink_stages(), moved through the two stages run here: running --r2,
+#         then reading its output
 plink_pairwise_ld_run = function(prefix, ld_window, ld_window_kb, ld_window_r2, extra_args,
-                                 p = NULL){
+                                 stages){
   required_files = paste0(prefix, c(".bed", ".bim", ".fam"))
   missing_files  = required_files[!file.exists(required_files)]
 
@@ -451,11 +579,15 @@ plink_pairwise_ld_run = function(prefix, ld_window, ld_window_kb, ld_window_r2, 
     "--out", out_prefix
   )
 
-  run_plink_command(args)
-  if (!is.null(p)) p()
+  # Allele frequencies, then the --r2 pass itself
+  stages$within(0, "Calculating LD")
+  run_plink_command(args, on_line = plink_progress_parser(stages, passes = 2L))
+  stages$finish()
 
+  # Nothing to count while the table is read, which on a large one takes longer than PLINK
+  stages$within(0, "Reading LD results")
   ld = format_plink_ld(paste0(out_prefix, ".ld"), paste0(prefix, ".bim"))
-  if (!is.null(p)) p()
+  stages$finish()
 
   ld
 }
@@ -466,12 +598,12 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
                              ld_window_r2 = 0, extra_args = character()){
   report_step("plink_ld")
 
-  # PLINK reports little of its own progress on --r2, so this ticks at each stage instead:
-  # running PLINK, then reading its output, which on a large table is the longer of the two
+  # Two stages on one bar: running --r2, then reading its output
   with_progress({
-    p = progressor(steps = 2L)
+    stages = plink_stages(progressor(steps = 2L * PLINK_STAGE_STEPS))
     ld = plink_pairwise_ld_run(prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
-                               ld_window_r2 = ld_window_r2, extra_args = extra_args, p = p)
+                               ld_window_r2 = ld_window_r2, extra_args = extra_args,
+                               stages = stages)
   })
 
   ld
@@ -500,22 +632,28 @@ plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 10000
   on.exit(unlink(paste0(in_prefix, c(".ped", ".map", ".bed", ".bim", ".fam", ".log", ".nosex")),
                  force = TRUE), add = TRUE)
 
-  # Ticks at each stage, as plink_pairwise_ld() does, with writing and converting the input
-  # ahead of the two stages they share
+  # Four stages on one bar: writing the input and converting it, ahead of the two stages
+  # shared with plink_pairwise_ld()
   with_progress({
-    p = progressor(steps = 4L)
+    stages = plink_stages(progressor(steps = 4L * PLINK_STAGE_STEPS))
 
-    write_plink_ped_map(geno, in_prefix)
-    p()
+    stages$within(0, "Writing genotypes for PLINK")
+    write_plink_ped_map(geno, in_prefix,
+                        progress = function(fraction) stages$within(fraction, "Writing genotypes for PLINK"))
+    stages$finish()
 
-    # Convert text files to binary so plink_pairwise_ld_run can consume them
-    run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix, "--chr-set", as.character(chr_num)))
-    p()
+    # Convert text files to binary so plink_pairwise_ld_run can consume them. PLINK scans the
+    # .ped, writes the .bed, counts allele frequencies, then writes the final fileset
+    stages$within(0, "Converting to PLINK format")
+    run_plink_command(c("--file", in_prefix, "--make-bed", "--out", in_prefix, "--chr-set", as.character(chr_num)),
+                      on_line = plink_progress_parser(stages, passes = 4L))
+    stages$finish()
 
     extra_args = c("--chr-set", as.character(chr_num), extra_args)
 
     ld = plink_pairwise_ld_run(in_prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
-                               ld_window_r2 = ld_window_r2, extra_args = extra_args, p = p)
+                               ld_window_r2 = ld_window_r2, extra_args = extra_args,
+                               stages = stages)
   })
 
   ld

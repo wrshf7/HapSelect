@@ -146,8 +146,13 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
       } else{
         # Otherwise use future to process the chunks in parallel, with the specified number of workers.
         # furrr forwards progressr signals from workers back to the main session automatically.
-        future::plan(future::multisession, workers = workers)
-        on.exit(future::plan(future::sequential), add = TRUE)
+        # Starting the workers and sending them their chunks counts no blocks, and on a small
+        # dataset takes longer than the blocks do, so the bar says what it is waiting on
+        p(amount = 0, message = sprintf("Starting %d workers", workers))
+        # The plan in place beforehand is put back afterwards, whether or not the run succeeds
+        old_plan = future::plan(future::multisession, workers = workers)
+        on.exit(future::plan(old_plan), add = TRUE)
+        p(amount = 0, message = sprintf("Processing blocks on %d workers", workers))
 
         chunk_results = furrr::future_map(
           chunk_payloads,
@@ -166,6 +171,8 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
     local_GEBV = local_GEBV[haploblocks_df$Block_ID]
   }
 
+
+  report_status("Summarising blocks")
 
   # Add summary information about the number of unique haplotypes and variance explained by haplotypes for each block back into the haploblocks_df for convenient access.
 

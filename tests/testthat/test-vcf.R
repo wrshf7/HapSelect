@@ -617,3 +617,105 @@ test_that("a VCF with a single record reads", {
 
   expect_equal(read_vcf_geno(path)$Ind1, 1)
 })
+
+
+# Progress reporting ------------------------------------------------------------
+
+# A VCF big enough to span several read chunks and several KiB of progress
+progress_vcf_lines <- function(n = 120000L) {
+  set.seed(7)
+  calls <- matrix(sample(c("0/0", "0/1", "1/1", "./."), n * 3, replace = TRUE), ncol = 3)
+  c("##fileformat=VCFv4.2",
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3",
+    paste("1", seq_len(n), paste0("snp", seq_len(n)), "A", "G", ".", "PASS", ".", "GT",
+          calls[, 1], calls[, 2], calls[, 3], sep = "\t"))
+}
+
+# Write lines as BGZF, the blocked gzip bgzip and Beagle write: each block its own gzip member,
+# headed by a "BC" extra field giving the member's length, then the standard empty end block
+write_bgzf <- function(lines, path, block_bytes = 60000L) {
+  text <- charToRaw(paste0(paste(lines, collapse = "\n"), "\n"))
+  starts <- seq(1L, length(text), by = block_bytes)
+  le <- function(x, size) writeBin(as.integer(x), raw(), size = size, endian = "little")
+
+  con <- file(path, "wb")
+  on.exit(close(con), add = TRUE)
+  for (start in starts) {
+    chunk <- text[start:min(length(text), start + block_bytes - 1L)]
+    zlib <- memCompress(chunk, "gzip")
+    deflated <- zlib[3:(length(zlib) - 4L)]          # zlib's 2 byte header and adler32 off
+    # digest gives the CRC as 8 hex digits, most significant first, and gzip wants it little endian
+    crc_hex <- formatC(digest::digest(chunk, algo = "crc32", serialize = FALSE), width = 8, flag = "0")
+    crc <- rev(as.raw(strtoi(substring(crc_hex, c(1, 3, 5, 7), c(2, 4, 6, 8)), 16L)))
+    header <- c(as.raw(c(0x1f, 0x8b, 0x08, 0x04, 0, 0, 0, 0, 0, 0xff, 0x06, 0x00, 0x42, 0x43, 0x02, 0x00)),
+                le(18L + length(deflated) + 8L - 1L, 2L))
+    writeBin(c(header, deflated, crc, le(length(chunk), 4L)), con)
+  }
+  writeBin(as.raw(c(0x1f, 0x8b, 0x08, 0x04, 0, 0, 0, 0, 0, 0xff, 0x06, 0x00, 0x42, 0x43, 0x02, 0x00,
+                    0x1b, 0x00, 0x03, 0x00, 0, 0, 0, 0, 0, 0, 0, 0)), con)
+  invisible(length(text))
+}
+
+test_that("vcf_text_size gives the decompressed size of plain, gzip and BGZF files", {
+  lines <- progress_vcf_lines(20000L)
+  plain <- tempfile(fileext = ".vcf")
+  gz <- tempfile(fileext = ".vcf.gz")
+  bgz <- tempfile(fileext = ".vcf.gz")
+  on.exit(unlink(c(plain, gz, bgz)))
+
+  writeLines(lines, plain)
+  con <- gzfile(gz, "w"); writeLines(lines, con); close(con)
+  write_bgzf(lines, bgz)
+
+  expect_equal(vcf_text_size(plain), file.size(plain))
+  expect_equal(vcf_text_size(gz), file.size(plain))
+  expect_equal(vcf_text_size(bgz), file.size(plain))
+  # and the BGZF file really is several blocks that read back as the same VCF
+  expect_gt(file.size(bgz), 0)
+  expect_equal(read_vcf_geno(bgz), read_vcf_geno(plain))
+})
+
+test_that("reading a VCF reports its own step, ticking in KiB of text through to the end", {
+  path <- tempfile(fileext = ".vcf.gz")
+  on.exit(unlink(path))
+  write_bgzf(progress_vcf_lines(), path)
+  total <- ceiling(vcf_text_size(path) / 1024)
+
+  old <- options(HapSelect.progress_interval = 0)
+  on.exit(options(old), add = TRUE)
+  events <- with_machine_logging(function() read_vcf_geno(path))
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+  current <- vapply(ticks, function(e) e$current, numeric(1))
+
+  expect_equal(unique(steps(events)), "read_vcf")
+  expect_equal(events[[length(events)]]$status, "succeeded")
+  expect_equal(ticks[[length(ticks)]]$total, total)
+  expect_equal(ticks[[length(ticks)]]$current, total)
+  # Progress arrived as the file was read, rather than all at once at the end
+  expect_true(any(current > 0 & current < total))
+  expect_false(is.unsorted(current))
+})
+
+test_that("read_vcf_phased reports the same step", {
+  path <- phased_vcf_fixture()
+  on.exit(unlink(path))
+
+  events <- with_machine_logging(function() read_vcf_phased(path))
+
+  expect_equal(unique(steps(events)), "read_vcf")
+  expect_equal(events[[length(events)]]$status, "succeeded")
+})
+
+test_that("chunked reading still finds a header or a second header past the first chunk", {
+  lines <- progress_vcf_lines(60000L)
+  late_header <- tempfile(fileext = ".vcf")
+  two_headers <- tempfile(fileext = ".vcf")
+  on.exit(unlink(c(late_header, two_headers)))
+
+  # 60000 meta lines push the header into the second chunk
+  writeLines(c(lines[1], rep("##meta=x", 60000L), lines[-1]), late_header)
+  expect_equal(nrow(read_vcf_geno(late_header)), 60000L)
+
+  writeLines(c(lines, lines[2]), two_headers)
+  expect_error(read_vcf_geno(two_headers), "exactly one #CHROM header")
+})

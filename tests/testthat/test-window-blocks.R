@@ -296,3 +296,15 @@ test_that("window blocks feed into block_obj_to_df like LD blocks do", {
   expect_equal(two_snp$End_Pos, 300)
   expect_equal(two_snp$Block_Size, 50)
 })
+
+
+test_that("window blocking ticks once per chromosome", {
+  map <- make_window_map_fixture()
+
+  events <- with_machine_logging(function() perform_window_blocking(map, window = 3, method = "window_snp"))
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_equal(unique(steps(events)), "window_blocking")
+  expect_equal(ticks[[length(ticks)]]$current, length(unique(map$Chromosome)))
+  expect_equal(ticks[[length(ticks)]]$total, length(unique(map$Chromosome)))
+})

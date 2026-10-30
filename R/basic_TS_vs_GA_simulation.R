@@ -75,11 +75,13 @@ check_geno_marker_compatibility = function(geno, marker_effects, map){
 
 #write out the simulation files
 write_sim_files = function(GA_geno, TS_geno, map, marker_effects, temp_string){
+  # Only genomicSimulation reads these, so they go in the session's temporary directory
+  # rather than the working directory, where a run that failed would leave them behind
   file_list = c(
-    map_file_name = paste0("Genomic_Simulation_genetic_map_temp_",temp_string,".txt"),
-    geno_GA_file_name = paste0("Genomic_Simulation_GA_genotypes_temp_",temp_string,".txt"),
-    geno_TS_file_name = paste0("Genomic_Simulation_TS_genotypes_temp_",temp_string,".txt"),
-    marker_eff_file_name = paste0("Genomic_Simulation_marker_effects_temp_",temp_string,".txt")
+    map_file_name = file.path(tempdir(), paste0("Genomic_Simulation_genetic_map_temp_",temp_string,".txt")),
+    geno_GA_file_name = file.path(tempdir(), paste0("Genomic_Simulation_GA_genotypes_temp_",temp_string,".txt")),
+    geno_TS_file_name = file.path(tempdir(), paste0("Genomic_Simulation_TS_genotypes_temp_",temp_string,".txt")),
+    marker_eff_file_name = file.path(tempdir(), paste0("Genomic_Simulation_marker_effects_temp_",temp_string,".txt"))
   )
 
   write.table(map, file = file_list["map_file_name"], sep = " ", col.names = TRUE, row.names = FALSE, quote = FALSE)
@@ -92,7 +94,7 @@ write_sim_files = function(GA_geno, TS_geno, map, marker_effects, temp_string){
 
 #clean up the simulation files
 delete_sim_files = function(file_list){
-  invisible(file.remove(file_list))
+  invisible(unlink(file_list, force = TRUE))
 }
 
 # simulation function
@@ -112,9 +114,12 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 
     #run it for the GA parents
     #initiate populations
-    init = genomicSimulation::load.data(allele.file = temp_files[[2]],
-                                        map.file = temp_files[[1]],
-                                        effect.file = temp_files[[4]])
+    #load.data() reports each file it parses, which says nothing a user needs, so it is captured
+    invisible(utils::capture.output(
+      init <- genomicSimulation::load.data(allele.file = temp_files[[2]],
+                                           map.file = temp_files[[1]],
+                                           effect.file = temp_files[[4]])
+    ))
     g0 = init$groupNum
 
     #simulate across reps
@@ -134,9 +139,12 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 
     #run it for the TS parents
     #initiate populations
-    init = genomicSimulation::load.data(allele.file = temp_files[[3]],
-                                        map.file = temp_files[[1]],
-                                        effect.file = temp_files[[4]])
+    #load.data() reports each file it parses, which says nothing a user needs, so it is captured
+    invisible(utils::capture.output(
+      init <- genomicSimulation::load.data(allele.file = temp_files[[3]],
+                                           map.file = temp_files[[1]],
+                                           effect.file = temp_files[[4]])
+    ))
     g0 = init$groupNum
 
     for(rep in seq_len(num_sim_reps)){
@@ -551,6 +559,8 @@ localGEBV_vs_TS_simulation = function(
     marker_effects = marker_effects,
     temp_string = temp_string
   )
+  # Removed however the simulation ends, including on an error part way through
+  on.exit(delete_sim_files(temp_files), add = TRUE)
 
   summary_df <- run_basic_simulation(
     temp_files,
@@ -562,10 +572,10 @@ localGEBV_vs_TS_simulation = function(
     maximize = maximize
   )
 
-  delete_sim_files(temp_files)
-
   gc()
 
+  # The simulation's ticks are done; the plots and PCA after them have none of their own
+  report_status("Building plots")
   sim_plot <- generate_sim_traject_plot(summary_df, colors[1:2])
 
   if(PCA){
@@ -723,6 +733,8 @@ Haplotype_vs_TS_simulation = function(
   temp_files <- write_sim_files(
     GA_geno, TS_geno, map, marker_effects, temp_string
   )
+  # Removed however the simulation ends, including on an error part way through
+  on.exit(delete_sim_files(temp_files), add = TRUE)
 
   summary_df <- run_basic_simulation(
     temp_files,
@@ -734,10 +746,10 @@ Haplotype_vs_TS_simulation = function(
     maximize = maximize
   )
 
-  delete_sim_files(temp_files)
-
   gc()
 
+  # The simulation's ticks are done; the plots and PCA after them have none of their own
+  report_status("Building plots")
   sim_plot <- generate_sim_traject_plot(summary_df, colors[1:2])
 
   if(PCA){

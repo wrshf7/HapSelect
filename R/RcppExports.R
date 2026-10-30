@@ -46,10 +46,13 @@ make_blocks_cpp <- function(ld_lookup_r, ld_adj_r, marker_names_r, marker_idx_r,
 #'           count for every pair
 #' min_r2  : drop pairs below this r^2; pass a negative value to keep all
 #' min_obs : samples that must be observed at both markers for a pair to be kept
+#' progress: optional R function, called now and then with the number of markers
+#'           finished since its last call, so a long chromosome can move a progress bar.
+#'           Over the whole run it is passed n_snp in total. NULL reports nothing
 #'
 #' Returns Locus1, Locus2 (1-based marker positions) and LD. Pairs with an
 #' undefined r^2 are left out.
-pairwise_ld_cpp <- function(geno, window, min_r2, min_obs) {
-    .Call(`_HapSelect_pairwise_ld_cpp`, geno, window, min_r2, min_obs)
+pairwise_ld_cpp <- function(geno, window, min_r2, min_obs, progress = NULL) {
+    .Call(`_HapSelect_pairwise_ld_cpp`, geno, window, min_r2, min_obs, progress)
 }
 

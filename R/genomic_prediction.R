@@ -28,6 +28,13 @@ check_BLUE = function(BLUE, geno){
 solve_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
   report_step("marker_effects")
 
+  fit_marker_effects(geno, BLUE, h2_method, ploidy, mean_impute)
+}
+
+#the solve itself, without a step of its own
+#cross-validation solves once per fold, and reports the folds rather than a step for each solve
+fit_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
+
   if(!is.data.frame(BLUE) || ncol(BLUE) < 2){
     stop("BLUE must be a data frame with at least 2 columns: individual ID (column 1, character) and a single adjusted phenotype, BLUE, or de-regressed BLUP (column 2, numeric).")
   }
@@ -87,6 +94,9 @@ solve_marker_effects = function(geno, BLUE, h2_method, ploidy, mean_impute){
 
   cat(sprintf("Marker Variance:           %.4e \nAdditive Genetic Variance: %.4e \nResidual Variance:         %.4e \nh2:                        %.2f \n",
               marker_variance, additive_genetic_variance, residual_variance, h2))
+  report_metric("variance_components", marker_variance = marker_variance,
+                additive_genetic_variance = additive_genetic_variance,
+                residual_variance = residual_variance, h2 = h2)
 
   return(marker_solutions)
 }
@@ -128,6 +138,7 @@ create_marker_effects_file = function(geno, BLUE, h2_method = c("VanRaden", "mar
 
   prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, BLUE, mean_impute)
   cat(paste0("\nPrediction Accuracy (cor(GEBV, BLUE or deregressed BLUP or adj pheno)) is: ", round(prediction_accuracy,2)))
+  report_metric("prediction_accuracy", accuracy = as.numeric(prediction_accuracy))
 
   #output to return
   output_df = data.frame(
@@ -153,19 +164,28 @@ n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRad
 
   fold_id = sample(rep(1:nfold, length.out = nrow(BLUE)))
 
-  CV = sapply(1:nfold, function(fold){
-    cat(paste0("\nPerforming cross-validation for fold: ", fold, "\n"))
-    train_BLUE = BLUE[fold_id != fold, ]
-    valid_BLUE = BLUE[fold_id == fold, ]
+  # One tick per fold. The per-fold printout still happens, but with a bar drawn progressr holds
+  # it back and prints it once the folds are done, so it cannot break up the bar
+  progressr::with_progress({
+    p = progressr::progressor(steps = nfold)
 
-    marker_solutions = solve_marker_effects(geno, train_BLUE, h2_method, ploidy, mean_impute)
-    prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE, mean_impute)
-    return(prediction_accuracy)
+    CV = sapply(1:nfold, function(fold){
+      cat(paste0("\nPerforming cross-validation for fold: ", fold, "\n"))
+      train_BLUE = BLUE[fold_id != fold, ]
+      valid_BLUE = BLUE[fold_id == fold, ]
+
+      marker_solutions = fit_marker_effects(geno, train_BLUE, h2_method, ploidy, mean_impute)
+      prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE, mean_impute)
+      report_metric("cv_fold", fold = fold, accuracy = as.numeric(prediction_accuracy))
+      p(message = sprintf("Fold %d/%d", fold, nfold))
+      return(prediction_accuracy)
+    })
   })
 
   mean_CV = mean(CV)
 
   cat(paste0("\n",nfold, " fold CV Mean Prediction Accuracy is: ", round(mean_CV, 2), "\n"))
+  report_metric("cv_summary", folds = nfold, mean_accuracy = mean_CV)
 
   return(CV)
 }
@@ -182,20 +202,29 @@ cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30, h2_method =
 
   h2_method = match.arg(h2_method)
 
-  CV = sapply(1:fold, function(fold){
-    cat(paste0("\nPerforming cross-validation for fold: ", fold, "\n"))
-    id = sample(1:nrow(BLUE), ceiling(nrow(BLUE) * train_prop))
-    train_BLUE = BLUE[id, ]
-    valid_BLUE = BLUE[!(1:nrow(BLUE) %in% id), ]
+  # One tick per fold, as in n_fold_cross_validation()
+  n_folds = fold
+  progressr::with_progress({
+    p = progressr::progressor(steps = n_folds)
 
-    marker_solutions = solve_marker_effects(geno, train_BLUE, h2_method, ploidy, mean_impute)
-    prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE, mean_impute)
-    return(prediction_accuracy)
+    CV = sapply(1:n_folds, function(fold){
+      cat(paste0("\nPerforming cross-validation for fold: ", fold, "\n"))
+      id = sample(1:nrow(BLUE), ceiling(nrow(BLUE) * train_prop))
+      train_BLUE = BLUE[id, ]
+      valid_BLUE = BLUE[!(1:nrow(BLUE) %in% id), ]
+
+      marker_solutions = fit_marker_effects(geno, train_BLUE, h2_method, ploidy, mean_impute)
+      prediction_accuracy = compute_prediction_accuracy(geno, marker_solutions, valid_BLUE, mean_impute)
+      report_metric("cv_fold", fold = fold, accuracy = as.numeric(prediction_accuracy))
+      p(message = sprintf("Fold %d/%d", fold, n_folds))
+      return(prediction_accuracy)
+    })
   })
 
   mean_CV = mean(CV)
 
   cat(paste0("\n",fold, " fold CV Mean Prediction Accuracy is: ", round(mean_CV, 2), "\n"))
+  report_metric("cv_summary", folds = fold, mean_accuracy = mean_CV)
 
   return(CV)
 }
