@@ -97,6 +97,29 @@ delete_sim_files = function(file_list){
   invisible(unlink(file_list, force = TRUE))
 }
 
+# Loads one set of parents into genomicSimulation and prints what it read from each file,
+# so a bad import can be spotted. load.data() names each file by its path, which here is a
+# temporary file the user never made, so each path is swapped for what the file holds.
+# The paths are ones we wrote and are matched exactly, so if genomicSimulation changes its
+# wording a line keeps its path rather than being lost.
+# Inside with_progress() this output is held back until the bar finishes.
+#
+# label: which parents these are, e.g. "GA parents"
+load_sim_population = function(label, allele_file, map_file, effect_file){
+  out = utils::capture.output(
+    init <- genomicSimulation::load.data(allele.file = allele_file,
+                                         map.file = map_file,
+                                         effect.file = effect_file)
+  )
+  files = c(map = map_file, genotypes = allele_file, effects = effect_file)
+  for(nm in names(files)){
+    out = gsub(sprintf("(Loading %s) ", files[[nm]]), sprintf("  %-11s", paste0(nm, ":")),
+               out, fixed = TRUE)
+  }
+  cat(sprintf("Loading %s into genomicSimulation:", label), out, sep = "\n")
+  init
+}
+
 # simulation function
 run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
                                 num_cross_per_gen, num_GA_parents, num_TS_parents,
@@ -114,12 +137,8 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 
     #run it for the GA parents
     #initiate populations
-    #load.data() reports each file it parses, which says nothing a user needs, so it is captured
-    invisible(utils::capture.output(
-      init <- genomicSimulation::load.data(allele.file = temp_files[[2]],
-                                           map.file = temp_files[[1]],
-                                           effect.file = temp_files[[4]])
-    ))
+    init = load_sim_population("GA parents", allele_file = temp_files[[2]],
+                               map_file = temp_files[[1]], effect_file = temp_files[[4]])
     g0 = init$groupNum
 
     #simulate across reps
@@ -139,12 +158,8 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 
     #run it for the TS parents
     #initiate populations
-    #load.data() reports each file it parses, which says nothing a user needs, so it is captured
-    invisible(utils::capture.output(
-      init <- genomicSimulation::load.data(allele.file = temp_files[[3]],
-                                           map.file = temp_files[[1]],
-                                           effect.file = temp_files[[4]])
-    ))
+    init = load_sim_population("TS parents", allele_file = temp_files[[3]],
+                               map_file = temp_files[[1]], effect_file = temp_files[[4]])
     g0 = init$groupNum
 
     for(rep in seq_len(num_sim_reps)){

@@ -5,9 +5,9 @@
 
 local_stub_simulation <- function(env = parent.frame()) {
   local_mocked_bindings(
-    # Chatty like the real one, which reports every file it parses
-    load.data            = function(...) {
-      cat("(Loading map.txt) 1287 marker(s) with map positions were loaded.\n")
+    # Chatty like the real one, which names each file it parses by its path
+    load.data            = function(allele.file, map.file, effect.file) {
+      cat(sprintf("(Loading %s) 1287 marker(s) with map positions were loaded.\n", map.file))
       list(groupNum = 1L)
     },
     make.random.crosses  = function(...) 1L,
@@ -50,12 +50,19 @@ test_that("the simulation ticks once per generation for both sets of parents", {
   expect_equal(ticks[[length(ticks)]]$total, 12)
 })
 
-test_that("the simulation prints nothing, including genomicSimulation's file loading", {
+test_that("the simulation prints what genomicSimulation loaded, labelled rather than by path", {
   local_stub_simulation()
   out <- NULL
   with_machine_logging(function() out <<- capture.output(invisible(run_stub_simulation())))
 
-  expect_length(out, 0)
+  # Once per set of parents, with the temporary path swapped for what the file holds,
+  # and nothing else: the group deletions stay quiet
+  expect_equal(out, c(
+    "Loading GA parents into genomicSimulation:",
+    "  map:       1287 marker(s) with map positions were loaded.",
+    "Loading TS parents into genomicSimulation:",
+    "  map:       1287 marker(s) with map positions were loaded."
+  ))
 })
 
 test_that("the simulation's input files go in the temporary directory, not the working one", {
