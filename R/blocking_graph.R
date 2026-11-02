@@ -804,15 +804,18 @@ perform_graph_blocking = function(geno, map, strategy) {
     chr_strategy = strategy
     chr_strategy$theta_core = theta_core
 
-    # Each tick says the blocks are being built, which replaces the status shown while the
-    # workers started
+    # Each stage is signalled as it starts, for the status beside the bar. The ticks only
+    # move the bar
+    signal_chromosome_stage(key, "building")
     stage1 = graph_chromosome_blocks(geno_chr, map_chr, chr_strategy)
-    p(message = "Building blocks")
+    signal_chromosome_stage(key, "choosing")
+    p()
 
     segments = linearise_blocks(stage1, map_chr, strategy$max_gap_markers,
                                 strategy$max_gap_position, strategy$min_block_snps)
     selected = select_nonoverlapping(segments)
-    p(message = "Building blocks")
+    signal_chromosome_stage(key, "refilling")
+    p()
 
     if (nrow(selected) == 0) {
       # Nothing survived linearisation, so every marker stands alone
@@ -847,8 +850,11 @@ perform_graph_blocking = function(geno, map, strategy) {
       stringsAsFactors = FALSE
     )
 
-    # Ticks on both branches above, including the one that had nothing to refill
-    p(message = "Building blocks")
+    # Reached on both branches above, including the one that had nothing to refill. Signalled
+    # ahead of the tick, which prints the line for this chromosome above the bar
+    signal_chromosome_stage(key, "done", n_blocks = length(blocks),
+                            n_refilled = n_refilled, n_dropped = n_dropped)
+    p()
 
     # Blocks and diagnostics travel together so that a worker returns one value
     list(key = key, blocks = blocks, diagnostics = diagnostics)
@@ -856,12 +862,20 @@ perform_graph_blocking = function(geno, map, strategy) {
 
     # seed = TRUE gives each worker a parallel-safe RNG stream. The method draws no
     # random numbers, but loading packages on a worker can, and future warns when it does.
-    per_chromosome = if (isTRUE(strategy$parallel)) {
-      furrr::future_map(chromosome_data, blocks_for_chromosome,
-                        .options = furrr::furrr_options(seed = TRUE))
-    } else {
-      purrr::map(chromosome_data, blocks_for_chromosome)
-    }
+    per_chromosome = track_chromosome_stages(
+      if (isTRUE(strategy$parallel)) {
+        furrr::future_map(chromosome_data, blocks_for_chromosome,
+                          .options = furrr::furrr_options(seed = TRUE))
+      } else {
+        purrr::map(chromosome_data, blocks_for_chromosome)
+      },
+      chromosomes = vapply(chromosome_data, `[[`, character(1), "key"),
+      describe_done = function(chromosome, d) {
+        sprintf("%s Chromosome %s: %d blocks (%d refilled, %d dropped)", cli::symbol$tick,
+                chromosome, d$n_blocks, d$n_refilled, d$n_dropped)
+      },
+      p = p
+    )
   })
 
   blocks_by_chr = lapply(per_chromosome, `[[`, "blocks")

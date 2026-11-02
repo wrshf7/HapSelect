@@ -55,6 +55,26 @@ test_that("ticks from parallel workers arrive once each, under the step that mad
   expect_equal(kinds(events)[length(events)], "step_finished")
 })
 
+test_that("stages signalled on workers arrive once each, with a line per finished chromosome", {
+  skip_on_cran()
+  geno <- parallel_ld_fixture()
+  ld <- pairwise_ld(geno, parallelize = FALSE)
+
+  lines <- NULL
+  with_caller_plan({
+    events <- with_machine_logging(function() {
+      lines <<- capture_messages(perform_ld_blocking(ld, geno[, 1:3], parallel = TRUE))
+    })
+  })
+
+  expect_setequal(sub("^\\S+ Chromosome (\\d+):.*", "\\1", trimws(lines)), c("1", "2", "3"))
+  metrics <- Filter(function(e) identical(e$event, "metric"), events)
+  expect_setequal(vapply(metrics, function(e) e$values$chromosome, character(1)),
+                  c("1", "2", "3"))
+  statuses <- Filter(function(e) identical(e$event, "progress") && !is.null(e$message), events)
+  expect_equal(statuses[[length(statuses)]]$message, "3/3 done")
+})
+
 test_that("a parallel run puts back the plan that was in place before it", {
   skip_on_cran()
   geno <- parallel_ld_fixture(chromosomes = 2L)

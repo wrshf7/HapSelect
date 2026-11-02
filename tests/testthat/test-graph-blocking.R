@@ -854,6 +854,27 @@ test_that("perform_graph_blocking returns one entry per chromosome", {
 })
 
 
+test_that("perform_graph_blocking prints a line per chromosome and reports each stage", {
+  # Every status rather than the throttled few
+  old <- options(HapSelect.progress_interval = 0)
+  on.exit(options(old), add = TRUE)
+  lines <- NULL
+  events <- with_machine_logging(function() {
+    lines <<- capture_messages(perform_graph_blocking(graph_geno_fixture(), graph_map_fixture(),
+                                                      graph_test_strategy()))
+  })
+
+  expect_length(lines, 2)
+  expect_match(lines, "^\\S+ Chromosome [12]: \\d+ blocks \\(\\d+ refilled, \\d+ dropped\\)\n$")
+  statuses <- vapply(Filter(function(e) identical(e$event, "progress") && !is.null(e$message),
+                            events), `[[`, "", "message")
+  for (stage in c("building", "choosing", "refilling")) {
+    expect_true(any(grepl(paste("Chromosome 1", stage), statuses)), info = stage)
+  }
+  expect_equal(statuses[[length(statuses)]], "2/2 done")
+})
+
+
 test_that("perform_graph_blocking reproduces the reference blocking", {
   blocks <- perform_graph_blocking(graph_geno_fixture(), graph_map_fixture(),
                                    graph_test_strategy())

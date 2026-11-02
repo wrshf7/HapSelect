@@ -169,6 +169,9 @@ bar_update = function(step, current, total, status = NULL) {
   try_cli(cli::cli_progress_update(
     id     = bar$id,
     set    = if (is.na(current)) NULL else current,
+    # Without a count this only changes the status. cli adds one when given neither, which
+    # would move the bar on every status
+    inc    = if (is.na(current)) 0L else NULL,
     total  = if (is.na(total)) NULL else total,
     # cli's default format puts the status directly before the ETA, so it carries its own separator
     status = if (is.null(status)) NULL else paste0(status, " | "),
@@ -338,7 +341,111 @@ report_metric = function(name, ...) {
   invisible(TRUE)
 }
 
-# Provides callbacks for progressr including initiation, updates and finish 
+# --- what each chromosome is doing ----------------------------------------------------------
+#
+# Blocking works through chromosomes one per worker, so the status beside the bar names the
+# chromosomes being worked on and what each is doing, and a line is printed above the bar as
+# each one finishes:
+#
+#   ✔ Chromosome 3: 42 blocks (12 refilled, 0 dropped)
+#   Graph Blocking ■■■■■■     28% | Chromosome 7 refilling, Chromosome 12 choosing | 2/16 done
+#
+# A worker says where a chromosome is up to with signal_chromosome_stage(). That is a
+# condition of its own rather than a progress tick: future passes an immediateCondition back
+# from a worker as it happens, and catching it around the map sees every one. The progress
+# handler would not, since it is throttled and only sees the latest tick.
+
+# Columns the bar takes besides its step name and status: the bar, percentage, ETA and the
+# separators either side of the status, with room for a longer ETA
+BAR_COLUMNS = 56L
+
+# Say where a chromosome is up to, from wherever it is being worked on, including a worker
+# chromosome: the chromosome's label
+# stage     : what it is doing, e.g. "refilling", or "done" once it is finished
+# ...       : numbers for the line printed when it is done, e.g. n_blocks = 42
+signal_chromosome_stage = function(chromosome, stage, ...) {
+  cond = structure(
+    class = c("hs_chromosome_stage", "immediateCondition", "condition"),
+    list(message = "", call = NULL, chromosome = as.character(chromosome), stage = stage,
+         details = list(...))
+  )
+  # with_progress() holds back every condition while its bar is up, and once it has kept one
+  # it muffles it with the first restart whose name starts with "muffle". This gives it one
+  # of the stage's own, as future gives one passed back from a worker
+  withRestarts(signalCondition(cond), muffleChromosomeStage = function() NULL)
+  invisible(NULL)
+}
+
+# The status for a set of chromosomes, cut back until it fits in width characters
+# stages: the stage of each chromosome, named by chromosome, NA for those not started yet
+#
+#   Chromosome 7 refilling, Chromosome 12 choosing | 5/16 done
+#   Chr 7 refilling, Chr 12 choosing | 5/16 done
+#   Chr 7 refilling, +1 more | 5/16 done
+#   2 active | 5/16 done
+#   5/16 done
+chromosome_status = function(stages, width = Inf) {
+  tally = sprintf("%d/%d done", sum(stages %in% "done"), length(stages))
+  active = stages[!is.na(stages) & stages != "done"]
+  if (length(active) == 0L) return(tally)
+
+  listed = function(word, n) paste(word, names(active)[seq_len(n)], active[seq_len(n)], collapse = ", ")
+  candidates = c(
+    paste0(listed("Chromosome", length(active)), " | ", tally),
+    paste0(listed("Chr", length(active)), " | ", tally),
+    # As many as fit, then a count of the rest
+    vapply(rev(seq_len(length(active) - 1L)), function(n) {
+      sprintf("%s, +%d more | %s", listed("Chr", n), length(active) - n, tally)
+    }, character(1)),
+    sprintf("%d active | %s", length(active), tally)
+  )
+  fits = candidates[nchar(candidates) <= width]
+  if (length(fits) > 0L) fits[[1]] else tally
+}
+
+# Room for the status beside the current step's bar. Unlimited when no bar is drawn, since
+# machine logging sends the status as an event rather than drawing it
+status_width = function() {
+  if (!progress_drawn()) return(Inf)
+  id = current_step()
+  label = if (is.null(id)) "" else step_label(id)
+  max(0L, cli::console_width() - nchar(label) - BAR_COLUMNS)
+}
+
+# Run expr, which works through chromosomes calling signal_chromosome_stage(), keeping the
+# status up to date and printing a line as each chromosome finishes
+#
+# chromosomes  : every chromosome expr works through, in the order to list them
+# describe_done: function(chromosome, details) returning the line to print for a finished
+#                chromosome, from the numbers it signalled with "done"
+# p            : the progressor expr ticks, which carries the status to the bar
+#
+# The status goes out on the progressor, as a tick of nothing, rather than through
+# report_status(). with_progress() holds back every condition signalled while its bar is up,
+# cli's own drawing included, and would replay them later. A tick is handled with that
+# switched off. progressr throttles ticks, but keeps the latest status for the next one it
+# shows, so the status can lag by the throttle interval but always catches up
+track_chromosome_stages = function(expr, chromosomes, describe_done, p) {
+  chromosomes = as.character(chromosomes)
+  stages = stats::setNames(rep(NA_character_, length(chromosomes)), chromosomes)
+  show = function() p(amount = 0, message = chromosome_status(stages, status_width()))
+
+  # Replaces whatever was shown before, such as the workers starting
+  show()
+  withCallingHandlers(expr, hs_chromosome_stage = function(cond) {
+    stages[[cond$chromosome]] <<- cond$stage
+    if (identical(cond$stage, "done")) {
+      # A message, so suppressMessages() quietens it. While a bar is up with_progress() holds
+      # it back, and the tick show() sends straight after prints it above the bar
+      message(describe_done(cond$chromosome, cond$details))
+      do.call(report_metric, c(list("chromosome_done", chromosome = cond$chromosome),
+                               cond$details))
+    }
+    show()
+  })
+}
+
+# Provides callbacks for progressr including initiation, updates and finish
 progress_reporter = function() {
   report = function(config, state, ...) report_tick(config, state)
   # Having hide and unhide also tells progressr it can print held back output while the bar

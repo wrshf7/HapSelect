@@ -51,6 +51,7 @@ perform_ld_blocking = function(ld, map, method = c("flanking", "average"), toler
 
     block_chromosome = function(chromosome) {
       chr          = unique(chromosome$Chrom)
+      signal_chromosome_stage(chr, "blocking")
       chrom_blocks = chromo_blocking(
         chr       = chr,
         ld        = chromosome,
@@ -61,18 +62,28 @@ perform_ld_blocking = function(ld, map, method = c("flanking", "average"), toler
         start     = start,
         tol_reset = tol_reset
       )
-      # Replaces the status shown while the workers started
-      p(message = "Blocking chromosomes")
+      # Signalled ahead of the tick, which prints the line for this chromosome above the bar
+      signal_chromosome_stage(chr, "done", n_blocks = length(chrom_blocks),
+                              n_multi_marker = sum(lengths(chrom_blocks) >= 2L))
+      p()
       return(chrom_blocks)
     }
 
     # seed = TRUE gives each worker a parallel-safe RNG stream. Blocking draws no random
     # numbers, but loading packages on a worker can, and future warns when it does
-    blocks_list = if (parallel == TRUE) {
-      furrr::future_map(ld, block_chromosome, .options = furrr::furrr_options(seed = TRUE))
-    } else {
-      purrr::map(ld, block_chromosome)
-    }
+    blocks_list = track_chromosome_stages(
+      if (parallel == TRUE) {
+        furrr::future_map(ld, block_chromosome, .options = furrr::furrr_options(seed = TRUE))
+      } else {
+        purrr::map(ld, block_chromosome)
+      },
+      chromosomes = chromosomes,
+      describe_done = function(chromosome, d) {
+        sprintf("%s Chromosome %s: %d blocks (%d with 2+ markers)", cli::symbol$tick,
+                chromosome, d$n_blocks, d$n_multi_marker)
+      },
+      p = p
+    )
   })
 
   names(blocks_list) = as.character(chromosomes)

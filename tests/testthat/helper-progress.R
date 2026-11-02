@@ -43,11 +43,12 @@ steps <- function(events) vapply(events, function(e) e$step %||% NA_character_, 
 
 # Run body and count the progress ticks it makes. Counted from the progression
 # conditions themselves, since the events cannot show it: progressr fills the count up
-# to the total when a progressor finishes, ticked or not.
+# to the total when a progressor finishes, ticked or not. A tick of nothing only carries a
+# status, so it is not counted.
 count_ticks <- function(body) {
   n <- 0L
   withCallingHandlers(body(), progression = function(c) {
-    if (identical(c$type, "update")) n <<- n + 1L
+    if (identical(c$type, "update") && !identical(c$amount, 0)) n <<- n + 1L
   })
   n
 }
