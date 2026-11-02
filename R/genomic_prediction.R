@@ -190,14 +190,14 @@ n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRad
   return(CV)
 }
 
-cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
+cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30L, h2_method = c("VanRaden", "marker_num"), ploidy = 2L, mean_impute = TRUE){
   report_step("cross_validation")
   if(nrow(BLUE) <= 200){
     warning("Trying to do CV on a small population size may not work well!\n")
   }
 
   if(length(fold) > 1 || is.na(fold) || !is.integer(fold)){
-    stop("Provide a valid integer designation for the number of folds, nfold, in #L format (e.g., 5L).")
+    stop("Provide a valid integer designation for the number of folds, fold, in #L format (e.g., 30L).")
   }
 
   h2_method = match.arg(h2_method)
