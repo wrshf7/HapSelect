@@ -116,7 +116,7 @@ load_sim_population = function(label, allele_file, map_file, effect_file){
     out = gsub(sprintf("(Loading %s) ", files[[nm]]), sprintf("  %-11s", paste0(nm, ":")),
                out, fixed = TRUE)
   }
-  cat(sprintf("Loading %s into genomicSimulation:", label), out, sep = "\n")
+  cat(sprintf("Loaded %s into genomicSimulation:", label), out, sep = "\n")
   init
 }
 

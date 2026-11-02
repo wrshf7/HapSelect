@@ -383,3 +383,16 @@ test_that("a failed step's bar is closed as failed, a finished one as done", {
   expect_false(closed$pairwise_ld)
   expect_true(closed$local_gebv)
 })
+
+test_that("the reporter can hide its bar, so held back output is printed above it", {
+  # Without hide and unhide, progressr holds every cat() and message() inside with_progress()
+  # until it exits, then prints them from the start of the bar's line, over the bar
+  reporter <- progress_reporter()
+  expect_true(all(c("hide", "unhide") %in% names(reporter)))
+
+  # With no bar drawn there is nothing to clear or redraw
+  old <- options(progressr.enable = FALSE)
+  on.exit(options(old), add = TRUE)
+  expect_false(reporter$hide())
+  expect_false(reporter$unhide())
+})

@@ -58,9 +58,9 @@ test_that("the simulation prints what genomicSimulation loaded, labelled rather 
   # Once per set of parents, with the temporary path swapped for what the file holds,
   # and nothing else: the group deletions stay quiet
   expect_equal(out, c(
-    "Loading GA parents into genomicSimulation:",
+    "Loaded GA parents into genomicSimulation:",
     "  map:       1287 marker(s) with map positions were loaded.",
-    "Loading TS parents into genomicSimulation:",
+    "Loaded TS parents into genomicSimulation:",
     "  map:       1287 marker(s) with map positions were loaded."
   ))
 })

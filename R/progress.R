@@ -194,6 +194,35 @@ bar_done = function(step, failed = FALSE) {
   .progress_state$bars[[step]] = NULL
 }
 
+# Clear the bar off its line so text printed next starts on a clean line
+# progressr calls this before printing output it held back during a with_progress() block,
+# such as cat() output or a message, then calls bar_unhide(). Without it the held back text
+# is printed from the start of the line the bar is drawn on, over the top of the bar
+bar_hide = function() {
+  if (!progress_drawn() || length(.progress_state$bars) == 0L) return(invisible(FALSE))
+
+  # The connection cli draws its bars on, and the same way cli clears its own status line
+  out = cli::cli_output_connection()
+  if (cli::is_ansi_tty(out)) {
+    cat("\r\033[K", file = out)
+  } else if (cli::is_dynamic_tty(out)) {
+    cat("\r", strrep(" ", cli::console_width()), "\r", sep = "", file = out)
+  }
+  invisible(TRUE)
+}
+
+# Draw the current step's bar again, below the output progressr has just printed
+bar_unhide = function() {
+  id = current_step()
+  if (is.null(id) || !progress_drawn()) return(invisible(FALSE))
+  bar = .progress_state$bars[[id]]
+  if (is.null(bar)) return(invisible(FALSE))
+
+  # inc = 0 redraws the bar as it stands, without counting anything
+  try_cli(cli::cli_progress_update(id = bar$id, inc = 0L, force = TRUE, .envir = bar$envir))
+  invisible(TRUE)
+}
+
 # Shared step reporting #
 
 # Report a step to the progress logging
@@ -312,7 +341,10 @@ report_metric = function(name, ...) {
 # Provides callbacks for progressr including initiation, updates and finish 
 progress_reporter = function() {
   report = function(config, state, ...) report_tick(config, state)
-  list(initiate = report, update = report, finish = report)
+  # Having hide and unhide also tells progressr it can print held back output while the bar
+  # is running, rather than holding all of it until with_progress() exits
+  list(initiate = report, update = report, finish = report,
+       hide = function(...) bar_hide(), unhide = function(...) bar_unhide())
 }
 
 # progressr handler that reports HapSelect's named steps 
