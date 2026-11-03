@@ -710,6 +710,7 @@ refill_internal_markers = function(selected, map_chr, geno_chr, theta_refill) {
 #   n_blocks, n_multi_marker_blocks, n_single_marker_blocks,
 #   n_markers_in, n_markers_out, n_refilled, n_dropped
 perform_graph_blocking = function(geno, map, strategy) {
+  report_step("graph_blocking")
 
   if (is.null(geno)) {
     stop("geno must be supplied for a graph_strategy: the method computes LD from ",
@@ -772,14 +773,21 @@ perform_graph_blocking = function(geno, map, strategy) {
   if (isTRUE(strategy$parallel)) {
     # The split is by chromosome, so more workers than chromosomes cannot help: the extra
     # ones would sit idle having already been sent a copy of their share of the data.
-    workers = max(1L, min(parallel::detectCores() - 1L, length(chromosome_data)))
-    future::plan(multisession, workers = workers)
-    on.exit(future::plan(sequential), add = TRUE)
+    # Within that, it stays inside the cores cpu_cores() allows.
+    workers = max(1L, min(cpu_cores(), length(chromosome_data)))
+    # Starting the workers and sending them their chromosomes counts nothing, and takes seconds
+    report_status(sprintf("Starting %d workers", workers))
+    # The plan in place beforehand is put back afterwards, whether or not the run succeeds
+    old_plan = future::plan(multisession, workers = workers)
+    on.exit(future::plan(old_plan), add = TRUE)
   }
 
-  handlers("txtprogressbar")
+  # Each chromosome ticks once per stage, so the bar moves through the stages rather
+  # than once per chromosome. The stages are one step rather than three because
+  # chromosomes pass through them concurrently: in a parallel run one chromosome can be
+  # refilling while another is still building its LD graph.
   with_progress({
-    p = progressor(steps = length(chromosomes))
+    p = progressor(steps = 3L * length(chromosomes))
 
     blocks_for_chromosome = function(chr_data) {
     key = chr_data$key
@@ -796,11 +804,18 @@ perform_graph_blocking = function(geno, map, strategy) {
     chr_strategy = strategy
     chr_strategy$theta_core = theta_core
 
+    # Each stage is signalled as it starts, for the status beside the bar. The ticks only
+    # move the bar
+    signal_chromosome_stage(key, "building")
     stage1 = graph_chromosome_blocks(geno_chr, map_chr, chr_strategy)
+    signal_chromosome_stage(key, "choosing")
+    p()
 
     segments = linearise_blocks(stage1, map_chr, strategy$max_gap_markers,
                                 strategy$max_gap_position, strategy$min_block_snps)
     selected = select_nonoverlapping(segments)
+    signal_chromosome_stage(key, "refilling")
+    p()
 
     if (nrow(selected) == 0) {
       # Nothing survived linearisation, so every marker stands alone
@@ -835,6 +850,10 @@ perform_graph_blocking = function(geno, map, strategy) {
       stringsAsFactors = FALSE
     )
 
+    # Reached on both branches above, including the one that had nothing to refill. Signalled
+    # ahead of the tick, which prints the line for this chromosome above the bar
+    signal_chromosome_stage(key, "done", n_blocks = length(blocks),
+                            n_refilled = n_refilled, n_dropped = n_dropped)
     p()
 
     # Blocks and diagnostics travel together so that a worker returns one value
@@ -843,12 +862,20 @@ perform_graph_blocking = function(geno, map, strategy) {
 
     # seed = TRUE gives each worker a parallel-safe RNG stream. The method draws no
     # random numbers, but loading packages on a worker can, and future warns when it does.
-    per_chromosome = if (isTRUE(strategy$parallel)) {
-      furrr::future_map(chromosome_data, blocks_for_chromosome,
-                        .options = furrr::furrr_options(seed = TRUE))
-    } else {
-      purrr::map(chromosome_data, blocks_for_chromosome)
-    }
+    per_chromosome = track_chromosome_stages(
+      if (isTRUE(strategy$parallel)) {
+        furrr::future_map(chromosome_data, blocks_for_chromosome,
+                          .options = furrr::furrr_options(seed = TRUE))
+      } else {
+        purrr::map(chromosome_data, blocks_for_chromosome)
+      },
+      chromosomes = vapply(chromosome_data, `[[`, character(1), "key"),
+      describe_done = function(chromosome, d) {
+        sprintf("%s Chromosome %s: %d blocks (%d refilled, %d dropped)", cli::symbol$tick,
+                chromosome, d$n_blocks, d$n_refilled, d$n_dropped)
+      },
+      p = p
+    )
   })
 
   blocks_by_chr = lapply(per_chromosome, `[[`, "blocks")

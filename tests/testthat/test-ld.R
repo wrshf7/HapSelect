@@ -296,6 +296,65 @@ test_that("ld_func_c matches ld_func on a single chromosome", {
 })
 
 
+
+# Tests: progress from inside the compiled loop ----------------------------------
+#
+# The loop reports markers as it finishes them, so a long chromosome moves the bar while it
+# runs. Reporting must not change the result, and must add up to one count per marker.
+
+# One chromosome of random dosages, long enough for the loop to report several times
+ld_long_fixture <- function(markers = 400L, individuals = 20L) {
+  set.seed(11)
+  g <- matrix(sample(0:2, markers * individuals, replace = TRUE), markers,
+              dimnames = list(NULL, paste0("i", seq_len(individuals))))
+  data.frame(SNP = paste0("s", seq_len(markers)), Chromosome = 1, Position = seq_len(markers),
+             g, stringsAsFactors = FALSE)
+}
+
+test_that("the compiled loop reports every marker once, in several calls", {
+  geno <- ld_long_fixture()
+  calls <- integer()
+  ld_func_c(geno, window = 10, progress = function(n) calls <<- c(calls, n))
+
+  expect_equal(sum(calls), nrow(geno))
+  expect_gt(length(calls), 1)
+  expect_true(all(calls > 0))
+})
+
+test_that("reporting progress does not change the LD", {
+  geno <- ld_long_fixture()
+  expect_identical(ld_func_c(geno, window = 10, progress = function(n) NULL),
+                   ld_func_c(geno, window = 10))
+})
+
+test_that("pairwise_ld counts markers, across long and short chromosomes", {
+  # The short chromosome is done before the loop's first report, so it is counted in one go
+  geno <- rbind(ld_long_fixture(), transform(ld_long_fixture(markers = 2L), Chromosome = 2,
+                                             SNP = c("short1", "short2")))
+  old <- options(HapSelect.progress_interval = 0)
+  on.exit(options(old), add = TRUE)
+  events <- with_machine_logging(function() pairwise_ld(geno, window = 10))
+
+  ticks <- Filter(function(e) identical(e$event, "progress") && !is.null(e$current), events)
+  expect_gt(length(ticks), 2)
+  expect_equal(ticks[[length(ticks)]]$current, nrow(geno))
+  expect_equal(ticks[[length(ticks)]]$total, nrow(geno))
+})
+
+test_that("a one marker chromosome has no pairs, and binds with numbered chromosomes", {
+  # Its empty table used to name its chromosome as text, which would not bind with the
+  # numbered chromosomes around it
+  geno <- rbind(ld_long_fixture(markers = 20L),
+                transform(ld_long_fixture(markers = 1L), Chromosome = 2, SNP = "lonely"))
+
+  for (implementation in list(pairwise_ld, pairwise_ld_r)) {
+    ld <- suppressWarnings(implementation(geno))
+    expect_type(ld$Chrom, "double")
+    expect_true(all(ld$Chrom == 1))
+  }
+  expect_equal(nrow(pairwise_ld(geno)), choose(20, 2))
+})
+
 # Tests: advising when a serial run should be parallelised -----------------------
 #
 # pairwise_ld() defaults to serial because parallelising costs a couple of

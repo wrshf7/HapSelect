@@ -13,10 +13,14 @@
 # min_r2,
 # min_obs   : as documented on pairwise_ld()
 ld_func = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
-  #the columns returned when no pair survives
-  empty = data.frame(Chrom = character(), Locus1 = integer(), Locus2 = integer(),
+  #the columns returned when no pair survives. Chrom takes the chromosome column's type, so
+  #an empty chromosome binds with the others whether chromosomes are numbers or names
+  empty = data.frame(Chrom = genotypes[0, 2], Locus1 = integer(), Locus2 = integer(),
                      Name1 = character(), Name2 = character(), LD = numeric(),
                      stringsAsFactors = FALSE)
+
+  #a lone marker has nothing to pair with
+  if (nrow(genotypes) < 2) return(empty)
 
   #pull the chromosome number
   chromo = genotypes[1,2]
@@ -91,7 +95,9 @@ ld_func = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
 # window,
 # min_r2,
 # min_obs   : as documented on pairwise_ld()
-ld_func_c = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
+# progress  : optional function the compiled loop calls with the markers it has finished
+#             since its last call
+ld_func_c = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L, progress = NULL){
   chromo = genotypes[1,2]
   marker_names = as.character(genotypes[,1])
 
@@ -99,7 +105,8 @@ ld_func_c = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
   dosages = t(as.matrix(genotypes[,-(1:3)]))
   storage.mode(dosages) = "double"
 
-  empty = data.frame(Chrom = character(), Locus1 = integer(), Locus2 = integer(),
+  #the columns returned when no pair survives, with Chrom typed as in ld_func()
+  empty = data.frame(Chrom = genotypes[0, 2], Locus1 = integer(), Locus2 = integer(),
                      Name1 = character(), Name2 = character(), LD = numeric(),
                      stringsAsFactors = FALSE)
 
@@ -111,7 +118,8 @@ ld_func_c = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
     window  = as.integer(if (is.null(window)) n_marker else window),
     #a negative floor keeps everything, since r^2 is never below zero
     min_r2  = as.numeric(if (is.null(min_r2)) -1 else min_r2),
-    min_obs = as.integer(min_obs)
+    min_obs = as.integer(min_obs),
+    progress = progress
   )
 
   #a chromosome where nothing cleared the filters still has to return the columns
@@ -136,10 +144,28 @@ ld_func_c = function(genotypes, window = NULL, min_r2 = NULL, min_obs = 2L){
 # window,
 # min_r2,
 # min_obs       : as documented on pairwise_ld()
-# p             : progressor to tick once the chromosome is done
+# p             : progressor counting markers, ticked once per marker on the chromosome
+#
+# Each tick says the LD is being calculated, which replaces the status shown while the
+# workers started.
+# ld_func_c() ticks as it goes, so a long chromosome moves the bar while it runs. ld_func()
+# cannot, so its chromosome is counted when it is done; so is anything ld_func_c() returned
+# early on without reaching the compiled loop
 chromosome_ld = function(genotypes, chromosome_fn, window, min_r2, min_obs, p){
-  chromo_ld = chromosome_fn(genotypes, window = window, min_r2 = min_r2, min_obs = min_obs)
-  p()
+  ticked = 0
+  tick = function(n) {
+    ticked <<- ticked + n
+    p(amount = n, message = "Calculating LD")
+  }
+
+  chromo_ld = if ("progress" %in% names(formals(chromosome_fn))) {
+    chromosome_fn(genotypes, window = window, min_r2 = min_r2, min_obs = min_obs, progress = tick)
+  } else {
+    chromosome_fn(genotypes, window = window, min_r2 = min_r2, min_obs = min_obs)
+  }
+
+  left = nrow(genotypes) - ticked
+  if (left > 0) p(amount = left, message = "Calculating LD")
   chromo_ld
 }
 
@@ -152,26 +178,29 @@ chromosome_ld = function(genotypes, chromosome_fn, window, min_r2, min_obs, p){
 # the remaining arguments are documented on pairwise_ld()
 pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs,
                            chromosome_fn){
+  report_step("pairwise_ld")
+
   # Validate the input genotype matrix structure and content before proceeding with LD calculations
   check_ld_matrix(genotype_matrix)
 
   #split the genotype matrix by chromosome for parallelization
   genotype_matrix = split(genotype_matrix, genotype_matrix[,2])
 
-  #setup parallelization using future and parallel package and utilize all but 1 core
+  #setup parallelization using future, limited to the cores HapSelect is allowed to use.
+  #the plan in place beforehand is put back afterwards, whether or not the run succeeds
   if(parallelize){
-    future::plan(multisession, workers = parallel::detectCores() - 1)
-    on.exit(future::plan(sequential), add = TRUE)
+    #starting the workers and sending them their chromosomes counts nothing, and takes seconds
+    report_status(sprintf("Starting %d workers", cpu_cores()))
+    old_plan = future::plan(multisession, workers = cpu_cores())
+    on.exit(future::plan(old_plan), add = TRUE)
   }
-
-  #setup progress bar
-  handlers("txtprogressbar")
 
   #call progress bar and perform main function
   with_progress({
 
-    #define the progress bar - it has as many iterations (along) as the list provided
-    p = progressor(along = genotype_matrix)
+    #define the progress bar - it counts markers, so it moves within a chromosome as well as
+    #between them
+    p = progressor(steps = sum(vapply(genotype_matrix, nrow, integer(1))))
 
     #parallelize the different chromosomes with furrr, provide their genotype data frames, and row bind all chromosomes back together
     #seed = TRUE gives each worker a parallel-safe RNG stream; LD draws no random
@@ -255,8 +284,8 @@ advise_parallel_ld = function(genotype_matrix, window){
 #                   SNP ID (character) in column 1, chromosome (numeric) in column
 #                   2, position (numeric) in column 3, and one column per
 #                   individual after that holding dosages of 0, 1, 2 or NA
-# parallelize     : if TRUE, process chromosomes in parallel using all available
-#                   cores minus one. Defaults to FALSE: starting workers costs time
+# parallelize     : if TRUE, process chromosomes in parallel, across the cores
+#                   cpu_cores() allows. Defaults to FALSE: starting workers costs time
 #                   that the compiled code is often fast enough not to earn back.
 #                   A run large enough to benefit says so
 # window          : only compare markers at most this many positions apart within

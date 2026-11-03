@@ -20,6 +20,8 @@
 compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov,
                               set_missing_NA = TRUE, mean_adjust = TRUE,
                               parallel = FALSE, chunk_size = 100){
+  report_step("local_gebv")
+
   .compute_local_block_effects(
     geno = geno,
     marker_effects = marker_effects,
@@ -52,6 +54,8 @@ compute_local_GEBV = function(geno, marker_effects, haploblocks_df, marker_pecov
 compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marker_pecov,
                                      set_missing_NA = TRUE, mean_adjust = TRUE,
                                      parallel = FALSE, chunk_size = 100){
+  report_step("haplotype_effects")
+
   .compute_local_block_effects(
     geno = geno,
     marker_effects = marker_effects,
@@ -101,7 +105,6 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
   # Process each haploblock to compute local GEBV
   # If in serial mode, use purrr::map with a progress bar to apply the block_mapper to each block ID in haploblocks_df.
   if(!parallel){
-    progressr::handlers("txtprogressbar")
     progressr::with_progress({
       p = progressr::progressor(steps = nrow(haploblocks_df))
       local_GEBV = purrr::map(haploblocks_df$Block_ID, function(haploblock){
@@ -111,10 +114,9 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
   # Otherwise, if in parallel mode, build payloads for each chunk of haploblocks based on estimated computational cost, and use furrr::future_map to process each chunk in parallel.
   # The results from all chunks are then combined back into the final local_GEBV list.
   } else {
-    # Use all cores available except for 1 to avoid overloading the system
-    workers = max(1L, as.integer(future::availableCores()) - 1L)
-
-    progressr::handlers("txtprogressbar")
+    # Ask HapSelect how many cores this session is allowed to use, so that a limit set by
+    # whatever launched this R process is respected.
+    workers = cpu_cores()
 
     # Build payloads for each chunk of haploblocks based on estimated computational cost, and target chunk size. This will determine how the haploblocks are grouped for parallel processing.
     chunk_payloads = build_gebv_chunk_payloads(
@@ -144,8 +146,13 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
       } else{
         # Otherwise use future to process the chunks in parallel, with the specified number of workers.
         # furrr forwards progressr signals from workers back to the main session automatically.
-        future::plan(future::multisession, workers = workers)
-        on.exit(future::plan(future::sequential), add = TRUE)
+        # Starting the workers and sending them their chunks counts no blocks, and on a small
+        # dataset takes longer than the blocks do, so the bar says what it is waiting on
+        p(amount = 0, message = sprintf("Starting %d workers", workers))
+        # The plan in place beforehand is put back afterwards, whether or not the run succeeds
+        old_plan = future::plan(future::multisession, workers = workers)
+        on.exit(future::plan(old_plan), add = TRUE)
+        p(amount = 0, message = sprintf("Processing blocks on %d workers", workers))
 
         chunk_results = furrr::future_map(
           chunk_payloads,
@@ -164,6 +171,8 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
     local_GEBV = local_GEBV[haploblocks_df$Block_ID]
   }
 
+
+  report_status("Summarising blocks")
 
   # Add summary information about the number of unique haplotypes and variance explained by haplotypes for each block back into the haploblocks_df for convenient access.
 
@@ -506,6 +515,8 @@ allocate_chunk_counts = function(group_costs, group_sizes, target_n_chunks){
 # workers        - integer: number of parallel workers; sets a floor on chunk count (workers * 2)
 # chunk_size     - integer: maximum blocks per chunk; sets a floor on chunk count (ceiling(n_blocks / chunk_size))
 build_gebv_chunk_payloads = function(prep, haploblocks_df, workers, chunk_size){
+  report_step("gebv_chunk_prep")
+
   block_ids = haploblocks_df$Block_ID
   block_costs = estimate_block_costs(
     block_marker_idx = prep$block_marker_idx,

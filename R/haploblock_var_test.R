@@ -6,6 +6,8 @@
 
 #head function to export
 haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
+  report_step("block_var_test")
+
   if (
     missing(gen_var) ||
     !is.numeric(gen_var) ||
@@ -16,8 +18,9 @@ haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
     stop("Please provide a valid value for the additive genetic variance (single positive numeric). This should be the estimate from GBLUP or computed as a function of the additive marker variance from a marker model.")
   }
 
+  # No missing() check here, unlike gen_var: threshold has a default, and missing() is TRUE
+  # whenever the argument is left out, default or not
   if (
-    missing(threshold) ||
     !is.numeric(threshold) ||
     length(threshold) != 1 ||
     is.na(threshold) ||
@@ -28,7 +31,6 @@ haploblock_var_test = function(haploblock_obj, geno, gen_var, threshold = 0.9){
 
   null_block_var = gen_var / nrow(haploblock_obj$Haploblocks)
 
-  progressr::handlers("txtprogressbar")
   progressr::with_progress({
     p = progressr::progressor(steps = nrow(haploblock_obj$Haploblocks))
 
