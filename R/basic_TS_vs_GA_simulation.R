@@ -132,7 +132,7 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 
   # One tick per simulated generation, across every rep of both sets of parents
   # The tick's message names which parents and rep are running, shown as the bar's status
-  progressr::with_progress({
+  hs_with_progress({
     p = progressr::progressor(steps = 2L * num_sim_reps * num_gen)
 
     #run it for the GA parents

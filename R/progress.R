@@ -3,8 +3,8 @@
 # Progress reporting. A progressr handler only sees counts, never which analysis is counting,
 # so report_step() names the step and both backends read the name from there.
 #
-# HAPSELECT_MACHINE_LOGGING picks the backend: unset draws a cli bar per step, "1" writes
-# one JSON line per event to stderr. Steps nest, so a reader needs a stack, not a slot.
+# HAPSELECT_MACHINE_LOGGING picks the backend: unset draws a cli bar, "1" writes one JSON
+# line per event to stderr. Steps nest, so a reader needs a stack, not a slot.
 #
 #   @@HS {"v":"2.0.0","at":"2026-09-10T04:21:09.114Z","event":"step_started","step":"ld_blocking","label":"LD Blocking"}
 #
@@ -60,15 +60,34 @@ progress_drawn = function() {
 }
 
 # Holds the current progress state
-# This is held in a env var so it persists across package calls
+# This is held in an environment so it persists across package calls
+#   stack: the open steps, innermost last. Each is list(id, current, total, status): the step's
+#          last count and status, which both backends read. current and total are NULL until
+#          the step counts something
+#   bar  : the one cli bar, list(id, envir), drawn for the step at the bottom of the stack
 .progress_state = new.env(parent = emptyenv())
 
-# Returns the current runnings step at the top of the stack
-current_step = function() {
+# The innermost open step's entry on the stack, or NULL outside any step
+top_frame = function() {
   stack = .progress_state$stack
-  if (is.null(stack) || length(stack) == 0L) return(NULL)
-  stack[[length(stack)]]
+  if (length(stack) == 0L) NULL else stack[[length(stack)]]
 }
+
+# Returns the id of the innermost open step, or NULL outside any step
+current_step = function() top_frame()$id
+
+# Change fields of the innermost open step's entry, e.g. set_top(status = "Writing VCF").
+# A field given as NULL is cleared
+set_top = function(...) {
+  n = length(.progress_state$stack)
+  if (n == 0L) return(invisible(FALSE))
+  fields = list(...)
+  for (field in names(fields)) .progress_state$stack[[n]][field] = list(fields[[field]])
+  invisible(TRUE)
+}
+
+# TRUE when a count is known: given, and usable
+known = function(count) !is.null(count) && !is.na(count)
 
 # A prefix placed at the start of each machine readable progress state 
 # Separates legitimate progress logs from warning and other tool output sharing stderr
@@ -103,6 +122,13 @@ emit_event = function(event, ...) {
 }
 
 # Human readable progress logging #
+#
+# cli draws one bar at a time, on the current line, so only the step at the bottom of the stack
+# gets one. A step running inside it, such as reading Beagle's output back in, shows in that
+# bar's status instead. A bar of its own would draw over the first, and the finished bars would
+# be left on screen in the order they finished, the inner step's above the step it is part of
+#
+#   Imputation (Beagle) ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■  100% | Reading VCF 60% | Converting genotypes | ETA: 0s
 
 # Returns a human readable label for regular progress logging, or the raw id if it has none
 step_label = function(id) {
@@ -110,16 +136,31 @@ step_label = function(id) {
   if (id %in% names(HS_STEPS)) unname(HS_STEPS[[id]]) else id
 }
 
-# Starts a progress bar for a step
+# What a bar is left showing when its step fails. cli only uses this when the bar is closed with
+# result = "failed", and falls back to the bar's running format without it, so a failed bar used
+# to be left frozen where it stopped: a spinner, or a part filled bar, as if it were still going.
+# The bar and percentage only show when the step got as far as counting, and the status says
+# what the step was doing when it failed. cli's status token carries a trailing space, so it is
+# trimmed and given one separator here
+#
+#   ✖ Imputation (Beagle) ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100% | Reading VCF 60% | Failed after 3s
+#   ✖ Local GEBV | Preparing Blocks 40% | Failed after 210ms
+BAR_FORMAT_FAILED = paste0(
+  "{cli::col_red(cli::symbol$cross)} {cli::pb_name}{cli::pb_bar}",
+  "{if (is.na(cli::pb_total)) '' else paste0(' ', trimws(cli::pb_percent), ' ')}| ",
+  "{if (nzchar(trimws(cli::pb_status))) paste0(trimws(cli::pb_status), ' ') else ''}",
+  "{cli::col_red('Failed')} after {cli::pb_elapsed}"
+)
+
+# Start the bar, for the step at the bottom of the stack
 bar_start = function(step) {
   # Do not delay showing progress bars
   shown = options(cli.progress_show_after = getOption("cli.progress_show_after", 0))
   # When the function exits, restore defaults
   on.exit(options(shown), add = TRUE)
 
-  # cli keeps one live bar per environment and closes it when another is started there, so
-  # each step's bar gets an environment of its own. Otherwise a nested step's bar would close
-  # the bar of the step around it, which would then never draw again
+  # cli ties a bar to an environment. This one is never left, so the bar stays open until
+  # bar_done() closes it
   envir = new.env(parent = globalenv())
 
   # Create the cli bar
@@ -127,19 +168,13 @@ bar_start = function(step) {
     step_label(step),
     total          = NA,                                       # unknown total draws a spinner, so uncountable work still shows as running
     clear          = getOption("cli.progress_clear", FALSE),   # leave the finished bar on screen
+    format_failed  = BAR_FORMAT_FAILED,                        # without it, a failed bar is left looking like it is still running
     auto_terminate = FALSE,                                    # would close the bar the moment the count reaches the total
     .auto_close    = FALSE,                                    # would close the bar when this function returns
     .envir         = envir
   ))
 
-  # Associate the progress bar id, and the environment it lives in, with the step
-  if (!is.null(bar)) .progress_state$bars[[step]] = list(id = bar, envir = envir)
-
-  # cli only draws on an update, so a step that never ticks would otherwise never be seen.
-  # Only when progress is shown: with progressr off, cli would print the bar as a message
-  if (!is.null(bar) && progress_drawn()) {
-    try_cli(cli::cli_progress_update(id = bar, set = 0, force = TRUE, .envir = envir))
-  }
+  .progress_state$bar = if (is.null(bar)) NULL else list(id = bar, envir = envir)
 }
 
 # Attempt to draw a CLI bar, catching the error in case something goes wrong
@@ -157,44 +192,65 @@ try_cli = function(expr) {
   tryCatch(expr, error = function(e) NULL)
 }
 
-# Update a progress bars state
-# status is optional text shown beside the bar, taken from the message a progressor ticks with
-bar_update = function(step, current, total, status = NULL) {
-  # Get the progress bar
-  bar = .progress_state$bars[[step]]
-  # If its null, return
-  if (is.null(bar)) return(invisible(FALSE))
+# The status a step running inside the bar's own step shows beside the bar: its name, how far
+# through it is, and its own status
+#
+#   Reading VCF 60%
+#   Reading VCF 100% | Converting genotypes
+nested_status = function(frame) {
+  shown = step_label(frame$id)
+  if (known(frame$current) && known(frame$total) && frame$total > 0L) {
+    shown = sprintf("%s %d%%", shown, as.integer(floor(100 * frame$current / frame$total)))
+  }
+  if (!is.null(frame$status)) shown = paste(shown, frame$status, sep = " | ")
+  shown
+}
 
-  # Update the progress bar
+# Draw the bar as the stack stands. The count is the bottom step's, which owns the bar, and the
+# status is the innermost step's
+# Only when progress is shown: with progressr off, cli would print the bar as a message
+bar_render = function() {
+  bar = .progress_state$bar
+  stack = .progress_state$stack
+  if (is.null(bar) || length(stack) == 0L || !progress_drawn()) return(invisible(FALSE))
+
+  owner = stack[[1]]
+  top = stack[[length(stack)]]
+  status = if (length(stack) == 1L) top$status else nested_status(top)
+  counted = known(owner$current)
+
+  # cli's default format puts the status directly before the ETA, so it carries its own separator
+  shown = if (is.null(status)) NULL else paste0(status, " | ")
+  # cli keeps the last status it was given when given none, so a status no longer wanted is
+  # cleared with an empty one. Only then: cli pads any status it was given, an empty one
+  # included, so a bar that never had one would otherwise gain a space before its ETA
+  cleared = is.null(shown) && !is.null(bar$shown)
+  .progress_state$bar$shown = shown
+
   try_cli(cli::cli_progress_update(
     id     = bar$id,
-    set    = if (is.na(current)) NULL else current,
-    # Without a count this only changes the status. cli adds one when given neither, which
-    # would move the bar on every status
-    inc    = if (is.na(current)) 0L else NULL,
-    total  = if (is.na(total)) NULL else total,
-    # cli's default format puts the status directly before the ETA, so it carries its own separator
-    status = if (is.null(status)) NULL else paste0(status, " | "),
+    set    = if (counted) owner$current else NULL,
+    # Without a count this only redraws. cli adds one when given neither
+    inc    = if (counted) NULL else 0L,
+    total  = if (known(owner$total)) owner$total else NULL,
+    status = if (cleared) "" else shown,
     # progressr already limits updates to one per interval, and cli's own limit on top would
     # drop a status set just before a long wait, such as starting parallel workers
     force  = TRUE,
     .envir = bar$envir
   ))
+  invisible(TRUE)
 }
 
-# Mark a progress bar as complete
+# Close the bar, once the step that owns it has finished
 # failed: TRUE when the step stopped with an error, so the bar shows it failed rather than finished
-bar_done = function(step, failed = FALSE) {
-  # Get the progress bar
-  bar = .progress_state$bars[[step]]
-  # If its null, return
+bar_done = function(failed = FALSE) {
+  bar = .progress_state$bar
   if (is.null(bar)) return(invisible(FALSE))
-
-  # Mark the progress bar as done
+  .progress_state$bar = NULL
   try_cli(cli::cli_progress_done(id = bar$id, .envir = bar$envir,
                                  result = if (failed) "failed" else "done"))
-  # Clear the progress bar id
-  .progress_state$bars[[step]] = NULL
+  invisible(TRUE)
 }
 
 # Clear the bar off its line so text printed next starts on a clean line
@@ -202,7 +258,7 @@ bar_done = function(step, failed = FALSE) {
 # such as cat() output or a message, then calls bar_unhide(). Without it the held back text
 # is printed from the start of the line the bar is drawn on, over the top of the bar
 bar_hide = function() {
-  if (!progress_drawn() || length(.progress_state$bars) == 0L) return(invisible(FALSE))
+  if (!progress_drawn() || is.null(.progress_state$bar)) return(invisible(FALSE))
 
   # The connection cli draws its bars on, and the same way cli clears its own status line
   out = cli::cli_output_connection()
@@ -214,12 +270,10 @@ bar_hide = function() {
   invisible(TRUE)
 }
 
-# Draw the current step's bar again, below the output progressr has just printed
+# Draw the bar again, below the output progressr has just printed
 bar_unhide = function() {
-  id = current_step()
-  if (is.null(id) || !progress_drawn()) return(invisible(FALSE))
-  bar = .progress_state$bars[[id]]
-  if (is.null(bar)) return(invisible(FALSE))
+  bar = .progress_state$bar
+  if (is.null(bar) || !progress_drawn()) return(invisible(FALSE))
 
   # inc = 0 redraws the bar as it stands, without counting anything
   try_cli(cli::cli_progress_update(id = bar$id, inc = 0L, force = TRUE, .envir = bar$envir))
@@ -234,15 +288,19 @@ bar_unhide = function() {
 #
 # envir is the calling functions name
 report_step = function(id, envir = parent.frame()) {
-  # Add the blank progress item to the stack
+  # Add the step to the stack, with nothing counted yet
   id = as.character(id)
-  .progress_state$stack = c(.progress_state$stack, id)
+  .progress_state$stack = c(.progress_state$stack,
+                            list(list(id = id, current = NULL, total = NULL, status = NULL)))
 
-  # Log as either a machine readable event, or start a progress bar
+  # Log as either a machine readable event, or draw it: the bottom step starts the bar, and a
+  # step inside it shows in the bar's status
   if (machine_logging()) {
     emit_event("step_started", step = id, label = step_label(id))
   } else {
-    bar_start(id)
+    if (length(.progress_state$stack) == 1L) bar_start(id)
+    # cli only draws on an update, so a step that never ticks would otherwise never be seen
+    bar_render()
   }
 
   # Register a call to close the step when it finishes
@@ -261,17 +319,24 @@ finish_step = function(id, returned) {
   # Get the error message if the step failed
   message = if (failed) sub("^Error[^:]*: ", "", trimws(geterrmessage())) else NULL
 
-  # Remove the step from the stack, and the counts it last reported
+  # Remove the step from the stack. Steps unwind innermost first, so this is the top entry,
+  # but it is found by id so a step left open by mistake cannot close the wrong one
   stack = .progress_state$stack
-  hit = which(stack == id)
-  if (length(hit) > 0L) .progress_state$stack = stack[-hit[[length(hit)]]]
-  .progress_state$counts[[id]] = NULL
+  hit = which(vapply(stack, function(frame) frame$id, character(1)) == id)
+  if (length(hit) > 0L) stack = stack[-hit[[length(hit)]]]
+  .progress_state$stack = stack
 
-  # Either log the step as finished in machine code (machine readable) or just close the bar (human readable)
   if (machine_logging()) {
     emit_event("step_finished", step = id, status = status, message = message)
-  } else {
-    bar_done(id, failed = failed)
+  } else if (length(stack) == 0L) {
+    # The step that owns the bar has finished
+    bar_done(failed = failed)
+  } else if (!failed) {
+    # A step inside the bar's own step has finished. The status the step around it had when
+    # this one began is not put back, as that work is over by the time this one finishes.
+    # A failed step's status is left on the bar, which fails with it, to show where it went wrong
+    set_top(status = NULL)
+    bar_render()
   }
 }
 
@@ -284,30 +349,31 @@ as_count = function(value) {
 
 # Report a tick or progress update
 report_tick = function(config, state) {
-  # Get the current step
-  id = current_step()
-  if (is.null(id)) return(invisible(FALSE))
+  if (is.null(current_step())) return(invisible(FALSE))
 
   # Get the total and current step counters
   total = as_count(config$max_steps)
   current = as_count(state$step)
-  
+
   # Check the total and valid counts are valid
   if (!is.na(total) && total <= 0L) total = NA_integer_
   if (!is.na(total) && !is.na(current)) current = min(current, total)
-
-  # Kept so that a status sent later, during work with no ticks, can repeat where the step got to
-  .progress_state$counts[[id]] = list(current = current, total = total)
 
   # A tick's message, such as the fold or rep being run, goes beside the bar or on the event
   message = state$message
   status = if (is.character(message) && length(message) == 1L && nzchar(message)) message else NULL
 
+  # Kept so that a status sent later, during work with no ticks, can repeat where the step got
+  # to. A tick without a message keeps the status the step already had
+  set_top(current = current, total = total)
+  if (!is.null(status)) set_top(status = status)
+
   # Report a tick either in machine readable format, or update the progress bar
   if (machine_logging()) {
-    emit_event("progress", step = id, current = current, total = total, message = status)
+    emit_event("progress", step = current_step(), current = current, total = total,
+               message = status)
   } else {
-    bar_update(id, current, total, status)
+    bar_render()
   }
 }
 
@@ -315,17 +381,16 @@ report_tick = function(config, state) {
 # writing a file or building a plot after the counted work is done
 # Shown beside the bar, or sent as a progress event carrying the message
 report_status = function(message) {
-  id = current_step()
-  if (is.null(id)) return(invisible(FALSE))
+  frame = top_frame()
+  if (is.null(frame)) return(invisible(FALSE))
 
   if (machine_logging()) {
     # The step's last counts, so a reader does not take the status as the count starting over
-    counts = .progress_state$counts[[id]]
-    emit_event("progress", step = id, current = counts$current, total = counts$total,
+    emit_event("progress", step = frame$id, current = frame$current, total = frame$total,
                message = message)
   } else if (progress_drawn()) {
-    # Only when a bar is drawn: with progressr off, cli would print the bar as a message
-    bar_update(id, NA_integer_, NA_integer_, message)
+    set_top(status = message)
+    bar_render()
   }
   invisible(TRUE)
 }
@@ -369,10 +434,7 @@ signal_chromosome_stage = function(chromosome, stage, ...) {
     list(message = "", call = NULL, chromosome = as.character(chromosome), stage = stage,
          details = list(...))
   )
-  # with_progress() holds back every condition while its bar is up, and once it has kept one
-  # it muffles it with the first restart whose name starts with "muffle". This gives it one
-  # of the stage's own, as future gives one passed back from a worker
-  withRestarts(signalCondition(cond), muffleChromosomeStage = function() NULL)
+  signalCondition(cond)
   invisible(NULL)
 }
 
@@ -403,13 +465,18 @@ chromosome_status = function(stages, width = Inf) {
   if (length(fits) > 0L) fits[[1]] else tally
 }
 
-# Room for the status beside the current step's bar. Unlimited when no bar is drawn, since
-# machine logging sends the status as an event rather than drawing it
+# Room for the status beside the bar. Unlimited when no bar is drawn, since machine logging
+# sends the status as an event rather than drawing it
 status_width = function() {
   if (!progress_drawn()) return(Inf)
-  id = current_step()
-  label = if (is.null(id)) "" else step_label(id)
-  max(0L, cli::console_width() - nchar(label) - BAR_COLUMNS)
+  stack = .progress_state$stack
+  used = if (length(stack) == 0L) 0L else nchar(step_label(stack[[1]]$id))
+  # A step inside the bar's own step puts its name and percentage before its status
+  if (length(stack) > 1L) {
+    top = stack[[length(stack)]]
+    used = used + nchar(nested_status(list(id = top$id, current = 1L, total = 1L))) + nchar(" | ")
+  }
+  max(0L, cli::console_width() - used - BAR_COLUMNS)
 }
 
 # Run expr, which works through chromosomes calling signal_chromosome_stage(), keeping the
@@ -421,10 +488,10 @@ status_width = function() {
 # p            : the progressor expr ticks, which carries the status to the bar
 #
 # The status goes out on the progressor, as a tick of nothing, rather than through
-# report_status(). with_progress() holds back every condition signalled while its bar is up,
-# cli's own drawing included, and would replay them later. A tick is handled with that
-# switched off. progressr throttles ticks, but keeps the latest status for the next one it
-# shows, so the status can lag by the throttle interval but always catches up
+# report_status(). Stages change far more often than is worth drawing, with many workers, and
+# progressr throttles ticks. It keeps the latest status for the next one it shows, so the
+# status can lag by the throttle interval but always catches up. A tick is also drawn at once:
+# cli draws with messages, which hs_with_progress() holds back when drawn outside a tick
 track_chromosome_stages = function(expr, chromosomes, describe_done, p) {
   chromosomes = as.character(chromosomes)
   stages = stats::setNames(rep(NA_character_, length(chromosomes)), chromosomes)
@@ -443,6 +510,18 @@ track_chromosome_stages = function(expr, chromosomes, describe_done, p) {
     }
     show()
   })
+}
+
+# progressr's with_progress(), holding back only messages and warnings while the bar is up
+# Use it in place of with_progress() wherever a step reports progress.
+#
+# By default with_progress() holds back every condition, its own progress ticks included.
+# Holding anything back makes it clear the bar, print what it held, and draw the bar again, on
+# every tick, throttled or not. With nothing printed in between, that is the bar blanking and
+# redrawing up to a hundred times a second. Messages and warnings are what can be printed, so
+# they are all it needs to hold back
+hs_with_progress = function(expr) {
+  progressr::with_progress(expr, delay_conditions = c("message", "warning"))
 }
 
 # Provides callbacks for progressr including initiation, updates and finish

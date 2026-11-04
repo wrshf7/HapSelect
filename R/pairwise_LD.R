@@ -196,7 +196,7 @@ pairwise_ld_run = function(genotype_matrix, parallelize, window, min_r2, min_obs
   }
 
   #call progress bar and perform main function
-  with_progress({
+  hs_with_progress({
 
     #define the progress bar - it counts markers, so it moves within a chromosome as well as
     #between them

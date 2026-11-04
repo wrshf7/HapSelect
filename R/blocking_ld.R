@@ -46,7 +46,7 @@ perform_ld_blocking = function(ld, map, method = c("flanking", "average"), toler
     on.exit(future::plan(old_plan), add = TRUE)
   }
 
-  with_progress({
+  hs_with_progress({
     p = progressor(steps = length(chromosomes))
 
     block_chromosome = function(chromosome) {

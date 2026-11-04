@@ -105,7 +105,7 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
   # Process each haploblock to compute local GEBV
   # If in serial mode, use purrr::map with a progress bar to apply the block_mapper to each block ID in haploblocks_df.
   if(!parallel){
-    progressr::with_progress({
+    hs_with_progress({
       p = progressr::progressor(steps = nrow(haploblocks_df))
       local_GEBV = purrr::map(haploblocks_df$Block_ID, function(haploblock){
         block_mapper(haploblock, p = p)
@@ -129,7 +129,7 @@ compute_haplotype_effects = function(geno, marker_effects, haploblocks_df, marke
     # Limit the number of workers to the number of chunks to avoid idle workers for small datasets
     # Unlikely to be an issue, but this is a safeguard against cases where chunk_size is set very high or the dataset is small, resulting in fewer chunks than available cores.
     workers = min(workers, length(chunk_payloads))
-    progressr::with_progress({
+    hs_with_progress({
       p = progressr::progressor(steps = nrow(haploblocks_df))
 
       # If workers is 1 or less, process the chunks sequentially without parallelization to avoid overhead.
@@ -555,7 +555,7 @@ build_gebv_chunk_payloads = function(prep, haploblocks_df, workers, chunk_size){
     )
   }) %>% unlist(recursive = FALSE)
 
-  progressr::with_progress({
+  hs_with_progress({
     p = progressr::progressor(steps = length(block_chunks), label = "Preparing chunks")
     purrr::map(block_chunks, function(chunk_block_ids){
       # Identify the union of all marker rows needed by this chunk's blocks

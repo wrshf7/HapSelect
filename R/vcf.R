@@ -232,7 +232,7 @@ read_vcf_records = function(path) {
   n_headers = 0L
   fields = list()
 
-  progressr::with_progress({
+  hs_with_progress({
     p = progressr::progressor(steps = total_kib)
     bytes_read = 0
     lines_read = 0

@@ -247,19 +247,100 @@ test_that("the handler is installed when nothing is registered", {
 })
 
 
-test_that("a nested step's bar leaves the bar of the step around it open", {
-  # cli closes a bar when another is started in the same environment, which left the outer
-  # step's bar closed for good once a nested step began
+# Run body with a bar drawn, returning each line cli draws. cli is made not dynamic, so it
+# sends each draw as a whole line, by signalling a cliMessage that testthat would otherwise
+# take for itself. Ticks are sent straight to report_tick(), as progressr would send them
+draw_lines <- function(body) {
+  old_env <- Sys.getenv("HAPSELECT_MACHINE_LOGGING", unset = NA)
+  old <- options(progressr.enable = TRUE, cli.dynamic = FALSE, cli.ansi = FALSE,
+                 cli.progress_show_after = 0, cli.width = 200)
   on.exit({
-    bar_done("gebv_chunk_prep")
-    bar_done("local_gebv")
+    if (is.na(old_env)) Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+    else Sys.setenv(HAPSELECT_MACHINE_LOGGING = old_env)
+    options(old)
+    .progress_state$stack <- NULL
+    .progress_state$bar <- NULL
   }, add = TRUE)
+  Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
 
-  bar_start("local_gebv")
-  outer <- .progress_state$bars$local_gebv$id
-  bar_start("gebv_chunk_prep")
+  lines <- character()
+  withCallingHandlers(body(), cliMessage = function(cnd) {
+    lines <<- c(lines, trimws(conditionMessage(cnd)))
+  })
+  lines[nzchar(lines)]
+}
 
-  expect_false(is.null(cli:::clienv$progress[[outer]]))
+tick <- function(current, total, message = NULL) {
+  report_tick(list(max_steps = total), list(step = current, message = message))
+}
+
+
+test_that("a step inside another shows in the bar's status, rather than as a bar of its own", {
+  # cli draws one bar at a time, so a bar for the inner step drew over the outer step's, and
+  # the finished bars were left on screen in the wrong order
+  inner <- function() { report_step("read_vcf"); tick(3, 5); report_status("Converting genotypes") }
+  outer <- function() {
+    report_step("beagle_impute")
+    report_status("Running Beagle")
+    tick(4, 4)
+    inner()
+  }
+
+  lines <- draw_lines(outer)
+
+  expect_false(any(grepl("Reading VCF [^0-9]", lines) & !grepl("^Imputation", lines)))
+  expect_true(any(grepl("^Imputation \\(Beagle\\) .*100% \\| Reading VCF 60% \\| Converting genotypes \\|", lines)))
+  # The outer bar's count is its own, never the inner step's
+  expect_false(any(grepl("^Imputation \\(Beagle\\) [^%]* 60% \\|", lines)))
+  # Once the inner step is done, the bar says neither what it nor the outer step was doing
+  last <- utils::tail(lines, 1)
+  expect_match(last, "^Imputation \\(Beagle\\) .*100%")
+  expect_no_match(last, "Reading VCF|Running Beagle")
+  expect_length(.progress_state$stack, 0)
+})
+
+
+test_that("a step inside another can share its id, and each unwinds on its own", {
+  inner <- function() { report_step("read_vcf"); tick(1, 2) }
+  outer <- function() { report_step("read_vcf"); tick(1, 4); inner(); tick(4, 4) }
+
+  lines <- draw_lines(outer)
+
+  expect_true(any(grepl("^Reading VCF .*25% \\| Reading VCF 50% \\|", lines)))
+  expect_match(utils::tail(lines, 1), "^Reading VCF .*100%")
+  expect_null(.progress_state$bar)
+})
+
+
+test_that("a failed step's bar says it failed, rather than looking like it is still running", {
+  # cli only uses format_failed when one is given, and otherwise leaves the running format
+  run <- function() { report_step("local_gebv"); tick(2, 4, "Fold 2/4"); stop("no markers") }
+
+  lines <- draw_lines(function() try(run(), silent = TRUE))
+
+  expect_match(utils::tail(lines, 1), "^\u2716 Local GEBV .* 50% \\| Fold 2/4 \\| Failed after ")
+})
+
+
+test_that("a failed inner step leaves its status on the bar, which fails with it", {
+  inner <- function() { report_step("read_vcf"); tick(3, 5); stop("bad VCF") }
+  outer <- function() { report_step("beagle_impute"); inner() }
+
+  lines <- draw_lines(function() try(outer(), silent = TRUE))
+
+  # The outer step never counted, so its failed line has no bar
+  expect_match(utils::tail(lines, 1),
+               "^\u2716 Imputation \\(Beagle\\) \\| Reading VCF 60% \\| Failed after ")
+  expect_length(.progress_state$stack, 0)
+})
+
+
+test_that("an inner step's status names it, with how far through it is", {
+  expect_equal(nested_status(list(id = "read_vcf")), "Reading VCF")
+  expect_equal(nested_status(list(id = "read_vcf", current = 1L, total = 3L)), "Reading VCF 33%")
+  expect_equal(nested_status(list(id = "read_vcf", current = 3L, total = 3L,
+                                  status = "Converting genotypes")),
+               "Reading VCF 100% | Converting genotypes")
 })
 
 
@@ -370,9 +451,9 @@ test_that("a failed step's bar is closed as failed, a finished one as done", {
   }, add = TRUE)
   Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
 
-  closed <- list()
-  local_mocked_bindings(bar_done = function(step, failed = FALSE) {
-    closed[[step]] <<- failed
+  closed <- logical()
+  local_mocked_bindings(bar_done = function(failed = FALSE) {
+    closed <<- c(closed, failed)
   })
 
   ok   <- function() { report_step("pairwise_ld"); invisible(NULL) }
@@ -380,8 +461,7 @@ test_that("a failed step's bar is closed as failed, a finished one as done", {
   ok()
   expect_error(fail(), "no markers")
 
-  expect_false(closed$pairwise_ld)
-  expect_true(closed$local_gebv)
+  expect_equal(closed, c(FALSE, TRUE))
 })
 
 test_that("the reporter can hide its bar, so held back output is printed above it", {
@@ -395,4 +475,44 @@ test_that("the reporter can hide its bar, so held back output is printed above i
   on.exit(options(old), add = TRUE)
   expect_false(reporter$hide())
   expect_false(reporter$unhide())
+})
+
+
+test_that("the bar is only cleared when there is held back output to print", {
+  # with_progress() held back its own ticks too, so it cleared and redrew the bar on every tick,
+  # throttled or not, which drew as the bar flashing
+  old_env <- Sys.getenv("HAPSELECT_MACHINE_LOGGING", unset = NA)
+  old_handlers <- progressr::handlers()
+  old <- options(progressr.enable = TRUE)
+  on.exit({
+    if (is.na(old_env)) Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+    else Sys.setenv(HAPSELECT_MACHINE_LOGGING = old_env)
+    progressr::handlers(old_handlers)
+    options(old)
+  }, add = TRUE)
+  Sys.unsetenv("HAPSELECT_MACHINE_LOGGING")
+  progressr::handlers(handler_hapselect())
+
+  hides <- 0L
+  local_mocked_bindings(bar_hide = function() { hides <<- hides + 1L; invisible(TRUE) },
+                        bar_unhide = function() invisible(TRUE))
+
+  messages <- character()
+  withCallingHandlers(
+    hs_with_progress({
+      p <- progressr::progressor(steps = 100)
+      for (i in 1:100) {
+        if (i %% 50 == 0) message("printed ", i)
+        p()
+      }
+    }),
+    message = function(m) {
+      messages <<- c(messages, trimws(conditionMessage(m)))
+      invokeRestart("muffleMessage")
+    }
+  )
+
+  # Messages are still held back and printed, but the bar is cleared only to print them
+  expect_equal(messages, c("printed 50", "printed 100"))
+  expect_lte(hides, 2L)
 })
