@@ -292,3 +292,201 @@ test_that("haplotype_parent_selection runs without error for all three strategie
     )
   }
 })
+
+
+# Tests: progress reporting ---------------------------------------------------
+
+# Run body and keep every progress update it signals, with the amount and message it ticked with
+collect_updates <- function(body) {
+  updates <- list()
+  withCallingHandlers(body(), progression = function(c) {
+    if (identical(c$type, "update")) {
+      updates[[length(updates) + 1L]] <<- list(amount = c$amount, message = c$message)
+    }
+  })
+  updates
+}
+
+run_lgebv_selection <- function(maxiter = 50, run = 5, monitor = FALSE) {
+  set.seed(42)
+  local_gebv_parent_selection(
+    haploblock_obj = make_lgebv_obj(),
+    strategy       = "no_selfing",
+    n_founders     = 3,
+    popSize        = 20,
+    maxiter        = maxiter,
+    run            = run,
+    monitor        = monitor
+  )
+}
+
+test_that("custom_monitor summarises a generation on the scale the user asked for", {
+  obj <- methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(-1, -2, -3))
+
+  expect_equal(custom_monitor(obj, maximize = TRUE),  "Best = -1.000 | Mean = -2.000")
+  # Minimising flips the sign for the GA, so the summary flips it back
+  expect_equal(custom_monitor(obj, maximize = FALSE), "Best = 1.000 | Mean = 2.000")
+})
+
+test_that("parent selection reports its step, ticking through to maxiter", {
+  events <- with_machine_logging(function() run_lgebv_selection(maxiter = 50))
+  ticks <- Filter(function(e) identical(e$event, "progress"), events)
+
+  expect_equal(kinds(events)[1], "step_started")
+  expect_equal(steps(events)[1], "local_gebv_parent_selection")
+  expect_equal(events[[length(events)]]$event, "step_finished")
+  expect_equal(events[[length(events)]]$status, "succeeded")
+
+  expect_gt(length(ticks), 0)
+  for (tick in ticks) expect_equal(tick$step, "local_gebv_parent_selection")
+  expect_equal(ticks[[length(ticks)]]$current, 50)
+  expect_equal(ticks[[length(ticks)]]$total, 50)
+})
+
+test_that("a GA that stops early still ticks the full maxiter", {
+  updates <- NULL
+  result <- NULL
+  with_machine_logging(function() {
+    updates <<- collect_updates(function() result <<- run_lgebv_selection(maxiter = 500, run = 5))
+  })
+
+  # Five individuals choose three founders, so the best is found long before 500 iterations
+  expect_lt(result$GA@iter, 500)
+  amounts <- vapply(updates, function(u) u$amount, numeric(1))
+  expect_equal(sum(amounts), 500)
+  # One tick per iteration, then one more covering the iterations that never ran. Sorted
+  # because with_progress() holds conditions back, so they can reach this handler out of order
+  expect_equal(sort(amounts), sort(c(rep(1, result$GA@iter), 500 - result$GA@iter)))
+})
+
+test_that("monitor = TRUE carries the fitness summary on the bar when a bar is drawn", {
+  # Ticks still need to be signalled, so machine logging stays on and only the bar is faked
+  local_mocked_bindings(progress_drawn = function() TRUE)
+  # Wide enough that the status is not cut back to fit
+  old <- options(cli.width = 200)
+  on.exit(options(old), add = TRUE)
+  updates <- NULL
+  out <- NULL
+  with_machine_logging(function() {
+    out <<- capture.output(updates <<- collect_updates(function() run_lgebv_selection(monitor = TRUE)))
+  })
+
+  expect_length(out, 0)
+  messages <- unlist(lapply(updates, function(u) u$message))
+  expect_true(any(grepl("^Iter [0-9]+ \\| Stall [0-9]+/4 \\| Best = -?[0-9.]+ \\| Mean = -?[0-9.]+ \\| SD = [0-9.]+$", messages)))
+})
+
+test_that("monitor = TRUE prints the fitness summary when no bar is drawn", {
+  # Machine logging draws no bar, so the line goes to stdout as it did before progress reporting
+  updates <- NULL
+  out <- NULL
+  result <- NULL
+  with_machine_logging(function() {
+    out <<- capture.output(updates <<- collect_updates(function() result <<- run_lgebv_selection(monitor = TRUE)))
+  })
+
+  expect_length(out, result$GA@iter)
+  expect_match(out[1], "^Iter    1 \\| Best = -?[0-9.]+ \\| Mean = -?[0-9.]+ \\| SD = [0-9.]+$")
+  expect_length(unlist(lapply(updates, function(u) u$message)), 0)
+})
+
+test_that("monitor = TRUE prints in a batch run, where progressr is switched off", {
+  old <- options(progressr.enable = FALSE)
+  on.exit(options(old), add = TRUE)
+  result <- NULL
+
+  out <- capture.output(result <- run_lgebv_selection(monitor = TRUE))
+
+  expect_length(out, result$GA@iter)
+})
+
+# A ga object part way through a run, with each generation's best fitness
+ga_at <- function(best) {
+  methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(1, 2),
+               iter = length(best), summary = cbind(max = best, mean = best))
+}
+
+test_that("ga_stall counts the generations since the best fitness last improved", {
+  # Improved this generation
+  expect_identical(ga_stall(ga_at(c(1, 2, 3))), 0L)
+  # Best found at generation 2, now generation 5
+  expect_identical(ga_stall(ga_at(c(1, 3, 3, 3, 3))), 3L)
+  # Never improved after the first generation
+  expect_identical(ga_stall(ga_at(c(5, 5, 5, 5))), 3L)
+  # A generation only rounding noise above the best is not an improvement
+  expect_identical(ga_stall(ga_at(c(1, 3, 3 + 1e-12, 3))), 2L)
+  # A real improvement, however small, is
+  expect_identical(ga_stall(ga_at(c(1, 3, 3 + 1e-6, 3 + 1e-6))), 1L)
+})
+
+test_that("ga_stall counts a generation with no fitness as one without improvement", {
+  expect_identical(ga_stall(ga_at(c(1, NA, 3, NA, 3))), 2L)
+  expect_identical(ga_stall(ga_at(c(NA, NA, 3))), 0L)
+  # Nothing to count from: no generations yet, or none with a fitness
+  expect_identical(ga_stall(ga_at(numeric())), 0L)
+  expect_identical(ga_stall(ga_at(c(NA_real_, NA_real_))), 0L)
+})
+
+test_that("ga_stall is one below GA's own run count, so it reaches run - 1 when GA stops", {
+  for (best in list(c(1, 2, 3), c(1, 3, 3, 3, 3), c(5, 5, 5, 5), c(1, 2, 2, 4, 4, 4))) {
+    expect_equal(ga_stall(ga_at(best)), GA:::garun(best) - 1, info = paste(best, collapse = " "))
+  }
+
+  # A run that stops early, on its own, ends on run - 1
+  result <- run_lgebv_selection(maxiter = 200, run = 5)
+  expect_lt(result$GA@iter, 200)
+  expect_identical(ga_stall(result$GA), 4L)
+})
+
+test_that("ga_status carries iter and stall, and drops fields to fit the width", {
+  obj <- methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(-1, -2, -3),
+                      iter = 7, summary = cbind(max = rep(-1, 7), mean = rep(-2, 7)))
+
+  full <- ga_status(obj, maximize = TRUE, run = 50)
+  expect_equal(full, "Iter 7 | Stall 6/49 | Best = -1.000 | Mean = -2.000 | SD = 1.000")
+  expect_equal(ga_status(obj, run = 50, width = nchar(full) - 1),
+               "Iter 7 | Stall 6/49 | Best = -1.000 | Mean = -2.000")
+  expect_equal(ga_status(obj, run = 50, width = 40), "Iter 7 | Best = -1.000 | Mean = -2.000")
+  expect_equal(ga_status(obj, run = 50, width = 0), "Iter 7 | Best = -1.000")
+})
+
+test_that("the printed SD stays positive when minimising", {
+  obj <- methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(-1, -2, -3))
+
+  expect_match(custom_monitor(obj, maximize = FALSE, sd = TRUE), "SD = 1.000$")
+})
+
+test_that("monitor = FALSE ticks without a fitness summary", {
+  updates <- NULL
+  with_machine_logging(function() {
+    updates <<- collect_updates(function() run_lgebv_selection(monitor = FALSE))
+  })
+
+  expect_gt(length(updates), 0)
+  expect_length(unlist(lapply(updates, function(u) u$message)), 0)
+})
+
+test_that("haplotype parent selection reports its own step", {
+  events <- with_machine_logging(function() {
+    set.seed(42)
+    haplotype_parent_selection(make_haplotype_obj(), strategy = "OHS", n_founders = 3,
+                               popSize = 20, maxiter = 20, run = 5, monitor = FALSE)
+  })
+
+  expect_equal(unique(steps(events)), "haplotype_parent_selection")
+  expect_equal(events[[length(events)]]$status, "succeeded")
+})
+
+test_that("each generation's fitness is reported as a metric, on the user's scale", {
+  result <- NULL
+  events <- with_machine_logging(function() result <<- run_lgebv_selection(maxiter = 30))
+  metrics <- Filter(function(e) identical(e$event, "metric"), events)
+
+  # One per generation the GA actually ran, whether or not monitor is on
+  expect_length(metrics, result$GA@iter)
+  expect_equal(unique(vapply(metrics, function(e) e$name, character(1))), "ga_generation")
+  expect_equal(vapply(metrics, function(e) e$values$iter, numeric(1)), seq_len(result$GA@iter))
+  last <- metrics[[length(metrics)]]$values
+  expect_equal(last$best, max(result$GA@fitness, na.rm = TRUE))
+  expect_true(all(c("mean", "sd") %in% names(last)))
+})

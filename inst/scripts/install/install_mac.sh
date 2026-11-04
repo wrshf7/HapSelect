@@ -21,6 +21,12 @@ if ! command -v Rscript >/dev/null 2>&1; then
   exit 1
 fi
 
+# Check that Java is available to run Beagle.
+if ! command -v java >/dev/null 2>&1; then
+  echo "Java is required to run Beagle but was not found. Install a JRE (8 or later) and rerun this script." >&2
+  exit 1
+fi
+
 # Check that the Xcode Command Line Tools are available for package compilation.
 if ! xcode-select -p >/dev/null 2>&1; then
   echo "Xcode Command Line Tools are required but were not found." >&2
@@ -82,6 +88,11 @@ if ! plink --version; then
   fi
   exit 1
 fi
+
+# Download and install Beagle (5.5) into the user's bin directory, alongside PLINK.
+curl -L "https://faculty.washington.edu/browning/beagle/beagle.27Feb25.75f.jar" \
+  -o "$HOME/bin/beagle.27Feb25.75f.jar"
+java -jar "$HOME/bin/beagle.27Feb25.75f.jar"
 
 # Install the R dependencies required by HapSelect.
 Rscript -e "if (!requireNamespace('remotes', quietly = TRUE)) install.packages('remotes', repos = 'https://cloud.r-project.org'); remotes::install_deps('$PACKAGE_DIR', dependencies = TRUE)"

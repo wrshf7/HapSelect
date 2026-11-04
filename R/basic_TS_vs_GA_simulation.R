@@ -75,11 +75,13 @@ check_geno_marker_compatibility = function(geno, marker_effects, map){
 
 #write out the simulation files
 write_sim_files = function(GA_geno, TS_geno, map, marker_effects, temp_string){
+  # Only genomicSimulation reads these, so they go in the session's temporary directory
+  # rather than the working directory, where a run that failed would leave them behind
   file_list = c(
-    map_file_name = paste0("Genomic_Simulation_genetic_map_temp_",temp_string,".txt"),
-    geno_GA_file_name = paste0("Genomic_Simulation_GA_genotypes_temp_",temp_string,".txt"),
-    geno_TS_file_name = paste0("Genomic_Simulation_TS_genotypes_temp_",temp_string,".txt"),
-    marker_eff_file_name = paste0("Genomic_Simulation_marker_effects_temp_",temp_string,".txt")
+    map_file_name = file.path(tempdir(), paste0("Genomic_Simulation_genetic_map_temp_",temp_string,".txt")),
+    geno_GA_file_name = file.path(tempdir(), paste0("Genomic_Simulation_GA_genotypes_temp_",temp_string,".txt")),
+    geno_TS_file_name = file.path(tempdir(), paste0("Genomic_Simulation_TS_genotypes_temp_",temp_string,".txt")),
+    marker_eff_file_name = file.path(tempdir(), paste0("Genomic_Simulation_marker_effects_temp_",temp_string,".txt"))
   )
 
   write.table(map, file = file_list["map_file_name"], sep = " ", col.names = TRUE, row.names = FALSE, quote = FALSE)
@@ -92,7 +94,30 @@ write_sim_files = function(GA_geno, TS_geno, map, marker_effects, temp_string){
 
 #clean up the simulation files
 delete_sim_files = function(file_list){
-  invisible(file.remove(file_list))
+  invisible(unlink(file_list, force = TRUE))
+}
+
+# Loads one set of parents into genomicSimulation and prints what it read from each file,
+# so a bad import can be spotted. load.data() names each file by its path, which here is a
+# temporary file the user never made, so each path is swapped for what the file holds.
+# The paths are ones we wrote and are matched exactly, so if genomicSimulation changes its
+# wording a line keeps its path rather than being lost.
+# Inside with_progress() this output is held back until the bar finishes.
+#
+# label: which parents these are, e.g. "GA parents"
+load_sim_population = function(label, allele_file, map_file, effect_file){
+  out = utils::capture.output(
+    init <- genomicSimulation::load.data(allele.file = allele_file,
+                                         map.file = map_file,
+                                         effect.file = effect_file)
+  )
+  files = c(map = map_file, genotypes = allele_file, effects = effect_file)
+  for(nm in names(files)){
+    out = gsub(sprintf("(Loading %s) ", files[[nm]]), sprintf("  %-11s", paste0(nm, ":")),
+               out, fixed = TRUE)
+  }
+  cat(sprintf("Loaded %s into genomicSimulation:", label), out, sep = "\n")
+  init
 }
 
 # simulation function
@@ -105,50 +130,52 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
   mean_BV_TS = list()
 
 
-  #run it for the GA parents
-  cat("\nRunning simulation for GA selected parents:\n\n")
+  # One tick per simulated generation, across every rep of both sets of parents
+  # The tick's message names which parents and rep are running, shown as the bar's status
+  hs_with_progress({
+    p = progressr::progressor(steps = 2L * num_sim_reps * num_gen)
 
-  #initiate populations
-  init = genomicSimulation::load.data(allele.file = temp_files[[2]],
-                                      map.file = temp_files[[1]],
-                                      effect.file = temp_files[[4]])
-  g0 = init$groupNum
+    #run it for the GA parents
+    #initiate populations
+    init = load_sim_population("GA parents", allele_file = temp_files[[2]],
+                               map_file = temp_files[[1]], effect_file = temp_files[[4]])
+    g0 = init$groupNum
 
-  #simulate across reps
-  for(rep in seq_len(num_sim_reps)){
-    current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
-    mean_BV_GA[[rep]] = sim_gens(num_gen = num_gen, init = init,
-                                 num_parents = num_GA_parents, num_cross_per_gen = num_cross_per_gen,
-                                 current_pop = current_pop, maximize = maximize)
-  }
+    #simulate across reps
+    for(rep in seq_len(num_sim_reps)){
+      current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
+      mean_BV_GA[[rep]] = sim_gens(num_gen = num_gen, init = init,
+                                   num_parents = num_GA_parents, num_cross_per_gen = num_cross_per_gen,
+                                   current_pop = current_pop, maximize = maximize,
+                                   p = p, status = sprintf("GA parents | rep %d/%d", rep, num_sim_reps))
+    }
 
-  groups = genomicSimulation::see.existing.groups()$Group
-  for(group in groups){
-    invisible(utils::capture.output(genomicSimulation::delete.group(group)))
+    groups = genomicSimulation::see.existing.groups()$Group
+    for(group in groups){
+      invisible(utils::capture.output(genomicSimulation::delete.group(group)))
 
-  }
+    }
 
-  #run it for the TS parents
-  cat("\nRunning simulation for TS selected parents:\n\n")
+    #run it for the TS parents
+    #initiate populations
+    init = load_sim_population("TS parents", allele_file = temp_files[[3]],
+                               map_file = temp_files[[1]], effect_file = temp_files[[4]])
+    g0 = init$groupNum
 
-  #initiate populations
-  init = genomicSimulation::load.data(allele.file = temp_files[[3]],
-                                      map.file = temp_files[[1]],
-                                      effect.file = temp_files[[4]])
-  g0 = init$groupNum
+    for(rep in seq_len(num_sim_reps)){
+      current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
+      mean_BV_TS[[rep]] = sim_gens(num_gen = num_gen, init = init,
+                                   num_parents = num_TS_parents, num_cross_per_gen = num_cross_per_gen,
+                                   current_pop = current_pop, maximize = maximize,
+                                   p = p, status = sprintf("TS parents | rep %d/%d", rep, num_sim_reps))
+    }
 
-  for(rep in seq_len(num_sim_reps)){
-    current_pop = genomicSimulation::make.random.crosses(g0, n.crosses = num_cross_per_gen, give.names = FALSE, name.prefix = "F1.")
-    mean_BV_TS[[rep]] = sim_gens(num_gen = num_gen, init = init,
-                                 num_parents = num_TS_parents, num_cross_per_gen = num_cross_per_gen,
-                                 current_pop = current_pop, maximize = maximize)
-  }
+    groups = genomicSimulation::see.existing.groups()$Group
+    for(group in groups){
+      invisible(utils::capture.output(genomicSimulation::delete.group(group)))
 
-  groups = genomicSimulation::see.existing.groups()$Group
-  for(group in groups){
-    invisible(utils::capture.output(genomicSimulation::delete.group(group)))
-
-  }
+    }
+  })
 
   # GA
   df_GA = do.call(rbind, lapply(seq_along(mean_BV_GA), function(i) {
@@ -183,7 +210,9 @@ run_basic_simulation = function(temp_files, num_gen, num_sim_reps,
 }
 
 # main function to run the simulation for specified number of generations
-sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, maximize){
+# p      - optional progressr progressor; called once per generation to report progress
+# status - optional text the progressor ticks with, naming what is being simulated
+sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, maximize, p = NULL, status = NULL){
   mean_BV = c()
   for(gen in seq_len(num_gen)){
     # Record mean BV of current population
@@ -207,6 +236,11 @@ sim_gens = function(num_gen, init, num_parents, num_cross_per_gen, current_pop, 
     )
 
     invisible(utils::capture.output(genomicSimulation::delete.group(selected)))
+
+    # Call the progress function if provided (e.g. to update a progress bar in the caller)
+    if(!is.null(p)){
+      p(message = status)
+    }
   }
 
   invisible(utils::capture.output(genomicSimulation::delete.group(current_pop)))
@@ -435,6 +469,7 @@ localGEBV_vs_TS_simulation = function(
     colors = c("green", "#d95f02", "#A01FF0", "gray80"),
     alpha = c(1,1,1,0.5)
 ){
+  report_step("local_gebv_simulation")
 
   check_geno_marker_compatibility(geno, marker_effects, map)
 
@@ -539,6 +574,8 @@ localGEBV_vs_TS_simulation = function(
     marker_effects = marker_effects,
     temp_string = temp_string
   )
+  # Removed however the simulation ends, including on an error part way through
+  on.exit(delete_sim_files(temp_files), add = TRUE)
 
   summary_df <- run_basic_simulation(
     temp_files,
@@ -550,10 +587,10 @@ localGEBV_vs_TS_simulation = function(
     maximize = maximize
   )
 
-  delete_sim_files(temp_files)
-
   gc()
 
+  # The simulation's ticks are done; the plots and PCA after them have none of their own
+  report_status("Building plots")
   sim_plot <- generate_sim_traject_plot(summary_df, colors[1:2])
 
   if(PCA){
@@ -598,6 +635,7 @@ Haplotype_vs_TS_simulation = function(
     colors = c("green", "#d95f02", "#A01FF0", "gray80"),
     alpha = c(1,1,1,0.5)
 ){
+  report_step("haplotype_simulation")
 
   check_geno_marker_compatibility(geno_phased, marker_effects, map)
 
@@ -710,6 +748,8 @@ Haplotype_vs_TS_simulation = function(
   temp_files <- write_sim_files(
     GA_geno, TS_geno, map, marker_effects, temp_string
   )
+  # Removed however the simulation ends, including on an error part way through
+  on.exit(delete_sim_files(temp_files), add = TRUE)
 
   summary_df <- run_basic_simulation(
     temp_files,
@@ -721,10 +761,10 @@ Haplotype_vs_TS_simulation = function(
     maximize = maximize
   )
 
-  delete_sim_files(temp_files)
-
   gc()
 
+  # The simulation's ticks are done; the plots and PCA after them have none of their own
+  report_status("Building plots")
   sim_plot <- generate_sim_traject_plot(summary_df, colors[1:2])
 
   if(PCA){

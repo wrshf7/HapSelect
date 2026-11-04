@@ -162,3 +162,68 @@ simulate_haploblocks = function(geno, n_blocks, seed) {
 
   block_rows
 }
+
+# print_benchmark_table --------------------------------------------------------
+# Renders a data frame as a bordered table, for the summary a benchmark prints at
+# the end. Numeric columns are right aligned and thousands separated, character
+# columns left aligned, and a rule is drawn wherever the value in `group` changes
+# so that related rows read together.
+#
+# df    : data frame to render, one row per result
+# title : optional heading printed above the table
+# group : optional vector, one entry per row; a rule is drawn between groups
+# notes : optional character vector printed under the table
+print_benchmark_table = function(df, title = NULL, group = NULL, notes = character()) {
+  if (is.null(df) || nrow(df) == 0L) {
+    if (!is.null(title)) cat(title, "\n", sep = "")
+    cat("(no results)\n")
+    return(invisible(NULL))
+  }
+
+  # Format each column, remembering whether it was numeric so it can be aligned
+  numeric_col = vapply(df, is.numeric, logical(1))
+  cells = lapply(seq_along(df), function(j) {
+    values = df[[j]]
+    if (!numeric_col[j]) return(as.character(values))
+    if (all(values == round(values), na.rm = TRUE)) {
+      formatC(values, format = "d", big.mark = ",")
+    } else {
+      formatC(values, format = "f", digits = 3, big.mark = ",")
+    }
+  })
+
+  headers = names(df)
+  widths = vapply(seq_along(cells), function(j) {
+    max(nchar(headers[j]), max(nchar(cells[[j]])))
+  }, numeric(1))
+
+  rule = function(left, mid, right, fill = "─") {
+    paste0(left, paste(vapply(widths, function(w) strrep(fill, w + 2), character(1)),
+                       collapse = mid), right)
+  }
+  row_text = function(values) {
+    padded = vapply(seq_along(values), function(j) {
+      formatC(values[j], width = widths[j],
+              flag = if (numeric_col[j]) "" else "-")
+    }, character(1))
+    paste0("│ ", paste(padded, collapse = " │ "), " │")
+  }
+
+  if (!is.null(title)) cat("\n", title, "\n", sep = "")
+  cat(rule("┌", "┬", "┐"), "\n", sep = "")
+  cat(row_text(headers), "\n", sep = "")
+  cat(rule("╞", "╪", "╡", "═"), "\n", sep = "")
+
+  previous = NULL
+  for (i in seq_len(nrow(df))) {
+    if (!is.null(group) && !is.null(previous) && group[i] != previous) {
+      cat(rule("├", "┼", "┤"), "\n", sep = "")
+    }
+    cat(row_text(vapply(cells, function(col) col[i], character(1))), "\n", sep = "")
+    previous = if (is.null(group)) NULL else group[i]
+  }
+  cat(rule("└", "┴", "┘"), "\n", sep = "")
+
+  for (note in notes) cat(note, "\n", sep = "")
+  invisible(NULL)
+}

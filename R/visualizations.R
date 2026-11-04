@@ -656,3 +656,335 @@ GA_progress_plot <- function(
       y = "Ultimate GEBV of Populations"
     ) + theme_cowplot()
 }
+
+
+#### Visualize Haploblock Variance on Haploblock Plot ####
+plot_haploblocks_variance <- function(
+    haploblock_obj,
+    variance = "Block_Var",
+    scale_viridis_option = c("magma", "inferno", "plasma", "viridis", "cividis", "rocket", "mako", "turbo", "A", "B", "C", "D", "E", "F", "G", "H"),
+    chrom_fill = NA,
+    height = 0.30,
+    single_width_bp = NULL
+) {
+
+  haploblock_df <- haploblock_obj$Haploblocks
+
+  if(
+    !is.character(variance) ||
+    length(variance) != 1 ||
+    is.na(variance) ||
+    is.null(variance)
+  ) {
+    stop(
+      "'variance' must be a single character string matching a column ",
+      "in the 'Haploblocks' data frame, usually either 'Block_Var' or ",
+      "'Unique_Haplo_Block_Var'.",
+      call. = FALSE
+    )
+  }
+
+  scale_viridis_option = match.arg(scale_viridis_option)
+
+  required_cols <- c(
+    "Chrom",
+    "Start_Pos",
+    "End_Pos",
+    variance
+  )
+
+  if(!all(required_cols %in% names(haploblock_df))) {
+    stop(
+      "'Haploblocks' data frame in 'haploblock_obj' must contain: ",
+      paste(required_cols[1:3], collapse = ", "),
+      " and the specified variance column: ", required_cols[4],
+      ". Please ensure you have calculated localGEBV",
+      " or haplotype effects prior to running this step and provide the output object here."
+    )
+  }
+
+  if(!is.numeric(height) || length(height) != 1 || height <= 0) {
+    stop("'height' must be a positive numeric value.")
+  }
+
+  if(!is.numeric(haploblock_df[[variance]])) {
+    stop("The specified 'variance' column must contain numeric values.")
+  }
+
+  if(!is.null(single_width_bp)) {
+
+    if(
+      !is.numeric(single_width_bp) ||
+      length(single_width_bp) != 1 ||
+      single_width_bp <= 0
+    ) {
+      stop(
+        "'single_width_bp' must be NULL or a positive numeric value."
+      )
+    }
+  }
+
+
+  # --------------------------------------------------------------------------
+  # Prepare chromosome information
+  # --------------------------------------------------------------------------
+
+  haploblock_df$Chrom <- as.factor(
+    haploblock_df$Chrom
+  )
+
+  chrom_sizes <- haploblock_df %>%
+
+    group_by(Chrom) %>%
+
+    summarise(
+      Chr_len = max(
+        End_Pos,
+        na.rm = TRUE
+      ),
+      .groups = "drop"
+    ) %>%
+
+    mutate(
+      y = row_number()
+    )
+
+
+  # Add chromosome y position
+
+  haploblock_df <- haploblock_df %>%
+
+    mutate(
+      y = as.integer(
+        match(
+          as.character(Chrom),
+          as.character(chrom_sizes$Chrom)
+        )
+      )
+    )
+
+
+  # --------------------------------------------------------------------------
+  # Split multi-SNP blocks from single-SNP blocks
+  # --------------------------------------------------------------------------
+
+  block_regions <- haploblock_df[
+    haploblock_df$Start_Pos != haploblock_df$End_Pos,
+  ]
+
+  single_markers <- haploblock_df[
+    haploblock_df$Start_Pos == haploblock_df$End_Pos,
+  ]
+
+
+  # --------------------------------------------------------------------------
+  # Set single-marker display width
+  # --------------------------------------------------------------------------
+
+  if(is.null(single_width_bp)) {
+
+    med_len <- median(
+      chrom_sizes$Chr_len,
+      na.rm = TRUE
+    )
+
+    single_width_bp <- pmax(
+      med_len * 0.00005,
+      1
+    )
+  }
+
+
+  # --------------------------------------------------------------------------
+  # Calculate plotting coordinates
+  # --------------------------------------------------------------------------
+
+  chrom_sizes <- chrom_sizes %>%
+
+    mutate(
+      ymin = y - height,
+      ymax = y + height
+    )
+
+
+  # Multi-SNP blocks
+
+  if(nrow(block_regions) > 0) {
+
+    block_regions <- block_regions %>%
+
+      mutate(
+        xmin = Start_Pos,
+        xmax = End_Pos,
+        ymin = y - height,
+        ymax = y + height
+      )
+
+  } else {
+
+    block_regions <- block_regions %>%
+
+      mutate(
+        xmin = numeric(0),
+        xmax = numeric(0),
+        ymin = numeric(0),
+        ymax = numeric(0)
+      )
+  }
+
+
+  # Single-SNP blocks
+
+  if(nrow(single_markers) > 0) {
+
+    single_markers <- single_markers %>%
+
+      mutate(
+        xmin = pmax(
+          0,
+          Start_Pos - single_width_bp / 2
+        ),
+        xmax = Start_Pos + single_width_bp / 2,
+        ymin = y - height,
+        ymax = y + height
+      )
+
+  } else {
+
+    single_markers <- single_markers %>%
+
+      mutate(
+        xmin = numeric(0),
+        xmax = numeric(0),
+        ymin = numeric(0),
+        ymax = numeric(0)
+      )
+  }
+
+
+  # --------------------------------------------------------------------------
+  # Create plot
+  # --------------------------------------------------------------------------
+
+  haploblock_plot <- ggplot() +
+
+    theme_cowplot() +
+
+
+    # Chromosome interior
+
+    geom_rect(
+      data = chrom_sizes,
+
+      aes(
+        xmin = 0,
+        xmax = Chr_len,
+        ymin = ymin,
+        ymax = ymax
+      ),
+
+      fill = chrom_fill,
+      color = NA
+    ) +
+
+
+    # Multi-SNP blocks colored by variance
+
+    {
+      if(nrow(block_regions) > 0)
+
+        geom_rect(
+          data = block_regions,
+
+          aes(
+            xmin = xmin,
+            xmax = xmax,
+            ymin = ymin,
+            ymax = ymax,
+            fill = .data[[variance]]
+          ),
+
+          color = NA,
+          alpha = 0.9
+        )
+
+      else NULL
+    } +
+
+
+    # Single-SNP blocks colored by variance
+
+    {
+      if(nrow(single_markers) > 0)
+
+        geom_segment(
+          data = single_markers,
+
+          aes(
+            x = xmin,
+            xend = xmin,
+            y = ymin,
+            yend = ymax,
+            color = .data[[variance]]
+          ),
+
+          linewidth = 0.5,
+          alpha = 0.9,
+          show.legend = FALSE
+        )
+
+      else NULL
+    } +
+
+
+    # Chromosome outline
+
+    geom_rect(
+      data = chrom_sizes,
+
+      aes(
+        xmin = 0,
+        xmax = Chr_len,
+        ymin = ymin,
+        ymax = ymax
+      ),
+
+      fill = NA,
+      color = "black"
+    ) +
+
+
+    # Position axis
+
+    scale_x_continuous(
+      "Position",
+      expand = c(0, 0)
+    ) +
+
+
+    # Chromosome axis
+
+    scale_y_continuous(
+      breaks = chrom_sizes$y,
+      labels = chrom_sizes$Chrom
+    ) +
+
+
+    # Variance color scale
+
+    scale_fill_viridis_c(
+      option = scale_viridis_option,
+      name = "Block Variance"
+    ) +
+
+    scale_color_viridis_c(
+      option = scale_viridis_option,
+      guide = "none"
+    ) +
+
+    ylab("Chromosome")
+
+
+  return(haploblock_plot)
+}
+
