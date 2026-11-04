@@ -786,7 +786,7 @@ perform_graph_blocking = function(geno, map, strategy) {
   # than once per chromosome. The stages are one step rather than three because
   # chromosomes pass through them concurrently: in a parallel run one chromosome can be
   # refilling while another is still building its LD graph.
-  with_progress({
+  hs_with_progress({
     p = progressor(steps = 3L * length(chromosomes))
 
     blocks_for_chromosome = function(chr_data) {

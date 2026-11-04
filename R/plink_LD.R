@@ -599,7 +599,7 @@ plink_pairwise_ld = function(prefix, ld_window = 999999, ld_window_kb = 1000000,
   report_step("plink_ld")
 
   # Two stages on one bar: running --r2, then reading its output
-  with_progress({
+  hs_with_progress({
     stages = plink_stages(progressor(steps = 2L * PLINK_STAGE_STEPS))
     ld = plink_pairwise_ld_run(prefix, ld_window = ld_window, ld_window_kb = ld_window_kb,
                                ld_window_r2 = ld_window_r2, extra_args = extra_args,
@@ -634,7 +634,7 @@ plink_pairwise_ld_geno = function(geno, ld_window = 999999, ld_window_kb = 10000
 
   # Four stages on one bar: writing the input and converting it, ahead of the two stages
   # shared with plink_pairwise_ld()
-  with_progress({
+  hs_with_progress({
     stages = plink_stages(progressor(steps = 4L * PLINK_STAGE_STEPS))
 
     stages$within(0, "Writing genotypes for PLINK")

@@ -64,7 +64,7 @@ beagle_impute_run = function(vcf_in, out_prefix, ref = NULL, map = NULL, extra_a
     markers = read_vcf_positions(vcf_in)
   }
   report_status("Running Beagle")
-  with_progress({
+  hs_with_progress({
     p = progressor(steps = nrow(markers))
     run_beagle_command(args, on_line = beagle_progress_parser(markers, p))
   })

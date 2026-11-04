@@ -166,7 +166,7 @@ n_fold_cross_validation = function(geno, BLUE, nfold = 5L, h2_method = c("VanRad
 
   # One tick per fold. The per-fold printout still happens, but with a bar drawn progressr holds
   # it back and prints it once the folds are done, so it cannot break up the bar
-  progressr::with_progress({
+  hs_with_progress({
     p = progressr::progressor(steps = nfold)
 
     CV = sapply(1:nfold, function(fold){
@@ -204,7 +204,7 @@ cross_validation = function(geno, BLUE, train_prop = 0.9, fold = 30L, h2_method 
 
   # One tick per fold, as in n_fold_cross_validation()
   n_folds = fold
-  progressr::with_progress({
+  hs_with_progress({
     p = progressr::progressor(steps = n_folds)
 
     CV = sapply(1:n_folds, function(fold){

@@ -110,7 +110,7 @@ perform_window_blocking = function(map, window, method = c("window_snp", "window
 
   # Split each chromosome into windows and return a named list of blocks per chromosome.
   # One tick per chromosome.
-  progressr::with_progress({
+  hs_with_progress({
     p = progressr::progressor(steps = length(map_split))
 
     blocks_list = purrr::map(map_split, function(chrom_map) {

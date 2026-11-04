@@ -94,8 +94,8 @@ validate_strategy <- function(strategy, type = c("localGEBV", "Haplotype")) {
 #custom monitoring function - if sign is flipped for fitness calculation, then flip the sign here too
 #had to use this because there was no straight forward way to get the GA to minimize, so it's all in custom functions
 #this means that reporting needed to be conducted in custom functions too
-#returns a one line summary of the generation: the progress bar's status when a bar is drawn,
-#otherwise a printed line, which also carries the SD as it always has
+#custom_monitor returns a one line summary of the generation, printed when no bar is drawn;
+#ga_status() is the bar's status when one is
 #a generation's fitness on the user's scale: best and mean, plus the spread
 ga_fitness_summary <- function(obj, maximize = TRUE){
 
@@ -122,6 +122,44 @@ custom_monitor <- function(obj, maximize = TRUE, sd = FALSE){
   }
 
   summary
+}
+
+#how many generations have passed since the best fitness last improved: 0 on the generation
+#that found it. eps is GA's tolerance, so rounding noise does not count as an improvement.
+#A generation with no fitness (NA) counts as one without improvement, and with no fitness at
+#all there is nothing to count from
+#GA counts its own `run` one higher, including the generation that found the best, so it stops
+#once this reaches run - 1
+ga_stall <- function(obj){
+  best <- obj@summary[seq_len(obj@iter), "max"]
+  if(all(is.na(best))) return(0L)
+  first_best <- which(best >= max(best, na.rm = TRUE) - GA::gaControl("eps"))[1]
+  as.integer(length(best) - first_best)
+}
+
+#the status beside the progress bar for a generation, cut back until it fits in width characters
+#the stall is out of run - 1, which is where GA stops, so a run that stops early ends full
+#
+#   Iter 37 | Stall 3/49 | Best = 1.088 | Mean = 1.076 | SD = 0.012
+#   Iter 37 | Stall 3/49 | Best = 1.088 | Mean = 1.076
+#   Iter 37 | Best = 1.088 | Mean = 1.076
+#   Iter 37 | Best = 1.088
+ga_status <- function(obj, maximize = TRUE, run = NA, width = Inf){
+  fitness <- ga_fitness_summary(obj, maximize = maximize)
+  iter <- sprintf("Iter %d", obj@iter)
+  stall <- sprintf("Stall %d/%s", ga_stall(obj), run - 1)
+  best <- sprintf("Best = %.3f", fitness$best)
+  mean_fit <- sprintf("Mean = %.3f", fitness$mean)
+  sd_fit <- sprintf("SD = %.3f", fitness$sd)
+
+  candidates <- c(
+    paste(iter, stall, best, mean_fit, sd_fit, sep = " | "),
+    paste(iter, stall, best, mean_fit, sep = " | "),
+    paste(iter, best, mean_fit, sep = " | "),
+    paste(iter, best, sep = " | ")
+  )
+  fits <- candidates[nchar(candidates) <= width]
+  if(length(fits) > 0L) fits[[1]] else candidates[[length(candidates)]]
 }
 
 get_effect_matrix <- function(obj) {
@@ -481,19 +519,20 @@ build_haplotype_row_metadata <- function(effect_matrix){
 
   # run GA
   # GA calls the monitor once per iteration, so the progress bar ticks once per iteration
-  # With monitor on, each tick also carries the generation's fitness summary as the bar's status.
+  # With monitor on, each tick also carries the generation's iteration, stall count and fitness
+  # summary as the bar's status, cut back to fit the console.
   # With no bar to carry it (machine logging, or a batch run) the summary is printed instead
-  progressr::with_progress({
+  hs_with_progress({
     p <- progressr::progressor(steps = maxiter)
 
     monitor_fn <- function(obj){
       #each generation's fitness also goes on the machine readable stream, for a live chart
       fitness <- ga_fitness_summary(obj, maximize = maximize)
       report_metric("ga_generation", iter = obj@iter, best = fitness$best,
-                    mean = fitness$mean, sd = fitness$sd)
+                    mean = fitness$mean, sd = fitness$sd, stall = ga_stall(obj))
 
       if(monitor && progress_drawn()){
-        p(message = custom_monitor(obj, maximize = maximize))
+        p(message = ga_status(obj, maximize = maximize, run = run, width = status_width()))
       } else {
         if(monitor){
           cat(sprintf("Iter %4d | %s\n", obj@iter, custom_monitor(obj, maximize = maximize, sd = TRUE)))
