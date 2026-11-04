@@ -373,7 +373,7 @@ test_that("monitor = TRUE carries the fitness summary on the bar when a bar is d
 
   expect_length(out, 0)
   messages <- unlist(lapply(updates, function(u) u$message))
-  expect_true(any(grepl("^Iter [0-9]+ \\| Stall [0-9]+/5 \\| Best = -?[0-9.]+ \\| Mean = -?[0-9.]+ \\| SD = [0-9.]+$", messages)))
+  expect_true(any(grepl("^Iter [0-9]+ \\| Stall [0-9]+/4 \\| Best = -?[0-9.]+ \\| Mean = -?[0-9.]+ \\| SD = [0-9.]+$", messages)))
 })
 
 test_that("monitor = TRUE prints the fitness summary when no bar is drawn", {
@@ -400,12 +400,42 @@ test_that("monitor = TRUE prints in a batch run, where progressr is switched off
   expect_length(out, result$GA@iter)
 })
 
-test_that("ga_stall counts generations without a better best, as GA counts its run", {
-  obj <- methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(1, 2),
-                      iter = 5, summary = cbind(max = c(1, 3, 3, 2, 3), mean = 1:5))
+# A ga object part way through a run, with each generation's best fitness
+ga_at <- function(best) {
+  methods::new("ga", call = quote(f()), type = "real-valued", fitness = c(1, 2),
+               iter = length(best), summary = cbind(max = best, mean = best))
+}
 
-  expect_equal(ga_stall(obj), GA:::garun(obj@summary[1:5, "max"]))
-  expect_equal(ga_stall(obj), 3)
+test_that("ga_stall counts the generations since the best fitness last improved", {
+  # Improved this generation
+  expect_identical(ga_stall(ga_at(c(1, 2, 3))), 0L)
+  # Best found at generation 2, now generation 5
+  expect_identical(ga_stall(ga_at(c(1, 3, 3, 3, 3))), 3L)
+  # Never improved after the first generation
+  expect_identical(ga_stall(ga_at(c(5, 5, 5, 5))), 3L)
+  # A generation only rounding noise above the best is not an improvement
+  expect_identical(ga_stall(ga_at(c(1, 3, 3 + 1e-12, 3))), 2L)
+  # A real improvement, however small, is
+  expect_identical(ga_stall(ga_at(c(1, 3, 3 + 1e-6, 3 + 1e-6))), 1L)
+})
+
+test_that("ga_stall counts a generation with no fitness as one without improvement", {
+  expect_identical(ga_stall(ga_at(c(1, NA, 3, NA, 3))), 2L)
+  expect_identical(ga_stall(ga_at(c(NA, NA, 3))), 0L)
+  # Nothing to count from: no generations yet, or none with a fitness
+  expect_identical(ga_stall(ga_at(numeric())), 0L)
+  expect_identical(ga_stall(ga_at(c(NA_real_, NA_real_))), 0L)
+})
+
+test_that("ga_stall is one below GA's own run count, so it reaches run - 1 when GA stops", {
+  for (best in list(c(1, 2, 3), c(1, 3, 3, 3, 3), c(5, 5, 5, 5), c(1, 2, 2, 4, 4, 4))) {
+    expect_equal(ga_stall(ga_at(best)), GA:::garun(best) - 1, info = paste(best, collapse = " "))
+  }
+
+  # A run that stops early, on its own, ends on run - 1
+  result <- run_lgebv_selection(maxiter = 200, run = 5)
+  expect_lt(result$GA@iter, 200)
+  expect_identical(ga_stall(result$GA), 4L)
 })
 
 test_that("ga_status carries iter and stall, and drops fields to fit the width", {
@@ -413,9 +443,9 @@ test_that("ga_status carries iter and stall, and drops fields to fit the width",
                       iter = 7, summary = cbind(max = rep(-1, 7), mean = rep(-2, 7)))
 
   full <- ga_status(obj, maximize = TRUE, run = 50)
-  expect_equal(full, "Iter 7 | Stall 7/50 | Best = -1.000 | Mean = -2.000 | SD = 1.000")
+  expect_equal(full, "Iter 7 | Stall 6/49 | Best = -1.000 | Mean = -2.000 | SD = 1.000")
   expect_equal(ga_status(obj, run = 50, width = nchar(full) - 1),
-               "Iter 7 | Stall 7/50 | Best = -1.000 | Mean = -2.000")
+               "Iter 7 | Stall 6/49 | Best = -1.000 | Mean = -2.000")
   expect_equal(ga_status(obj, run = 50, width = 40), "Iter 7 | Best = -1.000 | Mean = -2.000")
   expect_equal(ga_status(obj, run = 50, width = 0), "Iter 7 | Best = -1.000")
 })

@@ -124,25 +124,30 @@ custom_monitor <- function(obj, maximize = TRUE, sd = FALSE){
   summary
 }
 
-#how many generations have gone without the best fitness improving, counted the way GA counts
-#its own `run`, so the GA stops once this reaches `run`
+#how many generations have passed since the best fitness last improved: 0 on the generation
+#that found it. eps is GA's tolerance, so rounding noise does not count as an improvement.
+#A generation with no fitness (NA) counts as one without improvement, and with no fitness at
+#all there is nothing to count from
+#GA counts its own `run` one higher, including the generation that found the best, so it stops
+#once this reaches run - 1
 ga_stall <- function(obj){
   best <- obj@summary[seq_len(obj@iter), "max"]
-  best <- best[!is.na(best)]
-  if(length(best) == 0L) return(0L)
-  sum(rev(best) >= max(best) - GA::gaControl("eps"))
+  if(all(is.na(best))) return(0L)
+  first_best <- which(best >= max(best, na.rm = TRUE) - GA::gaControl("eps"))[1]
+  as.integer(length(best) - first_best)
 }
 
 #the status beside the progress bar for a generation, cut back until it fits in width characters
+#the stall is out of run - 1, which is where GA stops, so a run that stops early ends full
 #
-#   Iter 37 | Stall 3/50 | Best = 1.088 | Mean = 1.076 | SD = 0.012
-#   Iter 37 | Stall 3/50 | Best = 1.088 | Mean = 1.076
+#   Iter 37 | Stall 3/49 | Best = 1.088 | Mean = 1.076 | SD = 0.012
+#   Iter 37 | Stall 3/49 | Best = 1.088 | Mean = 1.076
 #   Iter 37 | Best = 1.088 | Mean = 1.076
 #   Iter 37 | Best = 1.088
 ga_status <- function(obj, maximize = TRUE, run = NA, width = Inf){
   fitness <- ga_fitness_summary(obj, maximize = maximize)
   iter <- sprintf("Iter %d", obj@iter)
-  stall <- sprintf("Stall %d/%s", ga_stall(obj), run)
+  stall <- sprintf("Stall %d/%s", ga_stall(obj), run - 1)
   best <- sprintf("Best = %.3f", fitness$best)
   mean_fit <- sprintf("Mean = %.3f", fitness$mean)
   sd_fit <- sprintf("SD = %.3f", fitness$sd)
